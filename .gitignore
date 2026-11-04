@@ -1,0 +1,17 @@
+# Third-party downloads (fetched again by hand when needed)
+_downloads/
+
+# Build intermediates
+*.exr
+*.blend
+*.blend1
+__pycache__/
+web/assets/room_lightmap.png
+
+# Local only
+node_modules/
+.env
+.env.*
+*.pem
+*.key
+test-output/
