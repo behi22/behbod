@@ -15,3 +15,6 @@ node_modules/
 *.pem
 *.key
 test-output/
+
+# Raw bakes and lightmaps (rebuilt by blender/build_world.py)
+blender/build/

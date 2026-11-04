@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
-  E_led_green: [0.25, 1.0, 0.45, 3.5], E_led_blue: [0.25, 0.55, 1.0, 3.5], E_aria_eye: [0.25, 1.0, 0.85, 3.2], E_warm_soft: [1.0, 0.75, 0.45, 2.4], E_bias: [0.35, 0.45, 1.0, 2.6] };
-const PRINTS = new Set(['art1', 'art2', 'proj1', 'proj2']);
+  E_led_green: [0.25, 1.0, 0.45, 3.5], E_led_blue: [0.25, 0.55, 1.0, 3.5], E_aria_eye: [0.25, 1.0, 0.85, 3.2], E_warm_soft: [1.0, 0.75, 0.45, 2.4], E_bias: [0.35, 0.45, 1.0, 2.6],
+  E_fire: [1.0, 0.45, 0.12, 3.4], E_holo: [0.25, 0.75, 1.0, 2.6], E_aqua: [0.15, 0.55, 0.8, 1.6], E_sky: [0.12, 0.17, 0.32, 1.6], E_screen: [0.55, 0.7, 1.0, 1.0] };
+const DIM = new Set(['paper', 'oak', 'white', 'felt', 'kit_white']);
 const isScreen = n => n.startsWith('screen_') || n === 'backdrop' || n === 'postit' || n === 'onair' || n === 'desk_mat' || n === 'neon';
+const screenKey = n => (n === 'desk_mat' ? 'mat' : n.replace('screen_', '').replace(/_b$/, ''));
 
 // Lava lamp glass: slow rising and sinking wax blobs.
 function lavaMaterial(o) {
@@ -31,13 +34,55 @@ function lavaMaterial(o) {
   });
 }
 
-// The zones' baked geometry plus everything lit or moved at runtime: screens, LEDs, glass, clocks, the PC, steam.
+// Merges meshes that share a colour into one, in the space of `parent` (geometry already placed by `place`).
+function mergeByColour(parent, meshes, place) {
+  const buckets = new Map(), rest = [];
+  for (const o of meshes) {
+    const m = o.material;
+    if (!m.isMeshBasicMaterial || m.map || m.transparent) { rest.push(o); continue; }
+    const k = m.color.getHexString();
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(o);
+  }
+  const out = [];
+  for (const list of buckets.values()) {
+    if (list.length < 2) { rest.push(...list); continue; }
+    const geos = list.map(o => {
+      const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(place(o));
+      for (const name of Object.keys(g.attributes)) if (name !== 'position') g.deleteAttribute(name);
+      return g;
+    });
+    const mesh = new THREE.Mesh(mergeGeometries(geos), list[0].material);
+    mesh.name = 'merged_' + list[0].name;
+    parent.add(mesh);
+    for (const o of list) { o.parent?.remove(o); o.geometry.dispose(); }
+    for (const g of geos) g.dispose();
+    out.push(mesh);
+  }
+  return { merged: out, rest };
+}
+
+// Turns a set of loose meshes into one group pivoting about a point, so a door or a ship moves as one piece, with
+// the pieces that share a colour merged inside it.
+function gather(scene, meshes, pivot) {
+  const g = new THREE.Group();
+  g.position.copy(pivot);
+  scene.add(g);
+  const toLocal = new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z);
+  for (const m of meshes) { m.updateMatrixWorld(); const w = m.matrixWorld.clone(); g.add(m); m.matrix.copy(w).premultiply(toLocal); m.matrix.decompose(m.position, m.quaternion, m.scale); }
+  mergeByColour(g, meshes.filter(m => !m.name.startsWith('screen_')), o => { o.updateMatrix(); return o.matrix; });
+  return g;
+}
+
+// The zones' baked geometry plus everything lit or moved at runtime.
 export function makeWorld(scene, zones, meta, screens) {
-  const emits = {}, leds = [], clockHands = {}, aria = {}, pcGlow = [], deskThings = [], lavas = [];
+  const emits = {}, leds = [], clockHands = {}, aria = {}, pcGlow = [], deskThings = [], lavas = [], loose = [];
+  let mirrorMesh = null;
   for (const z of zones) {
     scene.add(z);
     z.traverse(o => {
       if (!o.isMesh) return;
+      loose.push(o);
       const m = o.material, name = o.name;
       if (name.endsWith('_baked')) {
         o.material = new THREE.MeshBasicMaterial({ map: m.map, fog: true });
@@ -45,13 +90,19 @@ export function makeWorld(scene, zones, meta, screens) {
       } else if (name === 'lava_glass') {
         o.material = lavaMaterial(o);
         lavas.push(o);
+      } else if (name === 'mirror') {
+        mirrorMesh = o;
       } else if (isScreen(name)) {
-        const key = name === 'desk_mat' ? 'mat' : name.replace('screen_', '');
-        const k = name === 'postit' ? 0.95 : name === 'backdrop' ? 1 : name === 'desk_mat' ? 0.62 : name === 'neon' ? 1.7 : PRINTS.has(key) ? 0.8 : 1.25;
-        o.material = new THREE.MeshBasicMaterial({ map: screens.textures[key], color: new THREE.Color(k, k, k), fog: name !== 'backdrop' });
+        const key = screenKey(name);
+        const k = name === 'postit' ? 0.95 : name === 'backdrop' ? 1 : name === 'desk_mat' ? 0.62 : name === 'neon' ? 1.7 : DIM.has(m.name) ? 0.8 : 1.25;
+        o.material = new THREE.MeshBasicMaterial({ map: screens.textures[key] || null, color: new THREE.Color(k, k, k), fog: name !== 'backdrop' });
+        if (!screens.textures[key]) console.warn('[loft] no canvas for screen', key);
         if (name === 'onair') o.material.color.setScalar(2.2);
+        // The nastaliq is light on the wall itself: only the glowing letters show.
+        if (key === 'nastaliq') Object.assign(o.material, { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
       } else if (m.name?.startsWith('G_')) {
-        o.material = new THREE.MeshBasicMaterial({ color: 0x9fb6d8, transparent: true, opacity: name === 'window_glass' ? 0.06 : 0.12, depthWrite: false, fog: true });
+        const water = name === 'aqua_water';
+        o.material = new THREE.MeshBasicMaterial({ color: water ? 0x1f7fa8 : 0x9fb6d8, transparent: true, opacity: name === 'window_glass' ? 0.05 : water ? 0.3 : 0.12, depthWrite: false, fog: true, side: THREE.DoubleSide });
         o.renderOrder = 2;
       } else if (EMISSIVE[m.name]) {
         const [r, g, b, k] = EMISSIVE[m.name];
@@ -64,14 +115,16 @@ export function makeWorld(scene, zones, meta, screens) {
         o.material = new THREE.MeshBasicMaterial({ color: 0x0a0a0c });
         clockHands[name] = o;
       } else {
-        o.material = new THREE.MeshBasicMaterial({ color: (m.color || new THREE.Color(0.2, 0.2, 0.2)).clone().multiplyScalar(0.35), fog: true });
+        // Loose pieces that move (doors, ships, BH-22) aren't baked, so give them a little lift.
+        o.material = new THREE.MeshBasicMaterial({ color: (m.color || new THREE.Color(0.2, 0.2, 0.2)).clone().multiplyScalar(0.55), fog: true });
       }
       if (/^(fan\d|coolant_tube|cpu_block|gpu\d_led|ram\d_led)$/.test(name)) pcGlow.push([o.material, o.material.color.clone()]);
-      if (/^(screen_|kb_|monitor|mini_case|desk_mat|mouse)/.test(name)) deskThings.push(o);
+      if (/^(screen_(main|code|top|contrib|loss|pishi|laptop|timer)|kb_|monitor|mini_case|desk_mat|mouse)/.test(name)) deskThings.push(o);
     });
   }
+  const named = prefix => loose.filter(o => o.name.startsWith(prefix));
 
-  // Lights only touch the character; the room's light is baked.
+  // Lights only touch the character; the loft's light is baked.
   let rgbLight = null;
   for (const l of meta.lights) {
     if (l.kind === 'hemi') { scene.add(new THREE.HemisphereLight(l.sky, l.ground, l.power)); continue; }
@@ -80,11 +133,68 @@ export function makeWorld(scene, zones, meta, screens) {
     scene.add(light);
     if (l.role === 'rgb') rgbLight = light;
   }
-  // Holidays from the README's calendar recolour the room's RGB strips.
+  // Holidays from the README's calendar recolour the RGB strips; the holiday corner shows one thing per season.
   if (screens.holiday) {
     const tintEmit = (name, hex, k) => (emits[name] || []).forEach(m => m.color.set(hex).multiplyScalar(k));
     tintEmit('E_purple', screens.holiday.c.hot, 3.0); tintEmit('E_teal', screens.holiday.c.a2, 2.6);
     rgbLight?.color.set(screens.holiday.c.hot);
+  }
+  named('holiday_thing').forEach((o, i) => { o.visible = !!screens.holiday && i === (screens.holiday.id.length % 4); });
+
+  // The live mirror in the dressing area.
+  let mirror = null;
+  if (mirrorMesh && meta.screens.mirror) {
+    const s = meta.screens.mirror;
+    mirror = new Reflector(new THREE.PlaneGeometry(s.w, s.h), { textureWidth: 512, textureHeight: 1024, clipBias: 0.003, color: 0x8a919c });
+    // Face the way the mirror's wall faces: -X (west) or +Y (north, three's -z).
+    const facesNorth = s.normal === '+Y';
+    mirror.position.copy(b2t(...s.center)).add(facesNorth ? new THREE.Vector3(0, 0, -0.004) : new THREE.Vector3(-0.004, 0, 0));
+    mirror.rotation.y = facesNorth ? Math.PI : -Math.PI / 2;
+    scene.add(mirror);
+    mirrorMesh.visible = false;
+  }
+
+  // Doors swing about their hinge; their collider is switched off while open.
+  const doors = {};
+  for (const d of meta.doors || []) {
+    const parts = named(d.parts);
+    doors[d.id] = { ...d, group: gather(scene, parts, b2t(...d.pivot)), open: false, k: 0 };
+  }
+  // The X-wing and TIE chase each other round the void, the record spins, the gull and BH-22 idle.
+  const fighters = meta.fighters ? { x: gather(scene, named('ship_xwing'), b2t(3.0, 7.5, 4.6)), t: gather(scene, named('ship_tie'), b2t(5.0, 8.4, 5.0)), ...meta.fighters } : null;
+  const platter = named('platter').concat(named('record'), named('screen_nowplaying'));
+  const spin = platter.length ? gather(scene, platter, b2t(14.36, 11.42, 0.72)) : null;
+  const gull = meta.points.gull ? gather(scene, named('gull_'), b2t(...meta.points.gull)) : null;
+  const bh22 = meta.points.bh22_dock ? gather(scene, named('bh22_'), b2t(...meta.points.bh22_dock)) : null;
+  const fish = named('fish').map((o, i) => ({ o, x: o.position.x, ph: i * 1.7 }));
+  const fire = emits.E_fire || [];
+  // Unlocks wait dimmed on their stands until earned.
+  const unlocked = new Set(JSON.parse(localStorageGet('loft.unlocks') || '[]'));
+  for (const u of meta.unlocks || []) for (const o of named(u.parts)) if (!unlocked.has(u.id) && o.material.color) o.material.color.multiplyScalar(0.35);
+
+  // The rack's LEDs blink in seven groups (one draw call each) rather than one by one.
+  const ledGroups = [];
+  for (let k = 0; k < 7; k++) {
+    const mine = leds.filter((_, i) => i % 7 === k);
+    ledGroups.push(...mergeByColour(scene, mine, o => { o.updateMatrixWorld(true); return o.matrixWorld; }).merged.map(mesh => ({ mesh, k })));
+  }
+
+  // Static pieces that share a look are drawn together: one draw call per colour instead of one per piece.
+  const keep = new Set([...leds, ...deskThings, ...(aria.eyes || []), aria.tip, ...lavas, ...Object.values(clockHands), ...pcGlow.map(([m]) => m), mirrorMesh]);
+  const pinned = o => keep.has(o) || keep.has(o.material) || o.parent?.isGroup && o.parent.parent === scene && !zones.includes(o.parent);
+  const buckets = new Map();
+  for (const o of loose) {
+    const m = o.material;
+    if (!o.parent || o.name.endsWith('_baked') || isScreen(o.name) || !m.isMeshBasicMaterial || m.map || m.transparent || pinned(o) || /^(holiday_thing|unlock_|fish)/.test(o.name)) continue;
+    const k = m.color.getHexString() + (m.fog ? 'f' : '');
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(o);
+  }
+  let merged = 0;
+  for (const list of buckets.values()) {
+    if (list.length < 2) continue;
+    mergeByColour(scene, list, o => { o.updateMatrixWorld(true); return o.matrixWorld; });
+    merged += list.length;
   }
 
   // Small, subtle reflections: the studio floor mirrors only the bright things (screens, LEDs, lamps), softly.
@@ -117,6 +227,13 @@ export function makeWorld(scene, zones, meta, screens) {
   steamGeo.setAttribute('position', new THREE.BufferAttribute(steamPos, 3));
   if (tea) scene.add(new THREE.Points(steamGeo, new THREE.PointsMaterial({ size: 0.035, color: 0x9aa4b4, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending })));
 
+  // Dust motes drifting slowly through the light in the double-height part of the loft.
+  const MOTES = 420, motePos = new Float32Array(MOTES * 3), moteSeed = Float32Array.from({ length: MOTES }, (_, i) => (i * 0.618) % 1);
+  for (let i = 0; i < MOTES; i++) motePos.set([1 + ((i * 7.31) % 14), 0.4 + ((i * 3.17) % 5), -(4 + ((i * 5.13) % 7.5))], i * 3);
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+  scene.add(new THREE.Points(moteGeo, new THREE.PointsMaterial({ size: 0.014, color: 0xffe6c0, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending })));
+
   const clockFmt = {};
   function tickClocks() {
     for (const [nm, tz] of [['van', 'America/Vancouver'], ['teh', 'Asia/Tehran']]) {
@@ -129,8 +246,9 @@ export function makeWorld(scene, zones, meta, screens) {
   }
 
   // busy: I'm at the computer, so the PC's lights pulse harder.
-  function tick(dt, t, busy) {
-    for (let i = 0; i < leds.length; i++) leds[i].visible = Math.sin(t * (2 + (i % 7)) + i * 1.7) > -0.6;
+  function tick(dt, t, busy, cam) {
+    for (const { mesh, k } of ledGroups) mesh.visible = Math.sin(t * (2 + k) + k * 1.7) > -0.6;
+    if (mirror && cam) mirror.visible = cam.distanceTo(mirror.position) < 7;
     if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 1; }
     if (aria.tip) { const k = 2 + Math.sin(t * 3); aria.tip.material.color.setRGB(1.0 * k, 0.62 * k, 0.3 * k); }
     for (const l of lavas) l.material.uniforms.time.value = t;
@@ -144,8 +262,44 @@ export function makeWorld(scene, zones, meta, screens) {
     }
     const k = busy ? 1.35 + 0.35 * Math.sin(t * 6) : 1;
     for (const [m, base] of pcGlow) m.color.copy(base).multiplyScalar(k);
+    const f = 0.85 + 0.15 * Math.sin(t * 7.3) * Math.sin(t * 3.1 + 1);
+    for (const m of fire) m.color.setRGB(1.0 * 3.4 * f, 0.45 * 3.4 * f, 0.12 * 3.4 * f);
+    if (spin) spin.rotation.y -= dt * 3.49;
+    if (fighters) {
+      const c = b2t(...fighters.center), mid = (fighters.z1 + fighters.z0) / 2, amp = (fighters.z1 - fighters.z0) / 2;
+      for (const [g, lag] of [[fighters.x, 0], [fighters.t, 0.9]]) {
+        const a = t * 0.35 - lag;
+        const p = new THREE.Vector3(c.x + Math.cos(a) * fighters.rx, mid + Math.sin(a * 2) * amp * 0.6, c.z + Math.sin(a) * fighters.ry);
+        const ahead = new THREE.Vector3(c.x + Math.cos(a + 0.05) * fighters.rx, mid + Math.sin((a + 0.05) * 2) * amp * 0.6, c.z + Math.sin(a + 0.05) * fighters.ry);
+        g.position.copy(p);
+        g.lookAt(ahead);
+        g.rotateY(-Math.PI / 2);
+        g.rotateX(Math.sin(a) * 0.5);
+      }
+    }
+    if (gull) { gull.rotation.y = Math.sin(t * 0.3) * 0.6; gull.position.y = b2t(...meta.points.gull).y + Math.abs(Math.sin(t * 0.8)) * 0.01; }
+    if (bh22) bh22.position.y = b2t(...meta.points.bh22_dock).y + Math.sin(t * 1.6) * 0.008;
+    for (const q of fish) { q.o.position.x = q.x + Math.sin(t * 0.4 + q.ph) * 0.25; q.o.rotation.y = Math.cos(t * 0.4 + q.ph) > 0 ? 0 : Math.PI; }
+    for (const d of Object.values(doors)) {
+      d.k += ((d.open ? 1 : 0) - d.k) * Math.min(1, dt * 3);
+      d.group.rotation.y = THREE.MathUtils.degToRad(d.swing) * d.k;
+    }
+    for (let i = 0; i < MOTES; i++) {
+      const k = i * 3, sd = moteSeed[i];
+      motePos[k] += Math.sin(t * 0.13 + sd * 40) * dt * 0.02;
+      motePos[k + 1] += (Math.sin(t * 0.09 + sd * 17) * 0.5 - 0.15) * dt * 0.03;
+      if (motePos[k + 1] < 0.3) motePos[k + 1] = 5.4;
+    }
+    moteGeo.attributes.position.needsUpdate = true;
     tickClocks();
   }
 
-  return { tick, setGloss, deskThings };
+  return {
+    tick, setGloss, deskThings, doors, merged,
+    toggleDoor(id) { const d = doors[id]; if (!d) return null; d.open = !d.open; return d; },
+    // How big a door is, end to end (for the checks: only its own pieces should swing with it).
+    doorSize(id) { const d = doors[id]; return d ? new THREE.Box3().setFromObject(d.group).getSize(new THREE.Vector3()).toArray() : null; },
+  };
 }
+
+function localStorageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }

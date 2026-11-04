@@ -1,4 +1,4 @@
-// Feel slice check: loads, renders, walks, uses the desk, types, phone layout, errors, frame time.
+// Character and desk check in the loft: loads, walks, the lounge edge, the desk close-up, typing, moves, heads, phone.
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const OUT = process.argv[2] || '.';
 const URL = 'http://127.0.0.1:8810/?auto&stats';
@@ -34,22 +34,22 @@ const URL = 'http://127.0.0.1:8810/?auto&stats';
     const n = Math.hypot(before.fx, before.fz), fx = before.fx / n, fz = before.fz / n, dx = after.x - before.x, dz = after.z - before.z;
     return { forward: dx * fx + dz * fz, right: dx * -fz + dz * fx };
   };
-  await p.evaluate(() => { window.__loft.pos.set(0.2, 0, 0.7); window.__loft.yaw = -Math.PI / 2; });
+  await p.evaluate(() => { window.__loft.pos.set(3.5, 0.05, -4.5); window.__loft.yaw = -Math.PI / 2; });
   await p.waitForTimeout(500);
   const w = await moveBy('KeyW'), d = await moveBy('KeyD');
   console.log('W forward', w.forward.toFixed(2), 'D right', d.right.toFixed(2), w.forward > 0.4 && d.right > 0.4 ? 'PASS' : 'FAIL');
-  // Regression: walking from the lounge into the platform edge must stop at the edge, never drop under the floor.
-  await p.evaluate(() => { window.__loft.pos.set(2.0, -0.45, 2.6); window.__loft.yaw = 0; });
+  // Regression: walking from the sunken lounge into its edge must stop at the edge, never drop under the floor.
+  await p.evaluate(() => { window.__loft.pos.set(3.0, -0.4, -9.4); window.__loft.yaw = 0; });
   await p.waitForTimeout(500);
   await p.keyboard.down('KeyW');
   let minY = 0, maxZ = -9;
   for (let i = 0; i < 15; i++) { await p.waitForTimeout(100); const q = await p.evaluate(() => [window.__loft.pos.y, window.__loft.pos.z]); minY = Math.min(minY, q[0]); maxZ = Math.max(maxZ, q[1]); }
   await p.keyboard.up('KeyW');
   const endZ = await p.evaluate(() => window.__loft.pos.z);
-  console.log('edge walk lowest y', minY.toFixed(2), 'stopped at z', endZ.toFixed(2), minY > -0.5 && endZ > 1.7 ? 'PASS' : 'FAIL');
+  console.log('edge walk lowest y', minY.toFixed(2), 'stopped at z', endZ.toFixed(2), minY > -0.5 && endZ > -9.99 ? 'PASS' : 'FAIL');
   const fps = await p.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 4000) requestAnimationFrame(f); else res(n / ((performance.now() - t0) / 1000)); }; requestAnimationFrame(f); }));
   console.log('fps desktop', fps.toFixed(1), 'tier', await p.evaluate(() => window.__loft.tier));
-  await p.evaluate(() => { const l = window.__loft; l.pos.set(1.45, 0, -0.62); });
+  await p.evaluate(() => { const l = window.__loft, d = l.meta.points.desk_use; l.pos.set(d[0], d[2] + 0.05, -d[1]); });
   await p.waitForTimeout(600);
   await p.screenshot({ path: OUT + '/s5-desk-prompt.png' });
   const prompt = await p.evaluate(() => document.getElementById('prompt').classList.contains('on'));
@@ -86,7 +86,7 @@ const URL = 'http://127.0.0.1:8810/?auto&stats';
   shown.push('hood:' + await p.evaluate(() => window.__loft.headMeshesShown));
   for (let i = 0; i < 4; i++) { await p.keyboard.press('KeyH'); await p.waitForTimeout(150); heads.push(await p.evaluate(() => window.__loft.head)); shown.push(heads[i] + ':' + await p.evaluate(() => window.__loft.headMeshesShown)); }
   console.log('head cycle', heads.join(' > '), '| meshes drawn', shown.join(' '), shown.every(s => +s.split(':')[1] > 0) ? 'PASS' : 'FAIL');
-  await p.evaluate(() => { window.__loft.pos.set(1.45, 0, -0.62); });
+  await p.evaluate(() => { const l = window.__loft, d = l.meta.points.desk_use; l.pos.set(d[0], d[2] + 0.05, -d[1]); });
   await p.waitForTimeout(500);
   await p.keyboard.press('KeyE');
   await p.waitForTimeout(700);
@@ -109,7 +109,7 @@ const URL = 'http://127.0.0.1:8810/?auto&stats';
   await ph.waitForTimeout(2000);
   await ph.screenshot({ path: OUT + '/s8-phone.png' });
   await ph.tap('[data-go="desk"]');
-  await ph.waitForTimeout(7000);
+  await ph.waitForTimeout(3500);
   await ph.fill('#cmd', 'whoami');
   await ph.press('#cmd', 'Enter');
   await ph.waitForTimeout(500);
@@ -119,9 +119,9 @@ const URL = 'http://127.0.0.1:8810/?auto&stats';
   await ph.screenshot({ path: OUT + '/s9b-phone-pan.png' });
   const over = await ph.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   console.log('phone mode', await ph.evaluate(() => window.__loft.mode), 'sideways scroll', over, 'tier', await ph.evaluate(() => window.__loft.tier));
-  // Two known non-errors: the browser asks for a favicon the slice doesn't have, and Playwright reports the streamed
-  // model downloads as aborted even though they finish (the page only becomes ready after both models parse).
-  const real = errs.filter(e => !/favicon|status of 404|assets\/(room|behbod_v3)\.glb net::ERR_ABORTED/.test(e));
+  // A known non-error: Playwright reports the streamed model downloads as aborted even though they finish (the page
+  // only becomes ready after every model parses).
+  const real = errs.filter(e => !/assets\/(zones\/\w+|behbod_v3)\.glb net::ERR_ABORTED/.test(e));
   console.log('errors', real.length ? '\n  ' + real.join('\n  ') : 'none', `(ignored ${errs.length - real.length} known non-errors)`);
   await b.close();
 })().catch(e => { console.error('FAILED', e.message); process.exit(1); });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { drawWorldMat, drawTimer, drawNeon, drawGirih, drawPoster, drawProject, Outside, holidayAt } from './room2.js';
+import { drawWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
+import { makePanels } from './panels.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -20,7 +21,7 @@ function seeded(seed) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-export function makeCanvases() {
+export function makeCanvases(meta, opts = {}) {
   const S = {};
   const T = {};
 
@@ -131,25 +132,17 @@ export function makeCanvases() {
   const outside = new Outside(S.backdrop);
   outside.draw(new Date());
 
-  // Room v2: the world map desk mat, the pomodoro cube, the neon sign and the lounge wall.
+  // The world map desk mat, the pomodoro cube and the neon sign over the about board.
   S.mat = surface(2048, 822);
   S.timer = surface(220, 150);
   S.neon = surface(1300, 320);
-  S.art1 = surface(500, 700);
-  S.proj1 = surface(600, 450);
-  S.proj2 = surface(600, 450);
-  S.art2 = surface(420, 560);
   const holiday = holidayAt(new Date());
   const neon = () => drawNeon(S.neon, holiday ? holiday.text : 'hello, friend.', holiday ? holiday.c.hot : '#ff6a5c');
   drawWorldMat(S.mat);
   drawTimer(S.timer, performance.now());
   neon();
-  drawGirih(S.art1);
-  drawPoster(S.art2);
-  drawProject(S.proj1, 'meet-bex', 'a voice receptionist you can talk to', 'voice');
-  drawProject(S.proj2, 'profile-art', 'my GitHub profile, redrawn every hour', 'grid');
   document.fonts.load("190px 'Pacifico'").then(neon).catch(() => {});
-  document.fonts.ready.then(() => { drawWorldMat(S.mat); neon(); drawPoster(S.art2); drawProject(S.proj1, 'meet-bex', 'a voice receptionist you can talk to', 'voice'); drawProject(S.proj2, 'profile-art', 'my GitHub profile, redrawn every hour', 'grid'); });
+  document.fonts.ready.then(() => { drawWorldMat(S.mat); neon(); panels?.redrawAll(); });
 
   // The post-it: his tattoo in Nastaliq, bottom right of the main screen.
   S.postit = surface(512, 512);
@@ -186,6 +179,8 @@ export function makeCanvases() {
     t.needsUpdate = true;
   })();
 
+  const panels = makePanels(surface, { weather: () => outside.weather || 'clear', holiday, videos: opts.videos || (() => []), projects: meta.projects || [] });
+  Object.assign(S, panels.S);
   for (const [k, v] of Object.entries(S)) T[k] = v.t;
   let acc = 0, slow = 0, sec = -1;
   return {
@@ -196,6 +191,7 @@ export function makeCanvases() {
       acc += dt; slow += dt;
       if (Math.floor(now / 1000) !== sec) { sec = Math.floor(now / 1000); drawTimer(S.timer, now); }
       outside.tick(now);
+      panels.tick(Date.now());
       if (acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); drawPishi(now); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
       if (focused) { const b = Math.floor(now / 500); if (b !== term.blink) { term.blink = b; drawTerm(); } }
     },

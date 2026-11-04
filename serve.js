@@ -7,7 +7,8 @@ const args = process.argv.slice(2);
 const port = +args.find(a => /^\d+$/.test(a)) || 8810;
 const live = !args.includes('--no-live');
 const clients = new Set();
-const LIVE = '<script>new EventSource("/__live").addEventListener("reload", () => location.reload());</script>';
+// Connect once the page has loaded, so the open connection never counts as the page still loading.
+const LIVE = '<script>addEventListener("load", () => new EventSource("/__live").addEventListener("reload", () => location.reload()));</script>';
 
 if (live) {
   let timer = null;

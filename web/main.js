@@ -8,6 +8,7 @@ import { makeMe, HEAD_NAMES } from './src/me.js';
 import { makeFollowCam } from './src/camera.js';
 import { makeDesk } from './src/desk.js';
 import { makeCollision } from './src/pure/collide.js';
+import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { tierStep } from './src/pure/tier.js';
 import { makeCanvases } from './screens.js';
 import { Sound } from './sound.js';
@@ -24,10 +25,13 @@ engine.onTier(name => { world?.setGloss(name === 'high'); $('q').textContent = '
 
 // ---------- loading ----------
 const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
-const meta = await load.json('assets/room.json');
+const meta = await load.json('assets/world.json');
+// My YouTube videos for the TV and the screening wall: [{ id, title }], filled in as I pick them.
+const media = await fetch('media.json').then(r => (r.ok ? r.json() : {})).catch(() => ({}));
+const videos = () => (media.videos || []).filter(v => /^[A-Za-z0-9_-]{11}$/.test(v.id || ''));
 const [zoneGltfs, meGltf] = await Promise.all([Promise.all(meta.zones.map(z => load.glb('assets/' + z.glb, z.id))), load.glb('assets/behbod_v3.glb', 'me')]);
 
-const screens = makeCanvases(meta);
+const screens = makeCanvases(meta, { videos });
 let world = null;
 world = makeWorld(scene, zoneGltfs.map(g => g.scene), meta, screens);
 const outside = makeOutside(scene, meta, screens);
@@ -58,13 +62,15 @@ const camLook = new THREE.Vector3();
 const keys = new Set();
 const LOOKS = meta.looks.map(p => b2t(...p));
 const SPOTS = Object.fromEntries(Object.entries(meta.spots).map(([k, p]) => [k, b2t(...p)]));
-let vy = 0, grounded = true, facing = Math.PI / 2, mode = 'walk', nearDesk = false, airT = 0, idleT = 0, lean = 0, prevFacing = facing;
+let vy = 0, grounded = true, facing = meta.spawn?.facing ?? Math.PI / 2, mode = 'walk', near = null, seat = null, airT = 0, idleT = 0, lean = 0, prevFacing = facing;
 let crouchHeld = false, lastCrouchTap = 0, rollT = 0, showStats = params.has('stats'), autoTarget = null;
-let yaw = -Math.PI / 2 - 0.35, pitch = 0.3, dist = coarse ? 4.3 : 3.3, dragging = null, lastLook = 0;
+let yaw = meta.spawn?.yaw ?? 0, pitch = meta.spawn?.pitch ?? 0.3, dist = coarse ? 4.3 : 3.3, dragging = null, lastLook = 0;
+const things = makeInteract(meta.interact || []);
 me.root.position.copy(pos);
 phys?.place(pos);
 
-const followPose = makeFollowCam(col, meta.bounds);
+me.root.rotation.set(0, facing, 0);
+const followPose = makeFollowCam(col, meta.regions);
 const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
 const desk = makeDesk({ camera, me, meta, coarse, follow });
 
@@ -94,6 +100,91 @@ function leaveDesk() {
   $('use').textContent = 'Use';
 }
 
+// ---------- sitting down: the window seat, the egg chair, the piano bench ----------
+function sit(it) {
+  if (mode !== 'walk') return;
+  mode = 'sit'; seat = it; autoTarget = null;
+  me.playOnce('Sitting_Enter');
+  pos.copy(b2t(...it.seat));
+  facing = prevFacing = headingToFacing(it.face);
+  me.root.position.copy(pos);
+  me.root.rotation.set(0, facing, 0);
+  setTimeout(() => { if (mode === 'sit') me.holdPose('Sitting_Idle_Loop'); }, 900);
+  $('prompt').classList.remove('on');
+  $('use').textContent = 'Stand';
+}
+function stand() {
+  if (mode !== 'sit') return;
+  me.playOnce('Sitting_Exit');
+  mode = 'walk';
+  pos.copy(b2t(...seat.at)); me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos);
+  seat = null;
+  setTimeout(() => me.endOneShot(), 500);
+  $('use').textContent = 'Use';
+}
+
+// ---------- things you walk up to and press E on ----------
+const SAY = {
+  arcade: 'Striker 22, a penalty shootout. The game is coming in the next round.',
+  board: 'The glass board: what I am building next.',
+  holochess: 'Holochess is coming soon.',
+  penalties: 'The penalty shootout is coming soon.',
+  vader: 'Lord Vader in his glass cube, saber up.',
+  records: 'The record will show what I am playing on Spotify once that is connected.',
+  crate: 'My playlists go in this crate once Spotify is connected.',
+  albums: 'Album art from my top tracks, once Spotify is connected.',
+  tea: 'Fresh tea from the samovar.',
+  mailbox: 'The mailbox opens when its server is built.',
+  about: 'That is me on the board.',
+  resume: 'My resume is coming soon.',
+  guestbook: 'The guestbook opens when its server is built.',
+  bh22: 'BH-22 beeps hello.',
+  book: 'The story is still being written.',
+  telescope: 'The telescope view is coming soon.',
+  backgammon: 'Backgammon is coming soon.',
+  range: 'The holo range opens soon. A top score unlocks things.',
+  secret_room: 'Locked. A top score at the range opens it.',
+  projects: 'My projects, all the way up the stairs.',
+};
+let tvNext = 0;
+function act(it) {
+  if (!it) return;
+  if (it.id === 'desk') return useDesk();
+  if (it.seat) return sit(it);
+  if (it.id === 'secret') {
+    const d = world.toggleDoor('secret');
+    col.setSolid(d.collider, !d.open); phys?.setSolid(d.collider, !d.open);
+    sound.chair();
+    return toast(d.open ? 'The bookcase swings open.' : 'The bookcase swings shut.');
+  }
+  if (it.id === 'wardrobe') { me.nextHead(); return toast(HEAD_NAMES[me.head]); }
+  if (it.id === 'holiday') return toast(screens.holiday ? screens.holiday.text : 'No holiday today.');
+  // The TV flips through every video in turn; the frames each keep their own.
+  if (it.id === 'tv') { const n = videos().length; playVideo(n ? tvNext++ % n : 0); return; }
+  if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
+  toast(SAY[it.id] || it.label);
+}
+// YouTube's own player over the room, so nothing is copied; only real video ids ever reach the address.
+function playVideo(i) {
+  const v = videos()[i];
+  if (!v) return toast('Videos are coming soon.');
+  const box = document.createElement('div');
+  box.className = 'video';
+  const frame = document.createElement('iframe');
+  frame.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&rel=0`;
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+  frame.allowFullscreen = true;
+  frame.title = v.title || 'Video';
+  const close = document.createElement('button');
+  close.className = 'chip'; close.textContent = 'Close';
+  const shut = () => { box.remove(); removeEventListener('keydown', onKey, true); };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); shut(); } };
+  close.addEventListener('click', shut);
+  addEventListener('keydown', onKey, true);
+  box.append(frame, close);
+  document.body.append(box);
+}
+
 // ---------- input ----------
 addEventListener('keydown', e => {
   if (e.target && e.target.id === 'cmd') return;
@@ -105,7 +196,8 @@ addEventListener('keydown', e => {
     lastCrouchTap = now;
   }
   keys.add(e.code);
-  if (e.code === 'KeyE' && nearDesk) useDesk();
+  if (mode === 'sit' && (e.code === 'KeyE' || /^(Key[WASD]|Arrow)/.test(e.code))) { stand(); return; }
+  if (e.code === 'KeyE' && mode === 'walk' && near) act(near);
   if (e.code === 'KeyH' && mode === 'walk') me.nextHead();
   if (e.code === 'Backquote') { showStats = !showStats; $('stats').style.display = showStats ? 'block' : 'none'; }
   if (e.code === 'Space') e.preventDefault();
@@ -128,12 +220,22 @@ canvas.addEventListener('pointerup', e => {
 canvas.addEventListener('wheel', e => { dist = Math.max(1.8, Math.min(6, dist * (1 + Math.sign(e.deltaY) * 0.08))); }, { passive: true });
 
 // Click or tap the floor to walk there; click the desk or its screens to sit down and use the computer.
-document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
-  if (mode !== 'walk' || !SPOTS[b.dataset.go]) return;
-  autoTarget = SPOTS[b.dataset.go].clone(); autoTarget.useDesk = b.dataset.go === 'desk';
-}));
+// The chips jump across the loft with a short fade, since a straight walk would run into walls.
+function goTo(name) {
+  if (mode !== 'walk' || !SPOTS[name]) return;
+  const veil = $('veil');
+  veil.classList.add('on');
+  setTimeout(() => {
+    pos.copy(SPOTS[name]); vel.set(0, 0, 0); autoTarget = null;
+    me.root.position.copy(pos);
+    camera.position.copy(follow().p);
+    veil.classList.remove('on');
+    if (name === 'desk') setTimeout(useDesk, 250);
+  }, 300);
+}
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
 $('cmd').addEventListener('keydown', e => { if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); } });
-$('use').addEventListener('click', () => { if (mode === 'desk') leaveDesk(); else if (nearDesk) useDesk(); });
+$('use').addEventListener('click', () => { if (mode === 'desk') leaveDesk(); else if (mode === 'sit') stand(); else if (near) act(near); });
 const ray = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function tapMove(e) {
   ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
@@ -206,8 +308,10 @@ function walk(dt, now) {
   if (grounded && hs > 0.3) sound.stepTick(hs > 4.5 ? me.acts.Sprint_Loop : hs > 2.6 ? me.acts.Jog_Fwd_Loop : me.acts.Walk_Loop, hs);
   // Let the camera drift back behind me while I move and nobody is steering it.
   if (hs > 0.5 && now - lastLook > 1600 && !coarse) { let d = (facing + Math.PI) - yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); yaw += d * Math.min(1, 1.2 * dt); }
-  nearDesk = pos.distanceTo(deskUse) < 1.25 && grounded;
-  $('prompt').classList.toggle('on', nearDesk);
+  const was = near;
+  near = grounded ? things.nearest(pos) : null;
+  if (near !== was && near) $('prompt').lastChild.nodeValue = near.label;
+  $('prompt').classList.toggle('on', !!near);
   return hs;
 }
 
@@ -222,7 +326,7 @@ function step() {
   me.animate(dt, hs, mode === 'walk' && crouchHeld);
   me.lookAround(dt, idleT, facing, mode === 'walk', LOOKS);
   if (!desk.tick(dt, camLook, () => mode === 'desk')) {
-    if (mode === 'walk') {
+    if (mode === 'walk' || mode === 'sit') {
       const tp = follow();
       camera.position.lerp(tp.p, Math.min(1, 7 * dt));
       camLook.lerp(tp.l, Math.min(1, 9 * dt));
@@ -235,7 +339,7 @@ function step() {
   me.drawFace(now);
   me.tickMosaic(now, camera, engine.mosaicU);
   screens.tick(now, dt, mode === 'desk');
-  world.tick(dt, t, mode === 'desk');
+  world.tick(dt, t, mode === 'desk', camera.position);
   outside.tick(dt, t);
   engine.render(dt);
 
@@ -271,7 +375,8 @@ $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag
 $('enter').classList.add('ready');
 $('enter').addEventListener('click', () => { $('gate').classList.add('gone'); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); });
 if (params.has('auto')) $('gate').classList.add('gone');
-window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene,
+window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, act: id => act(things.items.find(i => i.id === id)), stand,
+  get near() { return near?.id ?? null; }, get facing() { return facing; },
   get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, get physics() { return physName; },
   get weights() { return me.weights; }, get headVisible() { return me.root.visible; }, get headMeshesShown() { return me.headMeshesShown; },
   set yaw(v) { yaw = v; lastLook = performance.now(); } };
