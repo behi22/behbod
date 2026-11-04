@@ -5,8 +5,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.se
 
 OUT = ROOT + '/web/assets/'
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-BAKE_PX = int(ARGS[0]) if ARGS else 2048
-SAMPLES = int(ARGS[1]) if len(ARGS) > 1 else 128
+NUMS = [a for a in ARGS if a.isdigit()]
+BAKE_PX = int(NUMS[0]) if NUMS else 2048
+SAMPLES = int(NUMS[1]) if len(NUMS) > 1 else 128
 random.seed(7)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scn = bpy.context.scene
@@ -737,6 +738,30 @@ for i, (py, w, h, key) in enumerate(((-1.95, 0.5, 0.7, 'art1'), (-2.65, 0.6, 0.4
     plane(f'screen_{key}', w, h, (FX1 - 0.027, py, 0.95), M['paper'], '-X')
     META['screens'][key] = {'center': [FX1 - 0.027, py, 0.95], 'w': w, 'h': h}
 area('L_neon', 15, (0.3, 1.3), (NX - 0.1, -2.9, 1.95), (0, math.radians(-90), 0), (1.0, 0.55, 0.3))
+
+# ---------- runtime rig: what the page needs besides geometry (Blender axes) ----------
+META['lights'] = [
+    {'kind': 'hemi', 'sky': '#6d82c2', 'ground': '#2a1a12', 'power': 1.1},
+    {'kind': 'sun', 'color': '#9db2ff', 'power': 1.1, 'at': [0, 6, 3]},
+    {'kind': 'point', 'color': '#c4d4ff', 'power': 3.2, 'range': 4, 'at': [2.9, 0.62, 1.15]},
+    {'kind': 'point', 'color': '#8a45ff', 'power': 2.2, 'range': 3.2, 'at': [2.6, 0.6, 0.45], 'role': 'rgb'},
+    {'kind': 'point', 'color': '#ffc48a', 'power': 2.4, 'range': 4.5, 'at': [2.3, 0.62, 2.6]},
+    {'kind': 'point', 'color': '#ffa25e', 'power': 3.0, 'range': 5, 'at': [0.4, -3.8, 1.05]},
+]
+META['bounds'] = {'min': [-3.45, -4.0], 'max': [3.3, 2.85], 'top': 2.75}
+META['spots'] = {'desk': META['points']['desk_use'], 'window': [-1.6, 2.2, 0.0], 'lounge': [-0.4, -2.6, 0.0]}
+META['looks'] = [list(MC), META['points']['aria'], [-1.6, 2.6, 1.5], META['screens']['pishi']['center']]
+META['points']['chair'] = [2.15, 0.62, 0.0]
+META['points']['tea'] = [2.82, -0.2, 0.84]
+META['window'] = {'center': [-0.6, 2.96, 1.7], 'w': 6.0, 'h': 2.6}
+META['backdrop'] = {'center': [0, 24, 6], 'w': 60, 'h': 22}
+META['gloss'] = {'center': [-0.05, 0.75, 0.004], 'w': 7.1, 'd': 4.5}
+META['zones'] = [{'id': 'room', 'glb': 'room.glb'}]
+if 'meta' in ARGS:
+    with open(OUT + 'room.json', 'w') as f:
+        json.dump(META, f, indent=1)
+    print('room meta only')
+    sys.exit(0)
 
 # ---------- bake ----------
 scn.render.engine = 'CYCLES'

@@ -1,11 +1,35 @@
+// Local server for the loft. Saving any file under web/ reloads open pages (pass --no-live to turn that off).
 const http = require('http'), fs = require('fs'), path = require('path');
 const root = path.join(__dirname, 'web');
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.glb': 'model/gltf-binary', '.png': 'image/png', '.webp': 'image/webp' };
-const port = +process.argv[2] || 8810;
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.glb': 'model/gltf-binary',
+  '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.css': 'text/css; charset=utf-8', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };
+const args = process.argv.slice(2);
+const port = +args.find(a => /^\d+$/.test(a)) || 8810;
+const live = !args.includes('--no-live');
+const clients = new Set();
+const LIVE = '<script>new EventSource("/__live").addEventListener("reload", () => location.reload());</script>';
+
+if (live) {
+  let timer = null;
+  fs.watch(root, { recursive: true }, () => {
+    clearTimeout(timer);
+    // Blender writes models in several chunks, so wait for the writes to settle before reloading.
+    timer = setTimeout(() => { for (const c of clients) c.write('event: reload\ndata: 1\n\n'); }, 250);
+  });
+}
+
 http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
+  if (u === '/__live') {
+    r.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+    r.write(': connected\n\n');
+    clients.add(r);
+    q.on('close', () => clients.delete(r));
+    return;
+  }
   const f = path.join(root, u === '/' ? 'index.html' : u);
-  if (!f.startsWith(root) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { r.writeHead(404); return r.end(); }
+  if (!f.startsWith(root + path.sep) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { r.writeHead(404); return r.end(); }
   r.writeHead(200, { 'content-type': types[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-store' });
+  if (live && f.endsWith('.html')) return r.end(fs.readFileSync(f, 'utf8').replace('</body>', LIVE + '</body>'));
   fs.createReadStream(f).pipe(r);
-}).listen(port, '127.0.0.1', () => console.log('loft on http://127.0.0.1:' + port));
+}).listen(port, '127.0.0.1', () => console.log(`loft on http://127.0.0.1:${port}${live ? ' (live reload on)' : ''}`));

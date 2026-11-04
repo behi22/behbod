@@ -1,0 +1,11 @@
+{
+  "name": "behbod",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node serve.js 8810",
+    "test": "node --test test/unit/*.test.mjs",
+    "check": "node test/check.js",
+    "browsers": "node test/browsers.js"
+  }
+}
