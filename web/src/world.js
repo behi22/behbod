@@ -75,8 +75,9 @@ function gather(scene, meshes, pivot) {
 }
 
 // The zones' baked geometry plus everything lit or moved at runtime.
-export function makeWorld(scene, zones, meta, screens) {
-  const emits = {}, leds = [], clockHands = {}, aria = {}, pcGlow = [], deskThings = [], lavas = [], loose = [];
+export function makeWorld(scene, zones, meta, screens, onDoor) {
+  const emits = {}, leds = [], clockHands = {}, aria = {}, pcGlow = [], deskThings = [], lavas = [], loose = [], baked = [];
+  let dayK = 0;
   let mirrorMesh = null;
   for (const z of zones) {
     scene.add(z);
@@ -86,6 +87,7 @@ export function makeWorld(scene, zones, meta, screens) {
       const m = o.material, name = o.name;
       if (name.endsWith('_baked')) {
         o.material = new THREE.MeshBasicMaterial({ map: m.map, fog: true });
+        baked.push(o.material);
         o.material.map.anisotropy = 4;
       } else if (name === 'lava_glass') {
         o.material = lavaMaterial(o);
@@ -118,7 +120,8 @@ export function makeWorld(scene, zones, meta, screens) {
         // Loose pieces that move (doors, ships, BH-22) aren't baked, so give them a little lift.
         o.material = new THREE.MeshBasicMaterial({ color: (m.color || new THREE.Color(0.2, 0.2, 0.2)).clone().multiplyScalar(0.55), fog: true });
       }
-      if (/^(fan\d|coolant_tube|cpu_block|gpu\d_led|ram\d_led)$/.test(name)) pcGlow.push([o.material, o.material.color.clone()]);
+      // Each PC light remembers which RGB channel it follows: a (purple), b (teal) or c (the coolant).
+      if (/^(fan\d|coolant_tube|cpu_block|gpu\d_led|ram\d_led)$/.test(name)) pcGlow.push([o.material, o.material.color.clone(), /^(coolant_tube|cpu_block)$/.test(name) ? 'c' : m.name === 'E_purple' ? 'a' : 'b']);
       if (/^(screen_(main|code|top|contrib|loss|pishi|laptop|timer)|kb_|monitor|mini_case|desk_mat|mouse)/.test(name)) deskThings.push(o);
     });
   }
@@ -133,12 +136,24 @@ export function makeWorld(scene, zones, meta, screens) {
     scene.add(light);
     if (l.role === 'rgb') rgbLight = light;
   }
-  // Holidays from the README's calendar recolour the RGB strips; the holiday corner shows one thing per season.
-  if (screens.holiday) {
-    const tintEmit = (name, hex, k) => (emits[name] || []).forEach(m => m.color.set(hex).multiplyScalar(k));
-    tintEmit('E_purple', screens.holiday.c.hot, 3.0); tintEmit('E_teal', screens.holiday.c.a2, 2.6);
-    rgbLight?.color.set(screens.holiday.c.hot);
+  // The studio's RGB: light scenes from the terminal, holiday colours by default on a holiday, a green sweep on DEPLOY.
+  const SCENES = { chill: [[0.55, 0.15, 1.0], [0.1, 0.9, 0.8]], focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[0.1, 0.85, 0.25], [0.95, 0.95, 0.95]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null };
+  const COOLANT = { teal: [0.1, 0.9, 0.8], purple: [0.55, 0.15, 1.0], red: [1.0, 0.12, 0.1], gold: [1.0, 0.7, 0.15], white: [0.9, 0.95, 1.0] };
+  const pcFam = new Set(pcGlow.map(([m]) => m));
+  const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
+  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0;
+  function paintRGB(a, b) {
+    for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
+    for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
+    for (const g of pcGlow) if (g[2] !== 'c') g[1].copy(g[2] === 'a' ? a : b).multiplyScalar(3.2);
+    rgbLight?.color.copy(a);
   }
+  const rgb = v => new THREE.Color(v[0], v[1], v[2]);
+  function applyScene() {
+    if (sceneName === 'holiday') paintRGB(...holidayRGB);
+    else if (SCENES[sceneName]) paintRGB(rgb(SCENES[sceneName][0]), rgb(SCENES[sceneName][1]));
+  }
+  applyScene();
   named('holiday_thing').forEach((o, i) => { o.visible = !!screens.holiday && i === (screens.holiday.id.length % 4); });
 
   // The live mirror in the dressing area.
@@ -156,21 +171,44 @@ export function makeWorld(scene, zones, meta, screens) {
 
   // Doors swing about their hinge; their collider is switched off while open.
   const doors = {};
+  // Doors either swing about a hinge (pivot, swing degrees) or slide (slide, a Blender-axes offset). A door with `auto`
+  // opens by itself while you are within that many metres of it.
   for (const d of meta.doors || []) {
     const parts = named(d.parts);
-    doors[d.id] = { ...d, group: gather(scene, parts, b2t(...d.pivot)), open: false, k: 0 };
+    const pivot = d.pivot || d.at;
+    // Doors start shut and solid, as the collision starts; onDoor fires only when that changes.
+    doors[d.id] = { ...d, group: gather(scene, parts, b2t(...pivot)), home: b2t(...pivot), open: false, k: 0, solid: true };
   }
   // The X-wing and TIE chase each other round the void, the record spins, the gull and BH-22 idle.
-  const fighters = meta.fighters ? { x: gather(scene, named('ship_xwing'), b2t(3.0, 7.5, 4.6)), t: gather(scene, named('ship_tie'), b2t(5.0, 8.4, 5.0)), ...meta.fighters } : null;
+  const F = meta.fighters;
+  const fighters = F ? { x: gather(scene, named('ship_xwing'), b2t(...F.xwing)), t: gather(scene, named('ship_tie'), b2t(...F.tie)), ...F } : null;
   const platter = named('platter').concat(named('record'), named('screen_nowplaying'));
-  const spin = platter.length ? gather(scene, platter, b2t(14.36, 11.42, 0.72)) : null;
+  const spin = platter.length && meta.points.platter ? gather(scene, platter, b2t(...meta.points.platter)) : null;
   const gull = meta.points.gull ? gather(scene, named('gull_'), b2t(...meta.points.gull)) : null;
-  const bh22 = meta.points.bh22_dock ? gather(scene, named('bh22_'), b2t(...meta.points.bh22_dock)) : null;
+  // The 3D printer's head runs back and forth while its print slowly grows.
+  const printHead = named('printer_head')[0], printPart = named('printer_print')[0];
+  const headX = printHead?.position.x ?? 0;
+  const wardrobeDoors = named('wardrobe_door').concat(named('wardrobe_handle')).map(o => ({ o, x: o.position.x, side: o.name.endsWith('-1') ? -1 : 1 }));
+  let wardrobeOpen = 0, wardrobeK = 0;
   const fish = named('fish').map((o, i) => ({ o, x: o.position.x, ph: i * 1.7 }));
   const fire = emits.E_fire || [];
   // Unlocks wait dimmed on their stands until earned.
-  const unlocked = new Set(JSON.parse(localStorageGet('loft.unlocks') || '[]'));
-  for (const u of meta.unlocks || []) for (const o of named(u.parts)) if (!unlocked.has(u.id) && o.material.color) o.material.color.multiplyScalar(0.35);
+  const unlockParts = (meta.unlocks || []).map(u => ({ id: u.id, parts: named(u.parts).filter(o => o.material.color).map(o => [o, o.material.color.clone()]) }));
+  function showUnlocks(ids) { for (const u of unlockParts) for (const [o, c] of u.parts) o.material.color.copy(c).multiplyScalar(ids.includes(u.id) ? 1 : 0.35); }
+  showUnlocks([]);
+  // DEPLOY dips when pressed; the desk fan spins (the cage is baked, the blades are added here).
+  const deployBtn = named('deploy_btn')[0], deployBase = deployBtn?.material.color.clone();
+  const cage = named('fan_cage')[0];
+  let blades = null, fanOn = true;
+  if (cage) {
+    blades = new THREE.Group();
+    const bm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.48, 0.5, 0.53), fog: true });
+    for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.055, 0.018), bm); b.position.y = 0.03; const arm = new THREE.Group(); arm.rotation.x = i * Math.PI * 2 / 3; arm.add(b); blades.add(arm); }
+    cage.updateMatrixWorld(true);
+    blades.position.setFromMatrixPosition(cage.matrixWorld);
+    scene.add(blades);
+  }
+  let ariaK = 0, spinning = false;
 
   // The rack's LEDs blink in seven groups (one draw call each) rather than one by one.
   const ledGroups = [];
@@ -180,7 +218,7 @@ export function makeWorld(scene, zones, meta, screens) {
   }
 
   // Static pieces that share a look are drawn together: one draw call per colour instead of one per piece.
-  const keep = new Set([...leds, ...deskThings, ...(aria.eyes || []), aria.tip, ...lavas, ...Object.values(clockHands), ...pcGlow.map(([m]) => m), mirrorMesh]);
+  const keep = new Set([...leds, ...deskThings, ...(aria.eyes || []), aria.tip, ...lavas, ...Object.values(clockHands), ...pcGlow.map(([m]) => m), mirrorMesh, deployBtn, cage]);
   const pinned = o => keep.has(o) || keep.has(o.material) || o.parent?.isGroup && o.parent.parent === scene && !zones.includes(o.parent);
   const buckets = new Map();
   for (const o of loose) {
@@ -246,11 +284,23 @@ export function makeWorld(scene, zones, meta, screens) {
   }
 
   // busy: I'm at the computer, so the PC's lights pulse harder.
-  function tick(dt, t, busy, cam) {
+  function tick(dt, t, busy, cam, player, others = []) {
     for (const { mesh, k } of ledGroups) mesh.visible = Math.sin(t * (2 + k) + k * 1.7) > -0.6;
     if (mirror && cam) mirror.visible = cam.distanceTo(mirror.position) < 7;
-    if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 1; }
-    if (aria.tip) { const k = 2 + Math.sin(t * 3); aria.tip.material.color.setRGB(1.0 * k, 0.62 * k, 0.3 * k); }
+    // Aria dozes with her eyes half shut, and wakes up when I sit down at the desk.
+    ariaK += ((busy ? 1 : 0) - ariaK) * Math.min(1, dt * 2);
+    if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 0.3 + 0.7 * ariaK; }
+    if (aria.tip) { const k = (1.2 + 0.8 * ariaK) + Math.sin(t * (1.5 + 2 * ariaK)) * (0.5 + 0.5 * ariaK); aria.tip.material.color.setRGB(1.0 * k, 0.62 * k, 0.3 * k); }
+    if (sceneName === 'party') { const h = (t * 0.15) % 1; paintRGB(new THREE.Color().setHSL(h, 0.9, 0.5), new THREE.Color().setHSL((h + 0.33) % 1, 0.9, 0.5)); }
+    if (deployUntil) {
+      const left = deployUntil - t;
+      if (left > 0) {
+        const g = new THREE.Color(0.1, 1.0, 0.3).multiplyScalar(0.6 + 0.4 * Math.sin(t * 14));
+        paintRGB(g, g);
+        if (deployBtn) { deployBtn.scale.y = left > 2.7 ? 0.5 : 1; deployBtn.material.color.setRGB(0.2, 3, 0.6); }
+      } else { deployUntil = 0; applyScene(); if (deployBtn) { deployBtn.scale.y = 1; deployBtn.material.color.copy(deployBase); } }
+    }
+    if (blades && fanOn) blades.rotation.x += dt * 22;
     for (const l of lavas) l.material.uniforms.time.value = t;
     if (tea) {
       for (let i = 0; i < STEAM; i++) {
@@ -264,7 +314,7 @@ export function makeWorld(scene, zones, meta, screens) {
     for (const [m, base] of pcGlow) m.color.copy(base).multiplyScalar(k);
     const f = 0.85 + 0.15 * Math.sin(t * 7.3) * Math.sin(t * 3.1 + 1);
     for (const m of fire) m.color.setRGB(1.0 * 3.4 * f, 0.45 * 3.4 * f, 0.12 * 3.4 * f);
-    if (spin) spin.rotation.y -= dt * 3.49;
+    if (spin && spinning) spin.rotation.y -= dt * 3.49;
     if (fighters) {
       const c = b2t(...fighters.center), mid = (fighters.z1 + fighters.z0) / 2, amp = (fighters.z1 - fighters.z0) / 2;
       for (const [g, lag] of [[fighters.x, 0], [fighters.t, 0.9]]) {
@@ -278,11 +328,20 @@ export function makeWorld(scene, zones, meta, screens) {
       }
     }
     if (gull) { gull.rotation.y = Math.sin(t * 0.3) * 0.6; gull.position.y = b2t(...meta.points.gull).y + Math.abs(Math.sin(t * 0.8)) * 0.01; }
-    if (bh22) bh22.position.y = b2t(...meta.points.bh22_dock).y + Math.sin(t * 1.6) * 0.008;
+    if (printHead) printHead.position.x = headX + Math.sin(t * 1.7) * 0.12;
+    if (printPart) printPart.scale.y = 0.3 + 0.7 * ((t / 90) % 1);
+    wardrobeK += ((wardrobeOpen > t ? 1 : 0) - wardrobeK) * Math.min(1, dt * 3);
+    for (const w of wardrobeDoors) w.o.position.x = w.x + w.side * wardrobeK * 0.45;
     for (const q of fish) { q.o.position.x = q.x + Math.sin(t * 0.4 + q.ph) * 0.25; q.o.rotation.y = Math.cos(t * 0.4 + q.ph) > 0 ? 0 : Math.PI; }
     for (const d of Object.values(doors)) {
+      // An automatic door opens for me and for the residents (BH-22 on a tea run, Jessi following me out).
+      if (d.auto && player) d.open = player.distanceTo(d.home) < d.auto || others.some(p => p.distanceTo(d.home) < d.auto);
       d.k += ((d.open ? 1 : 0) - d.k) * Math.min(1, dt * 3);
-      d.group.rotation.y = THREE.MathUtils.degToRad(d.swing) * d.k;
+      if (d.slide) d.group.position.copy(d.home).add(b2t(...d.slide).multiplyScalar(d.k));
+      else d.group.rotation.y = THREE.MathUtils.degToRad(d.swing) * d.k;
+      // A sliding door stops being solid once it is mostly open.
+      const solid = d.k < 0.6;
+      if (d.solid !== solid) { d.solid = solid; onDoor?.(d.collider, solid); }
     }
     for (let i = 0; i < MOTES; i++) {
       const k = i * 3, sd = moteSeed[i];
@@ -297,9 +356,25 @@ export function makeWorld(scene, zones, meta, screens) {
   return {
     tick, setGloss, deskThings, doors, merged,
     toggleDoor(id) { const d = doors[id]; if (!d) return null; d.open = !d.open; return d; },
+    openWardrobe(t) { wardrobeOpen = t + 6; },
+    showUnlocks,
+    scenes: Object.keys(SCENES),
+    scene(name) { if (!Object.hasOwn(SCENES, name)) return false; sceneName = name; applyScene(); return true; },
+    coolant(name) {
+      if (!Object.hasOwn(COOLANT, name)) return false;
+      for (const g of pcGlow) if (g[2] === 'c') g[1].copy(rgb(COOLANT[name])).multiplyScalar(3.2);
+      return true;
+    },
+    deploy(t) { deployUntil = t + 3; },
+    fan() { fanOn = !fanOn; return fanOn; },
+    setRecord(on) { spinning = on; },
+    // Daylight through the glass lifts the baked light a little and cools it; at night the bake shows as it is.
+    daylight(k) {
+      if (Math.abs(k - dayK) < 0.02) return;
+      dayK = k;
+      for (const m of baked) m.color.setRGB(1 + 0.12 * k, 1 + 0.12 * k, 1 + 0.18 * k);
+    },
     // How big a door is, end to end (for the checks: only its own pieces should swing with it).
     doorSize(id) { const d = doors[id]; return d ? new THREE.Box3().setFromObject(d.group).getSize(new THREE.Vector3()).toArray() : null; },
   };
 }
-
-function localStorageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }

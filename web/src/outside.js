@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { weatherNow, BRIDGE } from '../room2.js';
 
-// Outside: traffic on the bridge, rain on the glass and snow, from Vancouver's real weather.
-export function makeOutside(scene, meta, screens) {
+// Outside: rain on the glass and snow, from Vancouver's real weather, plus traffic on the painted bridge when the flat
+// backdrop is in use (the 3D outside has its own).
+export function makeOutside(scene, meta, screens, { traffic: withTraffic = true } = {}) {
   const bd = meta.backdrop, win = meta.window;
   // Canvas pixels map onto the backdrop plane so the cars follow the painted bridge.
   const onBackdrop = (cx, cy) => b2t(bd.center[0] - bd.w / 2 + bd.w * cx / BRIDGE.canvasW, bd.center[1] - 0.1, bd.center[2] + bd.h / 2 - bd.h * cy / BRIDGE.canvasH);
-  const CARS = 44, carPos = new Float32Array(CARS * 3), carCol = new Float32Array(CARS * 3), cars = [];
+  const CARS = withTraffic ? 44 : 0, carPos = new Float32Array(CARS * 3), carCol = new Float32Array(CARS * 3), cars = [];
   for (let i = 0; i < CARS; i++) {
     const dir = i % 2 ? 1 : -1;
     cars.push({ u: Math.random(), dir, v: 0.025 + Math.random() * 0.02 });
@@ -17,7 +18,7 @@ export function makeOutside(scene, meta, screens) {
   carGeo.setAttribute('position', new THREE.BufferAttribute(carPos, 3));
   carGeo.setAttribute('color', new THREE.BufferAttribute(carCol, 3));
   const traffic = new THREE.Points(carGeo, new THREE.PointsMaterial({ size: 0.11, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-  scene.add(traffic);
+  if (CARS) scene.add(traffic);
 
   const state = { weather: 'clear' };
   let rain = null, snow = null;

@@ -3,7 +3,7 @@ crate, the album-art poster wall and the wall screen with weather and the calend
 import math
 import bpy
 from mathutils import Vector
-from lib.core import zone, box, cyl, sphere, plane, tube, prism, collider, point, screen, interact, char_light, area, lamp, potted, principled, META
+from lib.core import zone, box, cyl, sphere, plane, tube, prism, collider, point, screen, interact, seat, wallspot, char_light, area, lamp, potted, principled, META
 from zones.layout import DAIS, DAIS_Z, W
 
 
@@ -56,10 +56,10 @@ def build(M, E, G):
         prism('metronome', [(px - 0.6, py - 0.64), (px - 0.52, py - 0.64), (px - 0.55, py - 0.58)], z + 0.98, z + 1.18, M['walnut'])
         tube('metronome_arm', [(px - 0.553, py - 0.64, z + 1.0), (px - 0.553, py - 0.645, z + 1.16)], 0.003, M['brass'], kind='emit')
         point('piano_seat', (px, py - 1.35, z))
-        interact('piano', 'Play the piano', (px, py - 1.75, z), r=0.9, seat=[px, py - 1.3, z + 0.05], face=90)
+        seat('piano', 'Play the piano', (px + 0.8, py - 1.43, z), (px, py - 1.3, z + 0.05), 90)
 
         # The records credenza by the glass: cubbies of vinyl, the turntable, the lava lamp, speakers either side.
-        RX, RY = 14.6, 11.42
+        RX, RY = 19.5, 14.4
         box('credenza', (1.6, 0.42, 0.62), (RX, RY, 0.31), M['walnut'], bevel=0.008)
         for i in range(4):
             box(f'cubby{i}', (0.36, 0.02, 0.5), (RX - 0.6 + i * 0.4, RY - 0.212, 0.31), M['black'])
@@ -86,28 +86,33 @@ def build(M, E, G):
         screen('recent', (RX + 0.6, RY - 0.118, 0.74), 0.24, 0.16, normal='-Y')
         interact('records', 'Put on a record', (RX - 0.2, RY - 0.9, 0), r=0.9)
         # The record crate on the floor: my playlists to flip through.
-        box('crate', (0.42, 0.36, 0.3), (13.25, 11.35, 0.15), M['oak'], bevel=0.006)
+        CX_, CY_ = 17.4, 14.35
+        box('crate', (0.42, 0.36, 0.3), (CX_, CY_, 0.15), M['oak'], bevel=0.006)
         for k in range(10):
-            box(f'crate_rec{k}', (0.34, 0.008, 0.3), (13.25, 11.22 + k * 0.026, 0.2), M[f'book{k % 4 + 1}'], tilt=(math.radians(-8), 0, 0))
-        collider('crate', (13.04, 11.17, -1), (13.46, 11.53, 0.32))
-        interact('crate', 'Flip through my playlists', (13.25, 10.7, 0), r=0.8)
+            box(f'crate_rec{k}', (0.34, 0.008, 0.3), (CX_, CY_ - 0.13 + k * 0.026, 0.2), M[f'book{k % 4 + 1}'], tilt=(math.radians(-8), 0, 0))
+        collider('crate', (CX_ - 0.21, CY_ - 0.18, -1), (CX_ + 0.21, CY_ + 0.18, 0.32))
+        interact('crate', 'Flip through my playlists', (CX_, CY_ - 0.75, 0), r=0.6)
 
         # The album-art poster wall from my top tracks, and the wall screen with the weather and the calendar.
         for i in range(6):
             gx, gz = i % 3, i // 3
-            box(f'album_frame{i}', (0.025, 0.56, 0.56), (W - 0.013, 9.6 + gx * 0.66, 1.55 + gz * 0.66), M['frame'], bevel=0.004)
-        plane('screen_albums', 1.9, 1.24, (W - 0.028, 10.26, 1.88), E['screen'], '-X')
-        screen('albums', (W - 0.028, 10.26, 1.88), 1.9, 1.24, grid=[3, 2])
-        interact('albums', 'See what I have been playing', (15.0, 10.26, 0), r=1.0)
-        box('wallscreen_back', (0.04, 1.44, 0.84), (W - 0.02, 8.2, 1.6), M['black'], bevel=0.008)
-        plane('screen_wall', 1.36, 0.76, (W - 0.042, 8.2, 1.6), E['screen'], '-X')
-        screen('wall', (W - 0.042, 8.2, 1.6), 1.36, 0.76)
-        potted('piano_plant', (13.9, 6.3, 0), M, r=0.2, h=0.5, mat='pot', leaves=10, size=0.2)
-        potted('glass_plant', (15.65, 6.6, 0), M, r=0.22, h=0.6, mat='pot_white', leaves=12, size=0.24)
+            box(f'album_frame{i}', (0.025, 0.56, 0.56), (W - 0.013, 12.6 + gx * 0.66, 1.55 + gz * 0.66), M['frame'], bevel=0.004)
+        plane('screen_albums', 1.9, 1.24, (W - 0.028, 13.26, 1.88), E['screen'], '-X')
+        screen('albums', (W - 0.028, 13.26, 1.88), 1.9, 1.24, grid=[3, 2])
+        wallspot('albums', 'e', 12.27, 14.25, 1.27, 2.49)
+        interact('albums', 'See what I have been playing', (20.9, 13.26, 0), r=0.8)
+        box('wallscreen_back', (0.04, 1.44, 0.84), (W - 0.02, 10.15, 1.6), M['black'], bevel=0.008)
+        plane('screen_wall', 1.36, 0.76, (W - 0.042, 10.15, 1.6), E['screen'], '-X')
+        screen('wall', (W - 0.042, 10.15, 1.6), 1.36, 0.76)
+        wallspot('wall_screen', 'e', 9.43, 10.87, 1.18, 2.02)
+        interact('wall', 'Check the weather and the calendar', (20.9, 10.15, 0), r=0.8)
+        potted('piano_plant', (15.9, 13.7, 0), M, r=0.2, h=0.5, mat='pot', leaves=10, size=0.2)
+        potted('glass_plant', (21.45, 11.45, 0), M, r=0.22, h=0.6, mat='pot_white', leaves=12, size=0.24)
 
         lamp('L_pianolamp', 30, (px + 0.25, py - 0.72, z + 1.22), (1.0, 0.75, 0.45), soft=0.05)
         lamp('L_records', 70, (RX, RY - 0.4, 1.4), (1.0, 0.7, 0.45))
-        area('L_wallscreen', 25, (1.3, 0.7), (W - 0.08, 8.2, 1.6), (0, math.radians(90), 0), (0.6, 0.7, 1.0))
+        area('L_wallscreen', 25, (1.3, 0.7), (W - 0.08, 10.15, 1.6), (0, math.radians(90), 0), (0.6, 0.7, 1.0))
         char_light('point', '#b8c8ff', 1.8, (cx, cy, 3.2), 4.5)
         char_light('point', '#ffb070', 1.4, (RX, RY - 0.6, 1.2), 3.5)
-        META['looks'] += [[px, py - 0.9, z + 0.75], [RX - 0.24, RY, 0.72], [W - 0.04, 8.2, 1.6]]
+        point('platter', (RX - 0.24, RY, 0.72))
+        META['looks'] += [[px, py - 0.9, z + 0.75], [RX - 0.24, RY, 0.72], [W - 0.04, 10.15, 1.6]]

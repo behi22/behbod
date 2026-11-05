@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { LOCO, CROUCH, STRIDE, blendWeights, strideRate } from './pure/blend.js';
+import { HEADS as ORDER, HEAD_NAMES as NAMES, FITS, sanitizeLook, hoodUp, wornColours } from './pure/look.js';
 
 const HEADS = { hood: ['V3_head_void'], tv: ['V3_head_tv'], visor: ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], emoji: ['V3_head_emoji'], mosaic: ['V3_head_toy'] };
-const HOOD_UP = { hood: true, tv: false, visor: false, emoji: false, mosaic: true };
-export const HEAD_NAMES = { hood: 'Head: hood', tv: 'Head: TV', visor: 'Head: visor', emoji: 'Head: emoji', mosaic: 'Head: the real you' };
+export const HEAD_NAMES = Object.fromEntries(Object.entries(NAMES).map(([k, v]) => [k, 'Head: ' + v]));
+// His picked proportions: 90% height overall and the head at 90%.
+const HEIGHT = 0.9, HEAD_SIZE = 0.9;
 const ONCE = ['Jump_Start', 'Jump_Land', 'Sitting_Enter', 'Sitting_Exit', 'Interact', 'Roll'];
 
 function radialShadow() {
@@ -25,24 +27,38 @@ export function makeMe(scene, gltf, opts) {
   });
   scene.add(root);
 
-  let head = 'hood', mosaicUnlocked = !!opts.mosaic;
+  root.scale.setScalar(HEIGHT);
+  let mosaicUnlocked = !!opts.mosaic;
+  const unlocked = () => opts.unlocked?.() || [];
+  let look = sanitizeLook(opts.saved, { unlocked: unlocked(), mosaic: mosaicUnlocked });
   // A head with several materials loads as a group whose parts carry their own names, so switch the whole subtree.
   const show = (n, on) => (parts[n] || []).forEach(o => o.traverse(c => { c.visible = on; }));
+  const tint = (names, hex, k = 1) => names.forEach(n => (mats[n] || []).forEach(m => { m.color.set(hex).multiplyScalar(k); if (m.sheen > 0) { m.sheen = 0.25; m.sheenRoughness = 0.85; m.sheenColor.copy(m.color); } }));
+  const visorBase = (mats.M_Visor || [])[0]?.color.clone(), visorGlow = (mats.M_Visor || [])[0]?.emissive?.clone();
   function dress() {
-    for (const n of Object.keys(parts)) if (n.startsWith('V3_head_') || n.startsWith('V3_acc_') || /_(short|relaxed|tapered)$/.test(n)) show(n, false);
-    for (const n of HEADS[head]) show(n, true);
-    show('V3_hood_up', HOOD_UP[head]);
-    show('V3_hood_down', !HOOD_UP[head]);
-    opts.onHead?.(head);
+    for (const n of Object.keys(parts)) if (n.startsWith('V3_head_') || n.startsWith('V3_acc_') || n.startsWith('V3_hood_')) show(n, false);
+    for (const n of HEADS[look.head]) show(n, true);
+    const up = hoodUp(look);
+    show('V3_hood_up', up);
+    show('V3_hood_down', !up);
+    for (const [k, sfx] of Object.entries(FITS.hoodie)) { show('V3_hoodie' + sfx, look.fit.hoodie === k); show('V3_pocket' + sfx, look.fit.hoodie === k); }
+    for (const [k, sfx] of Object.entries(FITS.pants)) for (const n of ['V3_pants', 'V3_cargo_l', 'V3_cargo_r', 'V3_flap_l', 'V3_flap_r']) show(n + sfx, look.fit.pants === k);
+    for (const a of look.acc) show('V3_acc_' + a, true);
+    const c = wornColours(look);
+    tint(['M_Hoodie'], c.hoodie); tint(['M_Hoodie_Rib'], c.rib, 0.9); tint(['M_Pants'], c.pants); tint(['M_Pants_Pocket'], c.pants, 0.85); tint(['M_Shoe'], c.shoes);
+    for (const m of mats.M_Visor || []) {
+      if (look.visor === 'red') { m.color.set('#ff2a20'); m.emissive?.set('#ff2a20'); } else { if (visorBase) m.color.copy(visorBase); if (visorGlow) m.emissive?.copy(visorGlow); }
+    }
+    opts.onLook?.(look);
   }
-  function nextHead() {
-    const order = ['hood', 'tv', 'visor', 'emoji'].concat(mosaicUnlocked ? ['mosaic'] : []);
-    head = order[(order.indexOf(head) + 1) % order.length];
+  function setLook(patch) {
+    look = sanitizeLook({ ...look, ...patch, fit: { ...look.fit, ...patch.fit }, colours: { ...look.colours, ...patch.colours } }, { unlocked: unlocked(), mosaic: mosaicUnlocked });
     dress();
   }
-  // His saved look: navy hoodie, black cargos, white high-tops.
-  const tint = (names, hex, k = 1) => names.forEach(n => (mats[n] || []).forEach(m => { m.color.set(hex).multiplyScalar(k); if (m.sheen > 0) { m.sheen = 0.25; m.sheenRoughness = 0.85; m.sheenColor.copy(m.color); } }));
-  tint(['M_Hoodie'], '#1f2a44'); tint(['M_Hoodie_Rib'], '#1f2a44', 0.9); tint(['M_Pants'], '#141518'); tint(['M_Pants_Pocket'], '#141518', 0.85); tint(['M_Shoe'], '#eceae4');
+  function nextHead() {
+    const order = ORDER.filter(h => h !== 'mosaic' || mosaicUnlocked);
+    setLook({ head: order[(order.indexOf(look.head) + 1) % order.length], hood: null });
+  }
 
   // The TV and emoji faces are canvases drawn a few times a second.
   const faces = {};
@@ -53,13 +69,13 @@ export function makeMe(scene, gltf, opts) {
     (mats[mat] || []).forEach(m => { m.emissiveMap = t; m.emissive.set(0xffffff); m.emissiveIntensity = 1.4; m.color.set(0x000000); });
   }
   function drawFace(now) {
-    const f = faces[head];
+    const f = faces[look.head];
     if (!f) return;
     const frame = Math.floor(now / 120);
     if (frame === f.last) return;
     f.last = frame;
     const g = f.g, blink = (now % 4200) < 140, beat = Math.floor(now / 2600) % 4;
-    if (head === 'tv') {
+    if (look.head === 'tv') {
       g.fillStyle = '#041714'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#3ee6c4';
       const eh = blink ? 4 : 34;
       g.fillRect(70, 96 - eh / 2, 26, eh); g.fillRect(160, 96 - eh / 2, 26, eh);
@@ -110,6 +126,8 @@ export function makeMe(scene, gltf, opts) {
       if (STRIDE[a.getClip().name]) a.time = (phase % 1) * a.getClip().duration;
     }
     mixer.update(dt);
+    // The head is scaled after the animation poses it, every frame.
+    if (bones.Head && headRest) bones.Head.scale.copy(headRest).multiplyScalar(HEAD_SIZE);
   }
 
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.42, 32), new THREE.MeshBasicMaterial({ map: radialShadow(), transparent: true, depthWrite: false, opacity: 0.75 }));
@@ -122,7 +140,8 @@ export function makeMe(scene, gltf, opts) {
   }
 
   const headPos = new THREE.Vector3();
-  function headNow() { bones.Head.getWorldPosition(headPos); return headPos.clone().add(new THREE.Vector3(0, 0.12, 0)); }
+  function headNow() { bones.Head.getWorldPosition(headPos); return headPos.clone().add(new THREE.Vector3(0, 0.12 * HEIGHT * HEAD_SIZE, 0)); }
+  const headRest = bones.Head?.scale.clone();
 
   // My head turns toward things I pass, and wanders a little when I stand still.
   const lookQ = new THREE.Quaternion(), qTmp = new THREE.Quaternion(), qParent = new THREE.Quaternion(), qWorld = new THREE.Quaternion();
@@ -154,12 +173,12 @@ export function makeMe(scene, gltf, opts) {
 
   // The mosaic over the toy head is a post effect, so it only shows where post effects run.
   function tickMosaic(now, camera, u) {
-    if (head !== 'mosaic' || !root.visible) { u.radius.value = 0; return; }
+    if (look.head !== 'mosaic' || !root.visible) { u.radius.value = 0; return; }
     const h = headNow().add(new THREE.Vector3(0, 0.04, 0)), dd = camera.position.distanceTo(h);
     h.project(camera);
     u.centre.value.set(h.x * 0.5 + 0.5, h.y * 0.5 + 0.5);
     // A head of radius r at distance dd covers r / (dd tan(fov/2)) of the half screen height; UVs span the full height.
-    u.radius.value = 0.5 * 0.2 / dd / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    u.radius.value = 0.5 * 0.2 * HEIGHT * HEAD_SIZE / dd / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     u.aspect.value = camera.aspect;
     u.cells.value = Math.max(30, Math.min(110, 26 * dd));
     u.drift.value.set(Math.sin(now / 900) * 0.5, Math.cos(now / 1300) * 0.5);
@@ -171,11 +190,14 @@ export function makeMe(scene, gltf, opts) {
     endOneShot() { oneShot = null; },
     get oneShot() { return oneShot; },
     get crouchK() { return crouchK; },
-    get head() { return head; },
+    get head() { return look.head; },
+    get look() { return structuredClone(look); },
+    get hoodUp() { return hoodUp(look); },
+    setLook, toggleHood() { setLook({ hood: !hoodUp(look) }); },
     get mosaicUnlocked() { return mosaicUnlocked; },
     unlockMosaic() { mosaicUnlocked = true; },
     get weights() { return Object.fromEntries([...weight].filter(([, w]) => w > 0.01).map(([a, w]) => [a.getClip().name, +w.toFixed(2)])); },
     // Meshes of the current head that would actually draw (every ancestor visible).
-    get headMeshesShown() { let n = 0; for (const name of HEADS[head]) (parts[name] || []).forEach(o => o.traverse(c => { if (!c.isMesh) return; let v = true; for (let x = c; x; x = x.parent) v = v && x.visible; if (v) n++; })); return n; },
+    get headMeshesShown() { let n = 0; for (const name of HEADS[look.head]) (parts[name] || []).forEach(o => o.traverse(c => { if (!c.isMesh) return; let v = true; for (let x = c; x; x = x.parent) v = v && x.visible; if (v) n++; })); return n; },
   };
 }

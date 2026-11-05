@@ -1,7 +1,8 @@
 // Character and desk check in the loft: loads, walks, the lounge edge, the desk close-up, typing, moves, heads, phone.
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
-const OUT = process.argv[2] || '.';
-const URL = 'http://127.0.0.1:8810/?auto&stats';
+const OUT = process.argv[2] || 'test-output';
+require('fs').mkdirSync(OUT, { recursive: true });
+const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&stats';
 (async () => {
   const b = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'] });
   const errs = [];
@@ -34,19 +35,19 @@ const URL = 'http://127.0.0.1:8810/?auto&stats';
     const n = Math.hypot(before.fx, before.fz), fx = before.fx / n, fz = before.fz / n, dx = after.x - before.x, dz = after.z - before.z;
     return { forward: dx * fx + dz * fz, right: dx * -fz + dz * fx };
   };
-  await p.evaluate(() => { window.__loft.pos.set(3.5, 0.05, -4.5); window.__loft.yaw = -Math.PI / 2; });
+  await p.evaluate(() => { window.__loft.pos.set(11.0, 0.05, -9.5); window.__loft.yaw = -Math.PI / 2; });
   await p.waitForTimeout(500);
   const w = await moveBy('KeyW'), d = await moveBy('KeyD');
   console.log('W forward', w.forward.toFixed(2), 'D right', d.right.toFixed(2), w.forward > 0.4 && d.right > 0.4 ? 'PASS' : 'FAIL');
   // Regression: walking from the sunken lounge into its edge must stop at the edge, never drop under the floor.
-  await p.evaluate(() => { window.__loft.pos.set(3.0, -0.4, -9.4); window.__loft.yaw = 0; });
+  await p.evaluate(() => { window.__loft.pos.set(3.0, -0.4, -13.0); window.__loft.yaw = 0; });
   await p.waitForTimeout(500);
   await p.keyboard.down('KeyW');
   let minY = 0, maxZ = -9;
   for (let i = 0; i < 15; i++) { await p.waitForTimeout(100); const q = await p.evaluate(() => [window.__loft.pos.y, window.__loft.pos.z]); minY = Math.min(minY, q[0]); maxZ = Math.max(maxZ, q[1]); }
   await p.keyboard.up('KeyW');
   const endZ = await p.evaluate(() => window.__loft.pos.z);
-  console.log('edge walk lowest y', minY.toFixed(2), 'stopped at z', endZ.toFixed(2), minY > -0.5 && endZ > -9.99 ? 'PASS' : 'FAIL');
+  console.log('edge walk lowest y', minY.toFixed(2), 'stopped at z', endZ.toFixed(2), minY > -0.5 && endZ > -13.6 ? 'PASS' : 'FAIL');
   const fps = await p.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 4000) requestAnimationFrame(f); else res(n / ((performance.now() - t0) / 1000)); }; requestAnimationFrame(f); }));
   console.log('fps desktop', fps.toFixed(1), 'tier', await p.evaluate(() => window.__loft.tier));
   await p.evaluate(() => { const l = window.__loft, d = l.meta.points.desk_use; l.pos.set(d[0], d[2] + 0.05, -d[1]); });

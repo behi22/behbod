@@ -40,6 +40,17 @@ export class Sound {
     s.connect(f).connect(g).connect(this.master);
     s.start(t, Math.random()); s.stop(t + dur + 0.05);
   }
+  // A pitched blip that glides from one note to another: chirps, barks, purrs and squeaks.
+  tone(from, to, dur, gain, delay = 0, type = 'sine') {
+    if (!this.ctx || !this.on) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    const o = ctx.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
   stepTick(action, speed) {
     if (!action) return;
     const clip = action.getClip(), ph = (action.time / clip.duration) % 1;

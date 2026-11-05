@@ -7,7 +7,7 @@ import bpy, bmesh, math, random
 from contextlib import contextmanager
 from mathutils import Vector, Matrix, Euler
 
-META = {'zones': [], 'colliders': [], 'floors': [], 'screens': {}, 'points': {}, 'leds': [], 'clocks': {}, 'interact': [], 'lights': [], 'looks': [], 'spots': {}}
+META = {'zones': [], 'colliders': [], 'floors': [], 'screens': {}, 'points': {}, 'leds': [], 'clocks': {}, 'interact': [], 'lights': [], 'looks': [], 'spots': {}, 'rugs': [], 'walls': []}
 GROUPS = {}
 _zone = [None]
 _off = [Vector()]
@@ -447,8 +447,27 @@ def potted(name, loc, M, r=0.17, h=0.4, mat='plastic', leaves=9, size=0.16, soli
 
 
 # ---------- metadata ----------
-def collider(name, mn, mx):
-    META['colliders'].append({'name': name, 'min': L(mn), 'max': L(mx)})
+def collider(name, mn, mx, structure=False):
+    # Structure (walls, edges, rails, glass, doors) may touch anything; furniture must never overlap other furniture.
+    META['colliders'].append({'name': name, 'min': L(mn), 'max': L(mx), 'kind': 'structure' if structure else 'solid'})
+
+
+def rug(name, loc, mat, r=None, size=None):
+    # A rug lies flat on one floor; the layout check makes sure it never runs over a step or an edge.
+    x, y, z = loc
+    if r:
+        cyl(name, r, 0.012, (x, y, z + 0.006), mat, seg=72)
+        lo, hi = (x - r, y - r), (x + r, y + r)
+    else:
+        box(name, (size[0], size[1], 0.012), (x, y, z + 0.006), mat)
+        lo, hi = (x - size[0] / 2, y - size[1] / 2), (x + size[0] / 2, y + size[1] / 2)
+    a, b = P((*lo, z)), P((*hi, z))
+    META['rugs'].append({'name': name, 'min': [round(a.x, 4), round(a.y, 4)], 'max': [round(b.x, 4), round(b.y, 4)], 'z': round(a.z, 4)})
+
+
+def wallspot(name, wall, u0, u1, z0, z1):
+    # Something mounted on a wall (a frame, a screen, shelves): the layout check keeps these from overlapping.
+    META['walls'].append({'name': name, 'wall': wall, 'u': [round(u0, 3), round(u1, 3)], 'z': [round(z0, 3), round(z1, 3)]})
 
 
 def floor(x0, y0, x1, y1, z):
@@ -462,6 +481,11 @@ def point(name, loc):
 
 def screen(key, loc, w, h, **extra):
     META['screens'][key] = {'center': L(loc), 'w': w, 'h': h, **extra}
+
+
+def seat(iid, label, stand, at, face, r=0.75):
+    # A place to sit: you stand at `stand`, sit at `at` facing `face` degrees (0 east, 90 north).
+    interact(iid, label, stand, r=r, seat=L(at), face=face)
 
 
 def interact(iid, label, loc, r=1.2, **extra):

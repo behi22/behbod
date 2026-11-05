@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { EffectComposer, RenderPass, EffectPass, Effect, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
+import { EffectComposer, RenderPass, Pass, EffectPass, Effect, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
 
 // Blender is Z-up with the room's north at +Y; glTF/three is Y-up, so Blender (x, y, z) lands at (x, z, -y).
 export const b2t = (x, y, z) => new THREE.Vector3(x, z, -y);
@@ -32,14 +32,29 @@ export function makeEngine(canvas, coarse) {
   const camera = new THREE.PerspectiveCamera(coarse ? 60 : 55, 1, 0.05, 120);
   const mosaicU = { centre: new THREE.Uniform(new THREE.Vector2()), drift: new THREE.Uniform(new THREE.Vector2()), radius: new THREE.Uniform(0), cells: new THREE.Uniform(40), aspect: new THREE.Uniform(1) };
   const onTier = [];
-  let composer = null, tier = TIERS.medium;
+  let composer = null, tier = TIERS.medium, bg = null;
+
+  // The world outside the glass is its own scene with its own far-reaching camera, drawn first; the loft goes on top.
+  function drawScenes(target) {
+    renderer.setRenderTarget(target);
+    renderer.autoClear = false;
+    renderer.clear();
+    renderer.render(bg.scene, bg.camera);
+    renderer.clearDepth();
+    renderer.render(scene, camera);
+    renderer.autoClear = true;
+  }
+  class BackgroundPass extends Pass {
+    constructor() { super('BackgroundPass'); this.needsSwap = false; }
+    render(r, inputBuffer) { drawScenes(this.renderToScreen ? null : inputBuffer); }
+  }
 
   function buildPost() {
     composer?.dispose();
     composer = null;
     if (!tier.post) return;
     composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
-    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(bg ? new BackgroundPass() : new RenderPass(scene, camera));
     composer.addPass(new EffectPass(camera, new Effect('Mosaic', MOSAIC_FS, { uniforms: new Map(Object.entries(mosaicU)) })));
     const fx = [];
     if (tier.bloom) fx.push(new BloomEffect({ luminanceThreshold: 0.82, luminanceSmoothing: 0.25, intensity: 1.15, mipmapBlur: true, radius: 0.72 }));
@@ -62,7 +77,8 @@ export function makeEngine(canvas, coarse) {
     renderer.setPixelRatio(Math.min(devicePixelRatio, tier.ratio));
     buildPost();
   }
-  function render(dt) { if (composer) composer.render(dt); else renderer.render(scene, camera); }
+  function render(dt) { if (composer) composer.render(dt); else if (bg) drawScenes(null); else renderer.render(scene, camera); }
+  function setBackground(outside) { bg = outside; scene.background = null; buildPost(); }
   addEventListener('resize', resize);
-  return { renderer, scene, camera, mosaicU, setTier, resize, render, onTier: f => onTier.push(f) };
+  return { renderer, scene, camera, mosaicU, setTier, resize, render, setBackground, onTier: f => onTier.push(f) };
 }

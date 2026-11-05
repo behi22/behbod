@@ -2,7 +2,7 @@
 // uses the desk and logs no errors. Then live reload: touching a file under web/ reloads an open page.
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
-const URL = 'http://127.0.0.1:8810/?auto&q=low';
+const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&q=low';
 const VIEWS = [['desktop', { viewport: { width: 1280, height: 800 } }], ['phone', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]];
 
 async function run(name, launch) {

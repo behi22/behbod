@@ -29,8 +29,9 @@ export function makeCanvases(meta, opts = {}) {
   S.main = surface(1536, 646);
   const term = { lines: [], input: '', focus: false, blink: 0 };
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); drawTerm(); };
+  const EXTRA = {};
   const CMDS = {
-    help: () => say('commands: whoami  projects  postit  ls  contact  clear  exit'),
+    help: () => say('commands: whoami  projects  postit  ls  contact  clear  exit', '  ' + Object.keys(EXTRA).join('  ')),
     whoami: () => say('Behbod Babai. Engineer in Vancouver.', 'I make computers talk back.'),
     projects: () => say('meet-bex      a voice receptionist you can talk to', 'profile-art   my GitHub profile, redrawn every hour', 'aic-voice-microsite'),
     postit: () => say('the note on this monitor is my tattoo:', 'Bengar o beshno, bogzar o beh sho'),
@@ -196,18 +197,28 @@ export function makeCanvases(meta, opts = {}) {
       if (focused) { const b = Math.floor(now / 500); if (b !== term.blink) { term.blink = b; drawTerm(); } }
     },
     focusTerminal(on) { term.focus = on; drawTerm(); },
+    // Letters typed by something other than me (Pishi on the keyboard), on their own line so mine stay intact.
+    type(text) { say('$ ' + text.slice(0, 40), `command not found: ${text.slice(0, 40)}  (that was Pishi)`); },
+    // Commands the rest of the loft adds: fn(say, argument).
+    command(name, fn) { EXTRA[name] = fn; },
     run(text, exit) {
-      const cmd = text.trim().toLowerCase();
+      const cmd = text.trim().toLowerCase().replace(/\s+/g, ' ');
       say('$ ' + text.slice(0, 60));
       term.input = '';
       if (cmd === 'exit') { exit(); return; }
-      if (cmd) (CMDS[cmd] || (() => say(`command not found: ${cmd}. try 'help'`)))();
+      const [word, ...rest] = cmd.split(' ');
+      if (CMDS[cmd]) CMDS[cmd]();
+      else if (Object.hasOwn(EXTRA, word)) EXTRA[word](say, rest.join(' '));
+      else if (cmd) say(`command not found: ${cmd}. try 'help'`);
       if (cmd) dispatchEvent(new CustomEvent('loft:cmd', { detail: { cmd, say } }));
       drawTerm();
     },
     terminalKey(e, exit) {
       if (e.key === 'Escape') { exit(); return; }
-      if (e.key === 'Enter') { this.run(term.input, exit); }
+      if (e.key === 'Tab') {
+        const names = [...Object.keys(CMDS), ...Object.keys(EXTRA), 'exit'].filter(n => term.input && n.startsWith(term.input.toLowerCase()));
+        if (names.length === 1) { term.input = names[0]; drawTerm(); } else if (names.length > 1) say(names.join('  '));
+      } else if (e.key === 'Enter') { this.run(term.input, exit); }
       else if (e.key === 'Backspace') { term.input = term.input.slice(0, -1); drawTerm(); }
       else if (e.key.length === 1 && term.input.length < 60) { term.input += e.key; drawTerm(); }
       e.preventDefault();
