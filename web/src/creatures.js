@@ -569,7 +569,7 @@ export function makeCreatures(scene, meta, { nav, groundAt, sound, fx, keyboard,
     },
     act(id, ctx) {
       if (id === 'bh22') {
-        if (r2.pos.distanceTo(ctx.player) > 2.5) { toast('BH-22 is out on patrol somewhere in the loft.'); return; }
+        if (r2.pos.distanceTo(ctx.player) > 2.5) { toast('BH-22 is out on patrol somewhere in the house.'); return; }
         // Talking interrupts whatever it was doing, so drop the errand's leftovers too.
         r2.state = 'talk'; r2.timer = 3.5; r2.route = []; r2.pending = null; r2.epoch++;
         r2.cup.visible = false; r2.speed = r2.base;

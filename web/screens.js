@@ -52,7 +52,7 @@ export function makeCanvases(meta, opts = {}) {
     g.fillStyle = grd; g.fillRect(0, 0, c.width, c.height);
     g.fillStyle = '#0d1520'; g.fillRect(0, 0, c.width, 46);
     for (const [i, col] of ['#ff5f57', '#febc2e', '#28c840'].entries()) { g.fillStyle = col; g.beginPath(); g.arc(30 + i * 26, 23, 8, 0, 7); g.fill(); }
-    g.fillStyle = '#7f8aa0'; g.font = `22px ${MONO}`; g.fillText('behbod@loft: ~', 120, 31);
+    g.fillStyle = '#7f8aa0'; g.font = `22px ${MONO}`; g.fillText('behbod@home: ~', 120, 31);
     g.font = `30px ${MONO}`;
     let y = 96;
     for (const l of term.lines) { g.fillStyle = l.startsWith('$') ? '#3ee6c4' : '#d8e0ee'; g.fillText(l, 36, y); y += 36; }
@@ -60,7 +60,7 @@ export function makeCanvases(meta, opts = {}) {
     if (!term.focus) { g.fillStyle = '#5b6478'; g.font = `24px ${MONO}`; g.fillText('press E at the desk to type', 36, c.height - 30); }
     t.needsUpdate = true;
   }
-  say('Welcome to the loft.', "type 'help' to look around.");
+  say('Welcome home.', "type 'help' to look around.");
 
   // Vertical screen: code scrolling by.
   S.code = surface(340, 600);

@@ -1,7 +1,7 @@
 // Achievements, best scores and what a score at the holo range unlocks. Saved on this device only (storage is
 // injected so the tests can run without a browser); anything read back is checked before it is used.
 export const ACHIEVEMENTS = {
-  welcome: 'Welcome to the loft', whoami: 'The real you', secret: 'Found the secret door', balcony: 'Out on the balcony',
+  welcome: 'Welcome home', whoami: 'The real you', secret: 'Found the secret door', balcony: 'Out on the balcony',
   piano: 'Played the piano', record: 'Put on a record', book: 'Read the story', telescope: 'Looked through the telescope',
   deploy: 'Hit DEPLOY', tea: 'Had a glass of tea', seat: 'Took a seat', pishi: 'Petted Pishi', jessi: 'Played fetch with Jessi',
   bh22: 'Said hi to BH-22', chess: 'Beat the holochess bot', backgammon: 'Won at backgammon', striker: 'Won a shootout',

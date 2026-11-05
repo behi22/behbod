@@ -11,7 +11,7 @@ const PROJECTS = {
   'profile-art': ['my GitHub profile, redrawn every hour', 'grid'],
   'aic-voice-microsite': ['a voice agent for restaurants, shown off', 'voice'],
   'visitor-classifier': ['reads a site, sorts its visitors by interest', 'grid'],
-  behbod: ['this loft, built from scratch', 'grid'],
+  behbod: ['this home, built from scratch', 'grid'],
 };
 const DAYS = 864e5;
 
@@ -81,7 +81,7 @@ export function makePanels(surface, ctx) {
   // The glass board: what I am planning, in marker.
   add('board', 1300, 600, (g, c) => {
     g.fillStyle = '#e9eef0'; g.fillRect(0, 0, c.width, c.height);
-    text(g, 'the loft', 60, 90, 56, '#1c3d8f', 700);
+    text(g, 'home', 60, 90, 56, '#1c3d8f', 700);
     [['the whole world', true], ['the character, refined', false], ['piano, records, Spotify', false], ['holo range game', false], ['guestbook + mailbox', false], ['launch: behbod.dev', false]]
       .forEach(([l, done], i) => { text(g, (done ? '✓ ' : '□ ') + l, 70, 170 + i * 66, 40, done ? '#1f8a4c' : '#2b2b2b', 600); });
     g.strokeStyle = '#c0392b'; g.lineWidth = 6; g.beginPath(); g.moveTo(760, 140); g.bezierCurveTo(900, 120, 1000, 260, 1100, 220); g.stroke();
@@ -191,7 +191,7 @@ export function makePanels(surface, ctx) {
   add('book', 760, 520, g => {
     g.fillStyle = '#f1ead8'; g.fillRect(0, 0, 760, 520);
     g.fillStyle = '#d9ceb4'; g.fillRect(376, 0, 8, 520);
-    text(g, 'the loft', 190, 90, 44, '#3a1e12', 700, "'Pacifico', cursive", 'center');
+    text(g, 'home', 190, 90, 44, '#3a1e12', 700, "'Pacifico', cursive", 'center');
     text(g, 'chapter one', 190, 150, 26, '#5a3a2a', 400, MONO, 'center');
     for (let i = 0; i < 12; i++) { g.fillStyle = '#c8bca2'; g.fillRect(410, 60 + i * 34, i % 4 === 3 ? 180 : 300, 4); }
   });

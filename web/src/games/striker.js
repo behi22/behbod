@@ -105,7 +105,7 @@ export function mount(body, api) {
     b.fillStyle = 'rgba(62,230,196,.5)'; b.fillRect(0, boardY, W, 1);
     const bh = boardFoot - boardY;
     b.font = `700 ${Math.max(8, bh * 0.52)}px ${MONO}`; b.textBaseline = 'middle'; b.textAlign = 'center';
-    const words = ['STRIKER 22', 'BEHI 22', 'LOFT FC'];
+    const words = ['STRIKER 22', 'BEHI 22', 'HOME FC'];
     const step = Math.max(110, bh * 9);
     for (let x = cx - step * 6, i = 0; x < W + step; x += step, i++) {
       b.fillStyle = i % 2 ? 'rgba(180,156,255,.85)' : 'rgba(62,230,196,.85)';
