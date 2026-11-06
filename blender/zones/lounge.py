@@ -72,9 +72,9 @@ def build(M, E, G):
         couch_run('couch_e', M, (8.3, 8.65), (8.3, 11.75), 'e', 0.85, z, 'sofa')
         for i, (bx, by, m, tilt) in enumerate(((4.8, 12.05, 'cushion_teal', 0.25), (5.7, 12.05, 'cushion_rust', 0.25), (4.8, 8.35, 'cushion_rust', -0.25), (7.85, 9.3, 'cushion_teal', 0))):
             box(f'pillow{i}', (0.36, 0.14, 0.32), (bx, by, z + 0.62), M[m], bevel=0.06, seg=3, tilt=(tilt, 0, 0), rot=math.pi / 2 if i == 3 else 0)
-        seat('couch_north', 'Sit on the couch', (6.4, 11.3, z), (6.4, 12.2, z), 270)
-        seat('couch_south', 'Sit on the couch', (6.4, 9.1, z), (6.4, 8.25, z), 90)
-        seat('couch_east', 'Sit on the couch', (7.0, CY, z), (7.85, CY, z), 180)
+        seat('couch_north', 'Sit on the couch', (6.4, 11.3, z), (6.4, 12.25, z + 0.50), 270, 'sofa')
+        seat('couch_south', 'Sit on the couch', (6.4, 9.1, z), (6.4, 8.15, z + 0.50), 90, 'sofa')
+        seat('couch_east', 'Sit on the couch', (7.0, CY, z), (7.95, CY, z + 0.50), 180, 'sofa')
         # Holochess: a round table whose top is a glowing board.
         cyl('holo_table_base', 0.2, 0.42, (6.1, CY, z + 0.21), M['black'], seg=32)
         cyl('holo_table_top', 0.45, 0.04, (6.1, CY, z + 0.44), M['black'], seg=48)
@@ -86,7 +86,7 @@ def build(M, E, G):
         sphere('beanbag', 0.42, (3.4, CY, z + 0.2), M['beanbag'], sub=3, scale=(1, 1.05, 0.5))
         sphere('beanbag_dent', 0.28, (3.45, CY, z + 0.36), M['beanbag'], sub=3, scale=(1, 1, 0.35))
         collider('beanbag', (2.98, CY - 0.44, z - 1), (3.82, CY + 0.44, z + 0.4))
-        seat('beanbag', 'Sit on the bean bag', (4.35, CY - 0.75, z), (3.5, CY, z + 0.1), 180)
+        seat('beanbag', 'Sit on the bean bag', (4.35, CY - 0.75, z), (3.55, CY, z + 0.28), 180, 'low')
         interact('tv', 'Watch my videos', (4.35, CY + 0.75, z), r=0.5)
         # A floor lamp in the pit's north-east corner, clear of the steps.
         cyl('lounge_lamp_pole', 0.014, 1.5, (9.35, 13.2, z + 0.75), M['metal'])
@@ -168,7 +168,7 @@ def build(M, E, G):
         for i, (bx, m) in enumerate(((3.8, 'cushion_teal'), (4.4, 'cushion_rust'), (6.1, 'cushion_teal'))):
             box(f'seat_pillow{i}', (0.36, 0.13, 0.32), (bx, D - 0.16, 0.68), M[m], bevel=0.06, seg=3, tilt=(-0.2, 0, 0))
         collider('window_seat', (WS0, D - 0.55, -1), (WS1, D - 0.05, 0.53))
-        seat('window_seat', 'Sit by the window', (5.1, D - 1.3, 0), (5.1, D - 0.4, 0.02), 270)
+        seat('window_seat', 'Sit by the window', (5.1, D - 1.3, 0), (5.1, D - 0.18, 0.53), 270, 'nook')
         point('cat_window', (5.4, D - 0.3, 0.53))
         # The egg chair on its C stand in the north-west corner, facing the bay.
         EG = Vector((1.8, 14.05, 1.05))
@@ -190,7 +190,7 @@ def build(M, E, G):
         tube('egg_chain', [(EG.x, EG.y, EG.z + 0.62), (EG.x, EG.y, 2.03)], 0.01, M['steel'])
         cyl('egg_stand_base', 0.4, 0.04, (EG.x, EG.y - 0.75, 0.02), M['black'], seg=32)
         collider('egg_chair', (EG.x - 0.48, EG.y - 1.15, -1), (EG.x + 0.48, EG.y + 0.42, 1.65))
-        seat('egg_chair', 'Sit in the egg chair', (EG.x + 1.0, EG.y - 0.1, 0), (EG.x, EG.y - 0.05, 0.3), 90)
+        seat('egg_chair', 'Sit in the egg chair', (EG.x + 1.0, EG.y - 0.1, 0), (EG.x, EG.y - 0.07, 0.87), 90, 'egg')
         # Jessi's bed by the radiator, east of the sliding door.
         box('radiator', (1.2, 0.08, 0.6), (13.6, D - 0.14, 0.4), M['white'])
         for i in range(11):

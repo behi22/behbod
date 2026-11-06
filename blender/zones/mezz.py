@@ -16,7 +16,7 @@ def build(M, E, G):
             sphere(f'mezz_bean{i}', 0.4, (bx, by, z + 0.19), M[m], sub=3, scale=(1, 1.05, 0.5))
             sphere(f'mezz_bean{i}_dent', 0.26, (bx + 0.02, by + 0.05, z + 0.34), M[m], sub=3, scale=(1, 1, 0.35))
             collider(f'mezz_bean{i}', (bx - 0.4, by - 0.42, z - 1), (bx + 0.4, by + 0.42, z + 0.38))
-            seat(f'mezz_bean{i}', 'Sit on the bean bag', (bx, by - 0.85, z), (bx, by + 0.05, z + 0.1), 270)
+            seat(f'mezz_bean{i}', 'Sit on the bean bag', (bx, by - 0.85, z), (bx, by + 0.08, z + 0.28), 270, 'low')
         tube('arc_lamp', [(1.9, 0.6, z), (1.9, 0.6, z + 1.6), (2.3, 1.0, z + 2.1), (2.9, 1.6, z + 2.0)], 0.014, M['steel'], seg=10)
         cyl('arc_lamp_base', 0.17, 0.03, (1.9, 0.6, z + 0.015), M['marble'], seg=24)
         cyl('arc_lamp_shade', 0.22, 0.18, (2.95, 1.65, z + 1.92), M['brass'], seg=24, r2=0.08, cap=False)
@@ -103,7 +103,7 @@ def build(M, E, G):
         for i, (cx, cy) in enumerate(((9.3, 2.9), (10.5, 2.9))):
             cyl(f'floor_cushion{i}', 0.32, 0.14, (cx, cy, z + 0.07), M['cushion_rust' if i else 'cushion_teal'], seg=24)
             collider(f'floor_cushion{i}', (cx - 0.32, cy - 0.32, z - 1), (cx + 0.32, cy + 0.32, z + 0.14))
-            seat(f'floor_cushion{i}', 'Sit on the cushion', (cx, cy - 0.75, z), (cx, cy, z - 0.25), 90)
+            seat(f'floor_cushion{i}', 'Sit on the cushion', (cx, cy - 0.75, z), (cx, cy, z + 0.14), 90, 'cross')
         box('nook_table', (0.6, 0.6, 0.3), (9.9, 3.8, z + 0.15), M['walnut'], bevel=0.01)
         collider('nook_table', (9.6, 3.5, z - 1), (10.2, 4.1, z + 0.3))
         # Hanging plants on the glass rail.

@@ -72,7 +72,7 @@ def build(M, E, G):
             box(f'deck_chair{i}_back', (0.6, 0.08, 0.6), (cx, 15.95, 0.6), M['oak'], tilt=(math.radians(25), 0, 0))
             box(f'deck_chair{i}_cushion', (0.54, 0.62, 0.05), (cx, 16.3, 0.37), M['cushion_teal' if i else 'cushion_rust'], bevel=0.02, tilt=(math.radians(-8), 0, 0))
             collider(f'deck_chair{i}', (cx - 0.32, 15.85, -1), (cx + 0.32, 16.68, 0.4))
-            seat(f'deck_chair{i}', 'Sit and watch the bay', (cx, 17.1, 0), (cx, 16.25, 0.0), 90)
+            seat(f'deck_chair{i}', 'Sit and watch the bay', (cx, 17.1, 0), (cx, 16.12, 0.40), 90, 'recline')
         # The gull on the railing (the page lets it fly off now and then).
         gx, gy = 12.8, y1 - 0.02
         sphere('gull_body', 0.08, (gx, gy, 1.18), M['white'], sub=2, scale=(1.6, 0.8, 0.8), kind='emit')

@@ -401,7 +401,7 @@ def build(M, E, G):
             box(f'studio_sofa_seat{i}', (0.86, 0.6, 0.12), (13.27 + i * 0.88, 4.65, Z0 + 0.44), M['cushion'], bevel=0.05, seg=3)
         collider('studio_sofa', (12.8, 4.35, Z0 - 1), (14.6, 5.15, Z0 + 0.5))
         for i, x in enumerate((13.27, 14.15)):
-            seat(f'studio_sofa{i}', 'Sit down', (x, 3.95, Z0), (x, 4.7, Z0), 270)
+            seat(f'studio_sofa{i}', 'Sit down', (x, 3.95, Z0), (x, 4.80, Z0 + 0.50), 270, 'sofa')
         box('studio_table', (1.0, 0.55, 0.05), (13.7, 3.3, Z0 + 0.4), M['walnut'], bevel=0.01)
         for sx in (-1, 1):
             for sy in (-1, 1):

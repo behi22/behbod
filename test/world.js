@@ -40,7 +40,9 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
     await p.waitForTimeout(250);
     // Esc backs out of whatever it opened: a seat, the piano, a game, the range, the telescope, a video.
     await p.keyboard.press('Escape');
-    await p.waitForTimeout(400);
+    // Sitting down and standing back up take a second each.
+    await p.waitForFunction(() => __loft.mode !== 'sit' && __loft.mode !== 'rising', null, { timeout: 4000 }).catch(() => {});
+    await p.waitForTimeout(300);
     const left = await p.evaluate(() => ({ mode: __loft.mode, overlay: !!document.querySelector('.g-overlay, .video, .rg-hud, .ts-veil, .pm, .pn') }));
     if (left.mode !== 'walk' || left.overlay) missed.push(`${it.id} (Esc left mode ${left.mode}${left.overlay ? ' and an overlay' : ''})`);
   }
@@ -90,7 +92,7 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const sat = await p.evaluate(() => __loft.mode);
   await p.screenshot({ path: `${OUT}/w-sit.png` });
   await p.keyboard.press('KeyW');
-  await p.waitForTimeout(600);
+  await p.waitForTimeout(1500);
   const stood = await p.evaluate(() => __loft.mode);
   console.log('sit', sat, 'then', stood, sat === 'sit' && stood === 'walk' ? 'PASS' : 'FAIL');
 
@@ -205,7 +207,7 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const lit = await p.evaluate(() => document.querySelectorAll('.pm .on').length);
   await p.keyboard.up('KeyA'); await p.waitForTimeout(150);
   const played = await p.evaluate(() => __loft.progress.has('piano'));
-  await p.keyboard.press('Escape'); await p.waitForTimeout(600);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(1600);
   const pianoOut = await p.evaluate(() => [__loft.mode, !!document.querySelector('.pm')]);
   console.log('piano: key lit', lit, 'played', played, '| after Esc', pianoOut.join(' overlay '), lit === 1 && played && pianoOut[0] === 'walk' && !pianoOut[1] ? 'PASS' : 'FAIL');
 
@@ -225,7 +227,7 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   await p.evaluate(() => { for (let i = 0; i < 3; i++) dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', key: 'e', repeat: true })); });
   await p.waitForTimeout(300);
   const held = await p.evaluate(() => __loft.mode);
-  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(2500);
   console.log('holding E keeps me seated:', held, held === 'sit' ? 'PASS' : 'FAIL');
 
   // Regression: walking to the desk along a path used to leave me sitting in mid-air with the prompt still up.

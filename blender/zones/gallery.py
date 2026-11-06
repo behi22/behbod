@@ -35,7 +35,7 @@ def build(M, E, G):
             box(f'lounge_chair{i}_seat', (0.7, 0.7, 0.4), (cx, y, 0.2), M['leather'], bevel=0.06, seg=3)
             box(f'lounge_chair{i}_back', (0.18, 0.7, 0.55), (cx - 0.3, y, 0.62), M['leather'], bevel=0.06, seg=3, tilt=(0, -0.2, 0))
             collider(f'lounge_chair{i}', (cx - 0.4, y - 0.36, -1), (cx + 0.36, y + 0.36, 0.5))
-            seat(f'lounge_chair{i}', 'Sit and watch', (cx + 0.85, y + (0.5 if i else -0.5), 0), (cx + 0.05, y, 0.0), 0)
+            seat(f'lounge_chair{i}', 'Sit and watch', (cx + 0.85, y + (0.5 if i else -0.5), 0), (cx - 0.06, y, 0.40), 0, 'lounge')
         lamp('L_videos', 60, (W - 0.8, 7.65, 2.7), (1.0, 0.78, 0.55))
         char_light('point', '#ffc890', 1.2, (W - 1.0, 7.65, 2.2), 3.5)
         META['looks'] += [[W - 0.04, 7.65, 1.75], [0.03, 6.4, 2.6]]

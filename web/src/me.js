@@ -16,6 +16,44 @@ function radialShadow() {
   return new THREE.CanvasTexture(c);
 }
 
+// The sitting styles' motions, built from the single poses in the SitPoses clip (blender/lib/sitposes.py): sitting
+// down (standing, an in-between, seated: 1 s), the idle loop (seated, breathe and look one way, seated, the other way:
+// 4 s) and standing up. Built here so the file holds a few dozen poses rather than thirty clips.
+const ease = u => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+export function sitClips(anims, info) {
+  const src = anims.find(c => c.name === 'SitPoses');
+  if (!src || !info?.families) return [];
+  const fps = info.fps || 24, STEPS = 8;
+  const sources = src.tracks.map(tr => ({ tr, it: tr.createInterpolant(), n: tr.getValueSize() }));
+  // The exporter puts frame N at N / fps seconds.
+  const pose = (s, frame) => s.it.evaluate(frame / fps).slice();
+  const q = [0, 0, 0, 0];
+  function clip(name, seq) {
+    const tracks = sources.map(s => {
+      const times = [], values = [];
+      for (let k = 0; k < seq.length - 1; k++) {
+        const [fa, ta] = seq[k], [fb, tb] = seq[k + 1], A = pose(s, fa), B = pose(s, fb);
+        for (let i = 0; i < STEPS; i++) {
+          const u = i / STEPS, e = ease(u);
+          times.push(ta + (tb - ta) * u);
+          if (s.n === 4) { THREE.Quaternion.slerpFlat(q, 0, A, 0, B, 0, e); values.push(...q); } else for (let c = 0; c < s.n; c++) values.push(A[c] + (B[c] - A[c]) * e);
+        }
+      }
+      const [fl, tl] = seq[seq.length - 1];
+      times.push(tl); values.push(...pose(s, fl));
+      return new s.tr.constructor(s.tr.name, times, values);
+    });
+    return new THREE.AnimationClip(name, seq[seq.length - 1][1], tracks);
+  }
+  const out = [];
+  for (const [fam, p] of Object.entries(info.families)) {
+    out.push(clip(`Sit_${fam}_Enter`, [[info.stand, 0], ...(p.mid ? [[p.mid, 0.45]] : []), [p.sat, 1]]));
+    out.push(clip(`Sit_${fam}_Exit`, [[p.sat, 0], ...(p.mid ? [[p.mid, 0.55]] : []), [info.stand, 1]]));
+    out.push(clip(`Sit_${fam}_Loop`, [[p.sat, 0], [p.a, 1], [p.sat, 2], [p.b, 3], [p.sat, 4]]));
+  }
+  return out;
+}
+
 // Character v3, the designer-toy me. One model holds every head and accessory; the page shows one look at a time.
 export function makeMe(scene, gltf, opts) {
   const root = gltf.scene;
@@ -94,8 +132,10 @@ export function makeMe(scene, gltf, opts) {
   // Moves: a blended locomotion layer plus one-shots on top.
   const mixer = new THREE.AnimationMixer(root);
   const acts = {};
-  for (const c of gltf.animations) { acts[c.name] = mixer.clipAction(c); acts[c.name].play(); acts[c.name].setEffectiveWeight(0); }
+  const clips = [...gltf.animations.filter(c => c.name !== 'SitPoses'), ...sitClips(gltf.animations, opts.sitposes)];
+  for (const c of clips) { acts[c.name] = mixer.clipAction(c); acts[c.name].play(); acts[c.name].setEffectiveWeight(0); }
   for (const n of ONCE) if (acts[n]) { acts[n].setLoop(THREE.LoopOnce, 1); acts[n].clampWhenFinished = true; }
+  for (const n of Object.keys(acts)) if (/^Sit_\w+_(Enter|Exit)$/.test(n)) { acts[n].setLoop(THREE.LoopOnce, 1); acts[n].clampWhenFinished = true; }
   for (const [n] of [...LOCO, ...CROUCH]) if (STRIDE[n] && acts[n]) acts[n].timeScale = 0;
   const weight = new Map(Object.values(acts).map(a => [a, 0]));
   let phase = 0, layer = 1, oneShot = null, oneShotEnd = 0, crouchK = 0;

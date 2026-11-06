@@ -483,9 +483,13 @@ def screen(key, loc, w, h, **extra):
     META['screens'][key] = {'center': L(loc), 'w': w, 'h': h, **extra}
 
 
-def seat(iid, label, stand, at, face, r=0.75):
-    # A place to sit: you stand at `stand`, sit at `at` facing `face` degrees (0 east, 90 north).
-    interact(iid, label, stand, r=r, seat=L(at), face=face)
+SEAT_CONTACT = 0.065   # the hip joint sits this far above the seat surface (matches lib/sitposes.py)
+
+
+def seat(iid, label, stand, hip, face, kind, r=0.75):
+    # A place to sit: you stand at `stand` and sit facing `face` degrees (0 east, 90 north), in the sitting style
+    # `kind` (lib/sitposes.py). `hip` is where the hips rest: x and y on the seat, z the seat's top surface.
+    interact(iid, label, stand, r=r, seat=L((hip[0], hip[1], hip[2] + SEAT_CONTACT)), face=face, kind=kind)
 
 
 def interact(iid, label, loc, r=1.2, **extra):

@@ -1345,6 +1345,9 @@ for act in [a for a in bpy.data.actions if a not in before_a]:
     if hasattr(st, 'action_slot') and act.slots:
         st.action_slot = act.slots[0]
     tr.mute = True
+# A sitting style for each kind of seat (sit down, idle, stand up), and where each style puts the hips.
+from lib import sitposes
+sitposes.add_sitting(arm, ROOT + '/web/assets/sitposes.json')
 
 for m in bpy.data.materials:
     for n in list(m.node_tree.nodes if m.node_tree else []):
@@ -1437,6 +1440,9 @@ if PREVIEW:
     arm.animation_data.action = None
 
 bpy.ops.object.select_all(action='DESELECT')
+# Keyframes as they are, not resampled every frame: the sitting clips have a handful of poses each, and sampling them
+# every frame added 2 MB.
 bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', export_animation_mode='NLA_TRACKS',
-                          export_image_format='WEBP', export_yup=True, export_apply=True, export_skins=True)
+                          export_image_format='WEBP', export_yup=True, export_apply=True, export_skins=True,
+                          export_force_sampling=False)
 print('exported', OUT)

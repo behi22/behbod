@@ -22,7 +22,7 @@ import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
 import { hoodUp } from './src/pure/look.js';
-import { tierStep } from './src/pure/tier.js';
+import { tierStep, ease } from './src/pure/tier.js';
 import { makeCanvases } from './screens.js';
 import { Sound } from './sound.js';
 
@@ -42,6 +42,8 @@ engine.onTier(name => { world?.setGloss(name === 'high'); world?.setMirror(name 
 // ---------- loading ----------
 const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
 const meta = await load.json('assets/world.json');
+// Where each sitting style puts the hips, and which poses build its motions.
+const sitInfo = await load.json('assets/sitposes.json').catch(() => null);
 // My YouTube videos for the TV and the screening wall: [{ id, title, by }].
 const media = await fetch('media.json').then(r => (r.ok ? r.json() : {})).catch(() => ({}));
 const videos = () => (media.videos || []).filter(v => /^[A-Za-z0-9_-]{11}$/.test(v.id || ''));
@@ -100,7 +102,7 @@ let savedLook = null, wardrobe = null;
 try { savedLook = JSON.parse(store.get('loft.look') || 'null'); } catch (e) { savedLook = null; }
 // makeMe dresses me once while it builds, so this runs before `me` exists and must not use it.
 const me = makeMe(scene, meGltf, {
-  saved: savedLook, mosaic: params.has('mosaic') || progress.has('whoami'), unlocked: () => progress.unlocked(),
+  saved: savedLook, mosaic: params.has('mosaic') || progress.has('whoami'), unlocked: () => progress.unlocked(), sitposes: sitInfo,
   onLook: look => {
     $('who').textContent = HEAD_NAMES[look.head];
     $('hood').textContent = hoodUp(look) ? 'Hood up' : 'Hood down';
@@ -253,29 +255,58 @@ function leaveDesk() {
 }
 
 // ---------- sitting down anywhere there is a seat ----------
+// Each seat has a sitting style (blender/lib/sitposes.py), built for that seat's height. The character turns its back
+// to the seat and sits back so its hips land on the seat's spot: its origin goes where the style's hip offset puts it,
+// which leaves the feet on the floor. The library's own chair sit is the fallback for a seat without a style.
+const CHAIR_HIP = [0.003, 0.337, 0.584], SIT_TIME = 1.0, UP = new THREE.Vector3(0, 1, 0);
+let sitMove = null, yawGoal = null;
+function seatPlace(it) {
+  const fam = it.kind && sitInfo?.families?.[it.kind];
+  const face = headingToFacing(it.face), h = fam ? fam.hip : CHAIR_HIP, s = sitInfo?.scale || 0.9;
+  // Blender's character axes (x, y back, z up) are three's (x, z up, -y).
+  const off = new THREE.Vector3(h[0] * s, h[2] * s, -h[1] * s).applyAxisAngle(UP, face);
+  return { root: b2t(...it.seat).sub(off), face, clips: fam ? [`Sit_${it.kind}_Enter`, `Sit_${it.kind}_Loop`, `Sit_${it.kind}_Exit`] : ['Sitting_Enter', 'Sitting_Idle_Loop', 'Sitting_Exit'] };
+}
 function sit(it) {
   if (mode !== 'walk') return;
-  mode = 'sit'; seat = it; route = null;
-  me.playOnce('Sitting_Enter');
-  pos.copy(b2t(...it.seat));
-  facing = prevFacing = headingToFacing(it.face);
-  me.root.position.copy(pos);
-  me.root.rotation.set(0, facing, 0);
-  setTimeout(() => { if (mode === 'sit') me.holdPose('Sitting_Idle_Loop'); }, 900);
+  const place = seatPlace(it);
+  mode = 'sit'; seat = { ...it, ...place }; route = null; vel.set(0, 0, 0);
+  me.playOnce(place.clips[0], true);
+  sitMove = { from: pos.clone(), to: place.root, f0: facing, f1: place.face, t: 0, settle: 0.45, then: () => { if (mode === 'sit') me.holdPose(place.clips[1]); } };
+  // The camera swings round to a three-quarter front view, so I can see myself sit, whichever way the seat faces.
+  const sideA = place.face + 0.85, sideB = place.face - 0.85, gap = a => Math.abs(Math.atan2(Math.sin(a - yaw), Math.cos(a - yaw)));
+  yawGoal = gap(sideA) < gap(sideB) ? sideA : sideB;
   $('prompt').classList.remove('on');
   $('use').textContent = 'Stand';
   earn('seat');
   if (it.id === 'piano') pianoMode.enter();
 }
 function stand() {
+  // Asked to stand while still sitting down: finish sitting, then stand straight back up.
+  if (mode === 'sit' && sitMove) { sitMove.thenStand = true; return; }
   if (mode !== 'sit') return;
   pianoMode.exit();
-  me.playOnce('Sitting_Exit');
-  mode = 'walk';
-  pos.copy(b2t(...seat.at)); me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos);
-  seat = null;
-  setTimeout(() => me.endOneShot(), 500);
-  $('use').textContent = 'Use';
+  me.playOnce(seat.clips[2], true);
+  mode = 'rising';
+  // Up first, then a step back out to where I stood, clear of the seat.
+  sitMove = { from: pos.clone(), to: b2t(...seat.at), f0: facing, f1: facing, t: 0, wait: 0.6, then: () => {
+    mode = 'walk'; seat = null; me.endOneShot(); phys?.place(pos); physAt.copy(pos); $('use').textContent = 'Use';
+  } };
+}
+// Moves the character through a sit or a stand: the turn in the first half, the glide either over `settle` of the
+// time (sitting back into the seat) or after `wait` (stepping away once up).
+function tickSit(dt) {
+  const m = sitMove;
+  if (!m) return;
+  m.t = Math.min(1, m.t + dt / SIT_TIME);
+  if (yawGoal !== null) { yaw += Math.atan2(Math.sin(yawGoal - yaw), Math.cos(yawGoal - yaw)) * Math.min(1, dt * 3); lastLook = performance.now(); }
+  const g = m.wait ? Math.max(0, (m.t - m.wait) / (1 - m.wait)) : Math.min(1, m.t / m.settle);
+  pos.lerpVectors(m.from, m.to, ease(g));
+  let d = m.f1 - m.f0; d = Math.atan2(Math.sin(d), Math.cos(d));
+  facing = prevFacing = m.f0 + d * ease(Math.min(1, m.t / 0.5));
+  me.root.position.copy(pos);
+  me.root.rotation.set(0, facing, 0);
+  if (m.t >= 1) { sitMove = null; yawGoal = null; m.then(); if (m.thenStand) stand(); }
 }
 
 // ---------- things you walk up to and press E on ----------
@@ -412,7 +443,7 @@ canvas.addEventListener('pointermove', e => {
   dragging.x = e.clientX; dragging.y = e.clientY; dragging.moved += Math.abs(dx) + Math.abs(dy);
   if (mode === 'desk' && desk.range) { desk.pan(dx); return; }
   if (mode === 'scope') { scope.nudge(-dx * 0.0025, dy * 0.0025); return; }
-  if (mode !== 'walk' && mode !== 'sit') return;
+  if (mode !== 'walk' && mode !== 'sit' && mode !== 'rising') return;
   yaw -= dx * 0.005; pitch = Math.max(-0.15, Math.min(1.1, pitch + dy * 0.004)); lastLook = performance.now();
 });
 canvas.addEventListener('pointerup', e => {
@@ -606,11 +637,12 @@ function step() {
   const dt = Math.min(clock.getDelta(), 1 / 20), now = performance.now(), t = now / 1000;
   renderer.info.reset();
   const hs = mode === 'walk' ? walk(dt, now) : 0;
+  if (mode === 'sit' || mode === 'rising') tickSit(dt);
   me.placeBlob(col.groundAt);
   me.animate(dt, hs, mode === 'walk' && crouchHeld);
   me.lookAround(dt, idleT, facing, mode === 'walk', LOOKS);
   if (!desk.tick(dt, camLook, () => mode === 'desk')) {
-    if (mode === 'walk' || mode === 'sit') {
+    if (mode === 'walk' || mode === 'sit' || mode === 'rising') {
       const tp = follow();
       camera.position.lerp(tp.p, Math.min(1, 7 * dt));
       camLook.lerp(tp.l, Math.min(1, 9 * dt));

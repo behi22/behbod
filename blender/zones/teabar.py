@@ -53,7 +53,7 @@ def build(M, E, G):
             cyl(f'stool{i}_ring', 0.17, 0.015, (x, IY0 - 0.45, 0.3), M['steel'], seg=24, cap=False)
             cyl(f'stool{i}_base', 0.2, 0.02, (x, IY0 - 0.45, 0.01), M['steel'], seg=24)
             collider(f'stool{i}', (x - 0.2, IY0 - 0.65, -1), (x + 0.2, IY0 - 0.25, 0.77))
-        seat('stool', 'Sit at the tea bar', (IX0 + 2.75, IY0 - 0.45, 0), (IX0 + 2.0, IY0 - 0.45, 0.3), 90)
+        seat('stool', 'Sit at the tea bar', (IX0 + 2.75, IY0 - 0.45, 0), (IX0 + 2.0, IY0 - 0.45, 0.77), 90, 'stool')
 
         # The tea cabinet at the island's east end: turquoise tiles, shelves of tins and glasses, the girih print.
         tx = IX1 + 0.4

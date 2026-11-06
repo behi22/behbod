@@ -29,7 +29,7 @@ def build(M, E, G):
         for i, x in enumerate((0.6, 0.9, 1.25)):
             box(f'shoe{i}', (0.12, 0.28, 0.1), (x, 0.2, 0.05), M['white'] if i % 2 else M['black'], bevel=0.04, seg=3)
         collider('shoe_bench', (0.35, 0.0, -1), (1.55, 0.38, 0.45))
-        seat('shoe_bench', 'Sit on the bench', (0.95, 0.95, 0), (0.95, 0.2, 0.0), 90)
+        seat('shoe_bench', 'Sit on the bench', (0.95, 0.95, 0), (0.95, 0.20, 0.45), 90, 'bench')
         # The mailbox and the QR code beside the door.
         box('mailbox', (0.3, 0.12, 0.38), (3.55, 0.07, 1.2), M['black'], bevel=0.01)
         box('mailbox_slot', (0.22, 0.01, 0.03), (3.55, 0.135, 1.32), M['brass'])
@@ -113,7 +113,7 @@ def build(M, E, G):
         for s in (-1, 1):
             box(f'read_chair_arm{s}', (0.14, 0.62, 0.22), (RCX + s * 0.3, RCY - 0.02, 0.5), M['leather_brown'], bevel=0.05, seg=3)
         collider('read_chair', (RCX - 0.37, RCY - 0.37, -1), (RCX + 0.37, RCY + 0.4, 0.5))
-        seat('read_chair', 'Sit and read', (RCX, RCY - 0.85, 0), (RCX, RCY + 0.05, 0.0), 270)
+        seat('read_chair', 'Sit and read', (RCX, RCY - 0.85, 0), (RCX, RCY + 0.06, 0.42), 270, 'lounge')
         cyl('read_table', 0.22, 0.5, (RCX + 0.75, RCY + 0.1, 0.25), M['walnut'], seg=24)
         cyl('read_lamp_pole', 0.012, 1.35, (RCX - 0.62, RCY + 0.25, 0.68), M['brass'])
         cyl('read_lamp_base', 0.13, 0.02, (RCX - 0.62, RCY + 0.25, 0.01), M['brass'], seg=20)

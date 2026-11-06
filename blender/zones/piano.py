@@ -56,7 +56,7 @@ def build(M, E, G):
         prism('metronome', [(px - 0.6, py - 0.64), (px - 0.52, py - 0.64), (px - 0.55, py - 0.58)], z + 0.98, z + 1.18, M['walnut'])
         tube('metronome_arm', [(px - 0.553, py - 0.64, z + 1.0), (px - 0.553, py - 0.645, z + 1.16)], 0.003, M['brass'], kind='emit')
         point('piano_seat', (px, py - 1.35, z))
-        seat('piano', 'Play the piano', (px + 0.8, py - 1.43, z), (px, py - 1.3, z + 0.05), 90)
+        seat('piano', 'Play the piano', (px + 0.8, py - 1.43, z), (px, py - 1.38, z + 0.57), 90, 'piano')
 
         # The records credenza by the glass: cubbies of vinyl, the turntable, the lava lamp, speakers either side.
         RX, RY = 19.5, 14.4
