@@ -280,8 +280,8 @@ export function makePanels(surface, ctx) {
 
   // The project frames up the stairs.
   (ctx.projects || []).forEach((name, i) => { const [line, kind] = PROJECTS[name] || ['', 'grid']; add(`proj${i}`, 600, 450, () => drawProject(S[`proj${i}`], name, line, kind)); });
-  // The screening wall: a thumbnail per video slot.
-  for (let i = 0; i < 3; i++) {
+  // The screening wall: the big frame's thumbnail, shown while the live player is not running.
+  for (let i = 0; i < 1; i++) {
     add(`video${i}`, 800, 450, g => {
       const v = ctx.videos()[i], img = v && thumb(v.id, () => draws[`video${i}`](Date.now()));
       g.fillStyle = '#0b0e14'; g.fillRect(0, 0, 800, 450);

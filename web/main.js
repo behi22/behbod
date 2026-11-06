@@ -16,6 +16,7 @@ import { makeRange } from './src/range.js';
 import { makeTelescope } from './src/telescope.js';
 import { makePianoMode } from './src/pianomode.js';
 import { makePanels } from './src/panel.js';
+import { makeLiveVideo } from './src/livevideo.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -36,7 +37,7 @@ const engine = makeEngine(canvas, coarse);
 const { renderer, scene, camera } = engine;
 // An unknown ?q= falls back to auto rather than stopping the page.
 let tierName = Object.hasOwn(TIERS, params.get('q') || '') ? params.get('q') : 'auto', autoTier = tierName === 'auto';
-engine.onTier(name => { world?.setGloss(name === 'high'); $('q').textContent = 'Quality: ' + (autoTier ? 'auto, ' : '') + name; });
+engine.onTier(name => { world?.setGloss(name === 'high'); world?.setMirror(name !== 'low'); $('q').textContent = 'Quality: ' + (autoTier ? 'auto, ' : '') + name; });
 
 // ---------- loading ----------
 const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
@@ -69,12 +70,27 @@ world = makeWorld(scene, zoneGltfs.map(g => g.scene), meta, screens, (name, on) 
   if (doorsReady && d?.slide) audio.sfx.door('glass', b2t(...d.at));
 });
 buildNav();
+// Paths are planned in a worker, off the main thread; if a worker cannot start, they are planned here instead.
+const pathJobs = new Map();
+let pathId = 0, navWorker = null;
+try {
+  navWorker = new Worker(new URL('./src/navworker.js', import.meta.url), { type: 'module' });
+  navWorker.onmessage = e => { const j = pathJobs.get(e.data.id); pathJobs.delete(e.data.id); j?.res(e.data.path); };
+  navWorker.onerror = () => { navWorker = null; for (const j of pathJobs.values()) j.res(NAVS[j.which].path(j.from, j.to)); pathJobs.clear(); };
+  navWorker.postMessage({ type: 'init', meta: { floors: meta.floors, colliders: meta.colliders } });
+} catch (e) { navWorker = null; }
+function findPath(from, to) {
+  const which = world.doors.secret?.open ? 'open' : 'shut';
+  if (!navWorker) return Promise.resolve(NAVS[which].path(from, to));
+  return new Promise(res => { const id = ++pathId; pathJobs.set(id, { res, which, from, to }); navWorker.postMessage({ type: 'path', id, which, from, to }); });
+}
 // The real 3D world outside the glass; if it cannot start, the painted backdrop stays.
 let out3d = null;
 try {
   out3d = makeOutside3d({ now: () => new Date(), weather: () => outside.weather, holiday: () => screens.holiday, quality: () => (tierName === 'auto' ? 'medium' : tierName) });
   engine.setBackground(out3d);
   scene.traverse(o => { if (o.name === 'backdrop') o.visible = false; });
+  screens.stopBackdrop();
 } catch (e) { console.warn('[loft] the 3D outside could not start', e); out3d = null; }
 const outside = makeOutside(scene, meta, screens, { traffic: !out3d });
 const progress = makeProgress(store);
@@ -104,7 +120,7 @@ const keyboard = () => {
   return kbTop;
 };
 const creatures = makeCreatures(scene, meta, {
-  nav: () => nav, groundAt: col.groundAt, sound, fx: audio.sfx, keyboard, toast,
+  findPath, clear: (a, b) => nav.clear(a, b), groundAt: col.groundAt, sound, fx: audio.sfx, keyboard, toast,
   onEvent: (name, data) => { if (name === 'pishi_keys') { if (mode === 'desk') screens.type(data); } else earn(name); },
 });
 function toast(text) {
@@ -136,6 +152,7 @@ const scope = makeTelescope(scene, camera, meta, {
 });
 const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano') });
 const panels = makePanels(store);
+const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 function enterRange() {
   if (mode !== 'walk') return;
   mode = 'range'; route = null; keys.clear();
@@ -333,7 +350,8 @@ function playVideo(i) {
   frame.title = v.title || 'Video';
   const close = document.createElement('button');
   close.className = 'chip'; close.textContent = 'Close';
-  const shut = () => { box.remove(); removeEventListener('keydown', onKey, true); };
+  liveVideo.pause();
+  const shut = () => { box.remove(); removeEventListener('keydown', onKey, true); liveVideo.resume(); };
   // While it plays, keys stay with the player (no walking about behind it); Esc closes it.
   const onKey = e => { if (!box.isConnected) { removeEventListener('keydown', onKey, true); return; } e.stopPropagation(); if (e.key === 'Escape') shut(); };
   close.addEventListener('click', shut);
@@ -427,27 +445,33 @@ const joy = { x: 0, y: 0, id: null };
   pad.addEventListener('pointercancel', end);
 }
 
-// Walk somewhere along a path round the furniture and up the stairs; `then` runs on arrival.
-function walkTo(target, then) {
-  const p = nav.path([pos.x, -pos.z, pos.y], [target.x, -target.z, target.y]);
-  if (!p) return false;
-  route = { points: p.slice(1).map(q => b2t(...q)), then };
-  return true;
+// Walk somewhere along a path round the furniture and up the stairs; `then` runs on arrival. The path is planned off
+// the main thread, so it starts a frame or two later; a newer click, or a movement key pressed meanwhile, wins.
+let walkToken = 0;
+function walkTo(target, then, orElse) {
+  const token = ++walkToken;
+  return findPath([pos.x, -pos.z, pos.y], [target.x, -target.z, target.y]).then(p => {
+    if (token !== walkToken || mode !== 'walk') return false;
+    if (!p) { orElse?.(); return false; }
+    route = { points: p.slice(1).map(q => b2t(...q)), then };
+    return true;
+  });
 }
 // The chips walk you there when they can, and fade-jump across otherwise.
 function goTo(name) {
   if (mode !== 'walk' || !SPOTS[name]) return;
   const then = name === 'desk' ? useDesk : null;
-  if (walkTo(SPOTS[name], then)) return;
-  const veil = $('veil');
-  veil.classList.add('on');
-  setTimeout(() => {
-    pos.copy(SPOTS[name]); vel.set(0, 0, 0); route = null;
-    me.root.position.copy(pos);
-    camera.position.copy(follow().p);
-    veil.classList.remove('on');
-    then?.();
-  }, 300);
+  walkTo(SPOTS[name], then, () => {
+    const veil = $('veil');
+    veil.classList.add('on');
+    setTimeout(() => {
+      pos.copy(SPOTS[name]); vel.set(0, 0, 0); route = null;
+      me.root.position.copy(pos);
+      camera.position.copy(follow().p);
+      veil.classList.remove('on');
+      then?.();
+    }, 300);
+  });
 }
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
 $('cmd').addEventListener('keydown', e => { if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); } });
@@ -483,7 +507,7 @@ function forwardInput() {
   if (keys.has('KeyA') || keys.has('ArrowLeft')) f.x -= 1;
   if (keys.has('KeyD') || keys.has('ArrowRight')) f.x += 1;
   if (Math.hypot(joy.x, joy.y) > 0.18) { f.x += joy.x; f.z += joy.y; }
-  if (f.lengthSq()) route = null;
+  if (f.lengthSq()) { route = null; walkToken++; }
   if (route) {
     const next = route.points[0];
     if (!next) { const then = route.then; route = null; then?.(); return f; }
@@ -577,7 +601,7 @@ function ambience(dt) {
 const tmpP = new THREE.Vector3(), tmpL = new THREE.Vector3();
 const FOG_NIGHT = new THREE.Color(0x0a0f1c), FOG_DAY = new THREE.Color(0x6f8197);
 const clock = new THREE.Clock();
-let frames = 0, ftAcc = 0, tierChecked = 0, slowRuns = 0;
+let frameTimes = [], tierChecked = 0, slowRuns = 0, lastFrame = performance.now();
 function step() {
   const dt = Math.min(clock.getDelta(), 1 / 20), now = performance.now(), t = now / 1000;
   renderer.info.reset();
@@ -605,9 +629,10 @@ function step() {
   }
   camera.lookAt(camLook);
   range.tick(dt, t); scope.tick(dt);
+  liveVideo.tick();
   me.drawFace(now);
   me.tickMosaic(now, camera, engine.mosaicU);
-  screens.tick(now, dt, mode === 'desk');
+  screens.tick(now, dt, mode === 'desk', camera.position.distanceTo(deskUse) < 10);
   world.tick(dt, t, mode === 'desk', camera.position, pos, creatures.positions);
   cctx.mode = mode; cctx.facing = facing; cctx.stand = seat ? seat.at : null;
   creatures.tick(dt, t, cctx);
@@ -625,13 +650,13 @@ function step() {
   doorsReady = true;
   engine.render(dt);
 
-  frames++; ftAcc += dt;
-  if (autoTier && frames > 40 && now - tierChecked > 2500) {
+  frameTimes.push(now - lastFrame); lastFrame = now;
+  if (autoTier && frameTimes.length > 40 && now - tierChecked > 2500) {
     tierChecked = now;
-    const r = tierStep(tierName, ftAcc / frames * 1000, now, slowRuns);
+    const r = tierStep(tierName, frameTimes, now, slowRuns);
     slowRuns = r.slowRuns;
     if (r.tier !== tierName) { tierName = r.tier; engine.setTier(tierName); }
-    frames = 0; ftAcc = 0;
+    frameTimes = [];
   }
   if (showStats) $('stats').textContent = `${(1 / Math.max(dt, 1e-3)).toFixed(0)} fps · ${renderer.info.render.calls} calls · ${(renderer.info.render.triangles / 1000).toFixed(0)}k tris · ${physName} · ${outside.weather}${screens.holiday ? ' · ' + screens.holiday.id : ''}`;
   requestAnimationFrame(step);
@@ -648,16 +673,23 @@ $('who').addEventListener('click', () => { if (mode === 'walk') me.nextHead(); }
 $('snd').addEventListener('click', () => { const on = sound.toggle(); $('snd').textContent = on ? 'Sound on' : 'Sound off'; $('snd').classList.toggle('on', on); });
 if (showStats) $('stats').style.display = 'block';
 
-if (tierName === 'auto') tierName = coarse ? 'medium' : 'high';
+// Weaker machines start a step lower instead of stuttering through the first seconds; the automatic quality still
+// steps down from there if frames are slow.
+if (tierName === 'auto') {
+  const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
+  tierName = coarse && weak ? 'low' : coarse || weak ? 'medium' : 'high';
+}
 engine.setTier(tierName);
 engine.resize();
 const start = follow();
 camera.position.copy(start.p); camLook.copy(start.l);
+$('note').textContent = 'Getting the room ready';
+await engine.warmUp();
 $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
 $('enter').classList.add('ready');
 $('enter').addEventListener('click', () => { $('gate').classList.add('gone'); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); });
 if (params.has('auto')) $('gate').classList.add('gone');
-window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, act: id => act(things.items.find(i => i.id === id)), stand,
+window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, act: id => act(things.items.find(i => i.id === id)), stand,
   walkTo: (x, y, z) => walkTo(b2t(x, y, z)), goTo, chair, get route() { return route ? route.points.length : 0; }, wardrobe,
   get near() { return near?.id ?? null; }, get facing() { return facing; },
   get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, get physics() { return physName; },

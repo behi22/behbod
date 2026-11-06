@@ -14,7 +14,8 @@ async function run(name, launch) {
     const p = await ctx.newPage();
     const errs = [];
     p.on('pageerror', e => errs.push(e.message));
-    p.on('console', m => { if (m.type() === 'error' && !/favicon|404/.test(m.text())) errs.push(m.text().slice(0, 160)); });
+    // Messages from inside YouTube's own player (the live video frame) are not the page's errors.
+    p.on('console', m => { if (m.type() === 'error' && !/favicon|404/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 160)); });
     await p.goto(URL);
     await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 90000 });
     const start = await p.evaluate(() => ({ x: __loft.pos.x, z: __loft.pos.z }));

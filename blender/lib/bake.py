@@ -159,7 +159,7 @@ def load_raw(zid, raw_dir, quiet=False):
     return True
 
 
-def build_all(root, draft, exposure=1.3, reuse=False):
+def build_all(root, draft, exposure=1.3, reuse=False, only=None):
     scn = bpy.context.scene
     use_gpu(scn)
     raw_dir = os.path.join(root, 'blender', 'build')
@@ -171,7 +171,8 @@ def build_all(root, draft, exposure=1.3, reuse=False):
     for zid in baked:
         join(zid)
     for zid in baked:
-        if reuse and load_raw(zid, raw_dir):
+        # `only`: bake just the zones that changed and reuse the saved full bakes of the rest.
+        if (reuse or (only and zid not in only)) and load_raw(zid, raw_dir):
             continue
         px = 1024 if draft else GROUPS[zid]['px']
         t0 = time.time()

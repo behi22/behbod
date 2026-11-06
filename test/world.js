@@ -46,17 +46,26 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   }
   console.log('things you can use', items.length, missed.length ? 'NOT REACHABLE: ' + missed.join(', ') : 'all reachable PASS');
 
-  // Videos: each frame opens its own in YouTube's player; the TV flips through all of them in order.
-  const src = async id => { await p.evaluate(i => __loft.act(i), id); await p.waitForTimeout(300); const u = await p.evaluate(() => document.querySelector('.video iframe')?.src || ''); await p.evaluate(() => document.querySelector('.video')?.remove()); return u.match(/embed\/([\w-]{11})/)?.[1] || null; };
+  // Videos: the big frame and the TV open YouTube's player from the start; the TV flips through all of them in order.
+  const src = async id => { await p.evaluate(i => __loft.act(i), id); await p.waitForTimeout(300); const u = await p.evaluate(() => document.querySelector('.video iframe')?.src || ''); await p.keyboard.press('Escape'); await p.waitForTimeout(200); return u.match(/embed\/([\w-]{11})/)?.[1] || null; };
   const vids = await p.evaluate(() => fetch('media.json').then(r => r.json()).then(m => m.videos.map(v => v.id)));
-  const frames = [await src('video0'), await src('video1'), await src('video2')];
+  const frame = await src('video0');
   const tv = [await src('tv'), await src('tv'), await src('tv')];
   const i0 = vids.indexOf(tv[0]);
-  const vidOk = frames.join() === vids.slice(0, 3).join() && i0 >= 0 && tv.every((id, k) => id === vids[(i0 + k) % vids.length]);
-  console.log('videos: frames', frames.join(' '), '| tv', tv.join(' '), vidOk ? 'PASS' : 'FAIL');
-  await p.evaluate(q => { __loft.pos.set(q.x, q.y + 0.05, q.z); __loft.yaw = -Math.PI / 2; }, b2t(19.6, 9.6, 0));
+  const vidOk = frame === vids[0] && i0 >= 0 && tv.every((id, k) => id === vids[(i0 + k) % vids.length]);
+  console.log('videos: frame', frame, '| tv', tv.join(' '), vidOk ? 'PASS' : 'FAIL');
+  // The big frame goes live (YouTube's player seen through the screen) when you walk up, and stops when you leave.
+  await p.evaluate(q => { __loft.pos.set(q.x, q.y + 0.05, q.z); __loft.yaw = -Math.PI / 2; }, b2t(19.4, 7.65, 0));
+  await p.waitForFunction(() => __loft.liveVideo.live, null, { timeout: 8000 }).catch(() => {});
+  const liveNear = await p.evaluate(() => __loft.liveVideo.live);
+  await p.waitForFunction(() => __loft.scene.getObjectByName('screen_video0').material.opacity === 0, null, { timeout: 20000 }).catch(() => {});
+  const showing = await p.evaluate(() => __loft.scene.getObjectByName('screen_video0').material.opacity === 0);
   await p.waitForTimeout(2500);
   await p.screenshot({ path: `${OUT}/w-videos.png` });
+  await p.evaluate(q => { __loft.pos.set(q.x, q.y + 0.05, q.z); }, b2t(2.55, 1.2, 0));
+  await p.waitForTimeout(1500);
+  const liveAway = await p.evaluate(() => __loft.liveVideo.live);
+  console.log('live frame: near', liveNear, 'player showing', showing, '| far away', liveAway, liveNear && showing && !liveAway ? 'PASS' : 'FAIL');
 
   // The secret bookcase: closed it blocks the way, open it lets you walk into the range.
   const tryWalk = async () => {
@@ -230,7 +239,7 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   console.log('walk to the desk: mode', seated[0], 'off the chair by', seated[1].toFixed(2), 'm, prompt shown', seated[2], seated[0] === 'desk' && seated[1] < 0.05 && !seated[2] ? 'PASS' : 'FAIL');
 
   // Regression: a second video used to open on top of the first, both playing.
-  await p.evaluate(() => { __loft.act('video0'); __loft.act('video1'); });
+  await p.evaluate(() => { __loft.act('video0'); __loft.act('tv'); });
   await p.waitForTimeout(300);
   const players = await p.evaluate(() => document.querySelectorAll('.video').length);
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);

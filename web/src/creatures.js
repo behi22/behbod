@@ -187,8 +187,10 @@ const TIPS = [
 const WORDS = ['beep', 'boop', 'bwee!', 'brrt', 'dweet', 'bip bip'];
 
 // `fx` is the audio module's effects (positioned in the room); without it the simple synth tones stand in.
-export function makeCreatures(scene, meta, { nav, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {} }) {
-  const P = meta.points, agents = [], queue = [], waits = [], lastPlayer = new THREE.Vector3();
+// `findPath(from, to)` resolves to a path or null (planned off the main thread); `clear(from, to)` says whether a straight
+// line between two points stays on walkable floor.
+export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {} }) {
+  const P = meta.points, agents = [], waits = [], lastPlayer = new THREE.Vector3();
   const items = Object.fromEntries(['bh22', 'pishi', 'jessi'].map(id => [id, { id, r: 1.1, label: '', x: 0, y: 0, z: 0 }]));
   let now = 0, lastMode = 'walk';
   const blip = (fn, a, player) => { if (!player || a.pos.distanceTo(player) < 9) fn(a.pos); };
@@ -211,21 +213,23 @@ export function makeCreatures(scene, meta, { nav, groundAt, sound, fx, keyboard,
     return a;
   }
   function place(a, p) { a.pos.copy(p); a.route = []; a.hop = null; a.then = null; a.epoch++; }
-  // Paths are planned one per frame, so several residents changing their minds never cost a frame.
-  function goTo(a, target, then) { a.route = []; a.hop = null; a.then = null; a.epoch++; a.pending = { target, then }; if (!queue.includes(a)) queue.push(a); }
+  // Paths are planned off the main thread; the answer arrives a frame or two later and is dropped if the resident has
+  // been given something else to do in the meantime.
+  function goTo(a, target, then) {
+    a.route = []; a.hop = null; a.then = null;
+    const epoch = ++a.epoch;
+    a.pending = true;
+    findPath(tb(a.pos), target).then(p => {
+      if (a.epoch !== epoch) return;
+      a.pending = null;
+      if (!p) { then?.(false); return; }
+      a.route = p.slice(1).map(q => b2t(...q)); a.then = then; a.onFloor = true;
+      if (!a.route.length) { a.then = null; then?.(true); }
+    });
+  }
   function hop(a, to, then, dur = 0.45, h = 0.22) { a.route = []; a.pending = null; a.epoch++; a.hop = { a: a.pos.clone(), b: to.clone(), k: 0, dur, h, then }; a.onFloor = false; }
   function hops(a, list, then) { if (!list.length) { then?.(); return; } hop(a, list[0], () => hops(a, list.slice(1), then)); }
   function wait(a, sec, fn) { waits.push({ a, epoch: a.epoch, at: now + sec, fn }); }
-  function plan() {
-    const a = queue.shift();
-    if (!a || !a.pending) return;
-    const { target, then } = a.pending;
-    a.pending = null;
-    const p = nav().path(tb(a.pos), target);
-    if (!p) { then?.(false); return; }
-    a.route = p.slice(1).map(q => b2t(...q)); a.then = then; a.onFloor = true;
-    if (!a.route.length) { a.then = null; then?.(true); }
-  }
   function turn(a, dx, dz, dt, k = 10) {
     if (Math.abs(dx) + Math.abs(dz) < 1e-5) return;
     let d = Math.atan2(dx, dz) - a.facing; d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -457,7 +461,7 @@ export function makeCreatures(scene, meta, { nav, groundAt, sound, fx, keyboard,
     let land = null;
     for (const d of [4.5, 3.5, 2.5, 1.6]) {
       const to = ctx.player.clone().addScaledVector(dir, d);
-      if (nav().clear(from, tb(to))) { land = to; land.y = groundAt(to.x, to.z, ctx.player.y + 0.1); break; }
+      if (clear(from, tb(to))) { land = to; land.y = groundAt(to.x, to.z, ctx.player.y + 0.1); break; }
     }
     if (!land) { toast('No room to throw here.'); return; }
     flight = { a: ctx.player.clone().add(new THREE.Vector3(0, 1.1, 0)), b: land, k: 0 };
@@ -532,7 +536,6 @@ export function makeCreatures(scene, meta, { nav, groundAt, sound, fx, keyboard,
       now = t;
       if (purring && now > purring) { fx?.purr(false); purring = 0; }
       lastPlayer.copy(ctx.player);
-      plan();
       for (let i = waits.length - 1; i >= 0; i--) { const w = waits[i]; if (w.at > t) continue; waits.splice(i, 1); if (w.a.epoch === w.epoch) w.fn(); }
       if (ctx.mode === 'sit' && lastMode !== 'sit' && ctx.stand && Math.random() < 0.6) bringTea(ctx.stand);
       lastMode = ctx.mode;

@@ -122,7 +122,8 @@ const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&stats';
   console.log('phone mode', await ph.evaluate(() => window.__loft.mode), 'sideways scroll', over, 'tier', await ph.evaluate(() => window.__loft.tier));
   // A known non-error: Playwright reports the streamed model downloads as aborted even though they finish (the page
   // only becomes ready after every model parses).
-  const real = errs.filter(e => !/assets\/(zones\/\w+|behbod_v3)\.glb net::ERR_ABORTED/.test(e));
+  // Also: the live video's YouTube player cancels its own background requests (captions, stats) when it pauses.
+  const real = errs.filter(e => !/assets\/(zones\/\w+|behbod_v3)\.glb net::ERR_ABORTED/.test(e) && !/(youtube-nocookie\.com|googlevideo\.com|ytimg\.com)\S* net::ERR_ABORTED/.test(e));
   console.log('errors', real.length ? '\n  ' + real.join('\n  ') : 'none', `(ignored ${errs.length - real.length} known non-errors)`);
   await b.close();
 })().catch(e => { console.error('FAILED', e.message); process.exit(1); });

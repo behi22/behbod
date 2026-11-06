@@ -183,17 +183,20 @@ export function makeCanvases(meta, opts = {}) {
   const panels = makePanels(surface, { weather: () => outside.weather || 'clear', holiday, videos: opts.videos || (() => []), projects: meta.projects || [] });
   Object.assign(S, panels.S);
   for (const [k, v] of Object.entries(S)) T[k] = v.t;
-  let acc = 0, slow = 0, sec = -1;
+  let acc = 0, slow = 0, sec = -1, backdrop = true;
   return {
     textures: T,
     outside,
     holiday,
-    tick(now, dt, focused) {
+    // The 3D outside replaces the painted backdrop, so its half-minute repaint (a big upload, a stall) stops.
+    stopBackdrop() { backdrop = false; },
+    // `near`: the desk's screens are in sight; out of sight they are not repainted (each repaint is an upload).
+    tick(now, dt, focused, near = true) {
       acc += dt; slow += dt;
-      if (Math.floor(now / 1000) !== sec) { sec = Math.floor(now / 1000); drawTimer(S.timer, now); }
-      outside.tick(now);
+      if (near && Math.floor(now / 1000) !== sec) { sec = Math.floor(now / 1000); drawTimer(S.timer, now); }
+      if (backdrop) outside.tick(now);
       panels.tick(Date.now());
-      if (acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); drawPishi(now); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
+      if (near && acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); drawPishi(now); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
       if (focused) { const b = Math.floor(now / 500); if (b !== term.blink) { term.blink = b; drawTerm(); } }
     },
     focusTerminal(on) { term.focus = on; drawTerm(); },

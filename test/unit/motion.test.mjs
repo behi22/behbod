@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LOCO, CROUCH, blendWeights, strideRate } from '../../web/src/pure/blend.js';
-import { tierStep, ease } from '../../web/src/pure/tier.js';
+import { tierStep, ease, p90 } from '../../web/src/pure/tier.js';
 
 const sum = m => [...m.values()].reduce((a, b) => a + b, 0);
 
@@ -42,27 +42,27 @@ test('strides get longer when running', () => {
 
 test('quality never drops during the first six seconds', () => {
   let r = { tier: 'high', slowRuns: 0 };
-  for (const now of [3000, 4000, 5500]) r = tierStep(r.tier, 40, now, r.slowRuns);
+  for (const now of [3000, 4000, 5500]) r = tierStep(r.tier, Array(60).fill(40), now, r.slowRuns);
   assert.deepEqual(r, { tier: 'high', slowRuns: 0 });
 });
 
 test('one slow stretch is not enough, two in a row drop one step', () => {
-  let r = tierStep('high', 30, 7000, 0);
+  let r = tierStep('high', Array(60).fill(30), 7000, 0);
   assert.deepEqual(r, { tier: 'high', slowRuns: 1 });
-  r = tierStep(r.tier, 30, 9500, r.slowRuns);
+  r = tierStep(r.tier, Array(60).fill(30), 9500, r.slowRuns);
   assert.deepEqual(r, { tier: 'medium', slowRuns: 0 });
 });
 
 test('a fast stretch in between resets the count', () => {
-  let r = tierStep('high', 30, 7000, 0);
-  r = tierStep(r.tier, 12, 9500, r.slowRuns);
-  r = tierStep(r.tier, 30, 12000, r.slowRuns);
+  let r = tierStep('high', Array(60).fill(30), 7000, 0);
+  r = tierStep(r.tier, Array(60).fill(12), 9500, r.slowRuns);
+  r = tierStep(r.tier, Array(60).fill(30), 12000, r.slowRuns);
   assert.deepEqual(r, { tier: 'high', slowRuns: 1 });
 });
 
 test('low is the floor', () => {
   let r = { tier: 'low', slowRuns: 5 };
-  r = tierStep(r.tier, 60, 20000, r.slowRuns);
+  r = tierStep(r.tier, Array(60).fill(60), 20000, r.slowRuns);
   assert.equal(r.tier, 'low');
 });
 
@@ -71,4 +71,17 @@ test('the ease curve starts at 0, ends at 1, is centred and only climbs', () => 
   assert.equal(ease(1), 1);
   assert.equal(ease(0.5), 0.5);
   for (let t = 0; t < 1; t += 0.01) assert.ok(ease(t + 0.01) >= ease(t));
+});
+
+// Regression: at 2x pixel density the house averaged 17 ms a frame (under the old 22 ms average limit) while one frame
+// in ten took 33 ms, so it stuttered and never stepped down.
+test('a stutter every tenth frame steps down even when the average looks fine', () => {
+  const stretch = [...Array(88).fill(16.7), ...Array(12).fill(33.3)];
+  const avg = stretch.reduce((a, b) => a + b, 0) / stretch.length;
+  assert.ok(avg < 22, 'the average alone would hide it');
+  let r = tierStep('high', stretch, 7000, 0);
+  r = tierStep(r.tier, stretch, 9500, r.slowRuns);
+  assert.equal(r.tier, 'medium');
+  assert.equal(tierStep('high', Array(100).fill(16.7), 7000, 1).tier, 'high', 'a steady 60 fps stays');
+  assert.equal(p90(stretch), 33.3);
 });

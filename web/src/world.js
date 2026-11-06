@@ -234,9 +234,17 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     mergeByColour(scene, list, o => { o.updateMatrixWorld(true); return o.matrixWorld; });
     merged += list.length;
   }
+  // Nothing in the baked zones moves except the pieces listed here, so every other matrix is worked out once instead of
+  // every frame (walking the scene graph was a steady few percent of each frame on a slow machine).
+  const moving = new Set([printHead, printPart, ...wardrobeDoors.map(w => w.o), ...fish.map(f => f.o), ...(aria.eyes || []), aria.tip,
+    ...Object.values(clockHands), deployBtn].filter(Boolean));
+  const freeze = o => { if (moving.has(o)) return; o.updateMatrix(); o.matrixAutoUpdate = false; };
+  for (const z of zones) z.traverse(freeze);
+  for (const o of scene.children) if (o.name.startsWith('merged_')) freeze(o);
 
   // Small, subtle reflections: the studio floor mirrors only the bright things (screens, LEDs, lamps), softly.
   let floorGloss = null;
+  let liveMirror = true;
   function setGloss(on) {
     if (!on) { if (floorGloss) { scene.remove(floorGloss); floorGloss.dispose(); floorGloss = null; } return; }
     if (floorGloss || !meta.gloss) return;
@@ -273,7 +281,11 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   scene.add(new THREE.Points(moteGeo, new THREE.PointsMaterial({ size: 0.014, color: 0xffe6c0, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending })));
 
   const clockFmt = {};
-  function tickClocks() {
+  let clockAt = -1;
+  // The hands only need the time once a second; asking for it every frame was a steady cost.
+  function tickClocks(t) {
+    if (t - clockAt < 1) return;
+    clockAt = t;
     for (const [nm, tz] of [['van', 'America/Vancouver'], ['teh', 'Asia/Tehran']]) {
       clockFmt[tz] ||= new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: 'numeric', minute: 'numeric', hour12: false });
       const p = clockFmt[tz].formatToParts(new Date());
@@ -286,7 +298,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   // busy: I'm at the computer, so the PC's lights pulse harder.
   function tick(dt, t, busy, cam, player, others = []) {
     for (const { mesh, k } of ledGroups) mesh.visible = Math.sin(t * (2 + k) + k * 1.7) > -0.6;
-    if (mirror && cam) mirror.visible = cam.distanceTo(mirror.position) < 7;
+    // The live mirror draws the room a second time, so on the low setting it shows as plain glass instead.
+    if (mirror && cam) { const on = liveMirror && cam.distanceTo(mirror.position) < 7; mirror.visible = on; if (mirrorMesh) mirrorMesh.visible = !on; }
     // Aria dozes with her eyes half shut, and wakes up when I sit down at the desk.
     ariaK += ((busy ? 1 : 0) - ariaK) * Math.min(1, dt * 2);
     if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 0.3 + 0.7 * ariaK; }
@@ -350,11 +363,12 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       if (motePos[k + 1] < 0.3) motePos[k + 1] = 5.4;
     }
     moteGeo.attributes.position.needsUpdate = true;
-    tickClocks();
+    tickClocks(t);
   }
 
   return {
     tick, setGloss, deskThings, doors, merged,
+    setMirror(on) { liveMirror = on; },
     toggleDoor(id) { const d = doors[id]; if (!d) return null; d.open = !d.open; return d; },
     openWardrobe(t) { wardrobeOpen = t + 6; },
     showUnlocks,
