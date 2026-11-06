@@ -17,6 +17,7 @@ import { makeTelescope } from './src/telescope.js';
 import { makePianoMode } from './src/pianomode.js';
 import { makePanels } from './src/panel.js';
 import { makeLiveVideo } from './src/livevideo.js';
+import { makeFleet } from './src/fleet.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -155,6 +156,8 @@ const scope = makeTelescope(scene, camera, meta, {
 const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano') });
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
+const fleet = makeFleet(scene, meta, { sound });
+world.retireFighters();
 function enterRange() {
   if (mode !== 'walk') return;
   mode = 'range'; route = null; keys.clear();
@@ -662,6 +665,7 @@ function step() {
   camera.lookAt(camLook);
   range.tick(dt, t); scope.tick(dt);
   liveVideo.tick();
+  fleet.tick(dt, t, camera.position);
   me.drawFace(now);
   me.tickMosaic(now, camera, engine.mosaicU);
   screens.tick(now, dt, mode === 'desk', camera.position.distanceTo(deskUse) < 10);

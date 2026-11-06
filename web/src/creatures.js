@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { piece, mesh, glow, sph, cyl, box, rbox, torus, PAINT } from './shapes.js';
 import { b2t } from './engine.js';
 
 // The loft's residents, built from simple shapes: BH-22 the droid, the mouse droid it chases, Pishi the grey tabby
@@ -7,74 +7,75 @@ import { b2t } from './engine.js';
 const tb = v => [v.x, -v.z, v.y];
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
-const E = new THREE.Euler(), Q = new THREE.Quaternion(), M4 = new THREE.Matrix4(), V = new THREE.Vector3(), S = new THREE.Vector3(), C = new THREE.Color();
+const V = new THREE.Vector3();
+const FUR = PAINT, SHELL = PAINT;
 
-// A shape moved into place and painted, ready to merge into one mesh. `color` is a hex, or fn(x, y, z) giving one.
-function piece(geo, color, at = [0, 0, 0], rot = [0, 0, 0], scale = [1, 1, 1]) {
-  geo.deleteAttribute('uv');
-  geo.applyMatrix4(M4.compose(V.set(...at), Q.setFromEuler(E.set(...rot)), S.set(...scale)));
-  const p = geo.attributes.position, c = new Float32Array(p.count * 3);
-  // The room is baked and unlit, so the residents are too: soft light from above is painted into their colours.
-  const n = geo.attributes.normal;
-  for (let i = 0; i < p.count; i++) {
-    C.set(typeof color === 'function' ? color(p.getX(i), p.getY(i), p.getZ(i)) : color);
-    const k = 0.5 + 0.35 * (0.5 + 0.5 * n.getY(i));
-    c[i * 3] = C.r * k; c[i * 3 + 1] = C.g * k * 0.98; c[i * 3 + 2] = C.b * k * 0.95;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
-  return geo;
-}
-const FUR = new THREE.MeshBasicMaterial({ vertexColors: true, fog: true });
-const SHELL = FUR;
-const glow = (r, g, b) => new THREE.MeshBasicMaterial({ color: new THREE.Color(r, g, b) });
-function mesh(pieces, mat, parent) { const m = new THREE.Mesh(mergeGeometries(pieces), mat); parent.add(m); return m; }
-const sph = (r, w = 16, h = 12) => new THREE.SphereGeometry(r, w, h);
-const cyl = (a, b, h, n = 14) => new THREE.CylinderGeometry(a, b, h, n);
-const box = (x, y, z) => new THREE.BoxGeometry(x, y, z);
-
+// BH-22, the Hopper (picked in Room Lab round 4): a matte black rounded body with a face screen and LED dot eyes, an
+// antenna, edges lit in the room's RGB, and two legs that end in wheels. About 40 cm tall. `dome` is the upper body,
+// which turns to look around; `rgb` are the lit edges, recoloured with the room's light scene.
 function buildBH22() {
   const root = new THREE.Group(), body = new THREE.Group(), dome = new THREE.Group();
-  root.add(body); body.add(dome); dome.position.y = 0.5;
-  const W = '#eef0f3', T = '#2bb8a6', D = '#3a3f48', O = '#e8893a';
+  root.add(body); body.add(dome); dome.position.y = 0.17;
+  const K = '#1b1e23', K2 = '#2a2e35', RUB = '#101114';
+  // Legs: hip, knee and wheel on each side, angled out a little.
+  const wheels = [];
+  mesh([...[-1, 1].flatMap(s => [
+    piece(rbox(0.026, 0.07, 0.034, 0.01), K2, [s * 0.066, 0.135, -0.004], [0.25, 0, s * -0.32]),
+    piece(sph(0.017, 12, 8), K, [s * 0.081, 0.1, -0.012]),
+    piece(rbox(0.022, 0.06, 0.03, 0.009), K2, [s * 0.081, 0.068, 0.0], [-0.2, 0, s * 0.08]),
+  ])], PAINT, body);
+  for (const s of [-1, 1]) {
+    const w = mesh([piece(cyl(0.045, 0.045, 0.026, 24), RUB, [0, 0, 0], [0, 0, Math.PI / 2]), piece(cyl(0.028, 0.028, 0.03, 16), K2, [0, 0, 0], [0, 0, Math.PI / 2])], PAINT, body);
+    w.position.set(s * 0.083, 0.045, 0.004);
+    wheels.push(w);
+  }
+  // The body: a rounded block with a recessed face screen.
   mesh([
-    piece(cyl(0.155, 0.15, 0.36, 24), W, [0, 0.32, 0]),
-    piece(cyl(0.158, 0.158, 0.03, 24), T, [0, 0.475, 0]),
-    piece(box(0.07, 0.11, 0.02), T, [-0.05, 0.36, 0.148]),
-    piece(box(0.05, 0.05, 0.02), O, [0.05, 0.385, 0.148]),
-    piece(box(0.1, 0.035, 0.02), D, [0, 0.25, 0.146]),
-    ...[-1, 1].flatMap(s => [
-      piece(box(0.05, 0.4, 0.09), W, [s * 0.185, 0.24, 0]),
-      piece(cyl(0.055, 0.055, 0.05, 16), T, [s * 0.185, 0.42, 0], [0, 0, Math.PI / 2]),
-      piece(box(0.08, 0.06, 0.16), D, [s * 0.185, 0.03, 0.01]),
-    ]),
-    piece(box(0.07, 0.06, 0.12), D, [0, 0.03, 0]),
-    piece(cyl(0.03, 0.05, 0.12, 12), D, [0, 0.1, 0]),
-  ], SHELL, body);
-  mesh([
-    piece(new THREE.SphereGeometry(0.152, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), (x, y) => (y > 0.1 ? '#dfe3e8' : '#c4cad2')),
-    piece(box(0.05, 0.035, 0.02), T, [0.06, 0.05, 0.135], [0, 0.4, 0]),
-    piece(box(0.03, 0.03, 0.02), T, [-0.065, 0.085, 0.115], [-0.5, -0.45, 0]),
-    piece(sph(0.032, 12, 8), '#15171b', [0, 0.075, 0.135]),
-    piece(cyl(0.004, 0.004, 0.08, 6), D, [0.05, 0.18, -0.02]),
-  ], SHELL, dome);
-  const eye = new THREE.Mesh(sph(0.012, 10, 8), glow(3, 0.7, 0.55));
-  eye.position.set(0, 0.078, 0.163); dome.add(eye);
-  // The glass of tea it carries on its dome.
-  const cup = mesh([piece(cyl(0.03, 0.024, 0.07, 14), '#c7902f', [0, 0.04, 0]), piece(cyl(0.045, 0.045, 0.006, 16), '#cdb77d')], SHELL, dome);
-  cup.position.y = 0.152; cup.visible = false;
-  return { root, body, dome, eye, cup };
+    piece(rbox(0.2, 0.14, 0.16, 0.04, 4), K, [0, 0.07, 0]),
+    piece(rbox(0.152, 0.092, 0.012, 0.018, 3), '#050607', [0, 0.072, 0.077], [0, 0, 0], [1, 1, 1], 0.2),
+    piece(cyl(0.0045, 0.0045, 0.075, 8), K2, [0.058, 0.17, -0.01], [0, 0, -0.22]),
+    piece(cyl(0.014, 0.018, 0.012, 16), K2, [0.05, 0.141, -0.01]),
+  ], PAINT, dome);
+  // Lit parts: the antenna tip, the frame round the face, the waist and top edges (in the room's RGB), the eyes.
+  const tip = new THREE.Mesh(sph(0.009, 12, 8), glow(3, 0.7, 0.45));
+  tip.position.set(0.066, 0.205, -0.01); dome.add(tip);
+  const rgbMat = glow(0.15, 1.6, 1.4);
+  const rgb = mesh([
+    piece(rbox(0.16, 0.1, 0.004, 0.02, 3), '#ffffff', [0, 0.072, 0.0705], [0, 0, 0], [1, 1, 1], 0),
+    piece(rbox(0.203, 0.006, 0.163, 0.003, 2), '#ffffff', [0, 0.012, 0], [0, 0, 0], [1, 1, 1], 0),
+  ], rgbMat, dome);
+  const eyes = new THREE.Group();
+  eyes.position.set(0, 0.075, 0.0845);
+  const eyeMat = glow(0.5, 2.6, 2.2);
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(rbox(0.017, 0.026, 0.004, 0.006, 2), eyeMat); e.position.x = s * 0.03; eyes.add(e); }
+  dome.add(eyes);
+  // The glass of tea it carries on its head.
+  const cup = mesh([piece(cyl(0.025, 0.02, 0.06, 14), '#c7902f', [0, 0.034, 0]), piece(cyl(0.038, 0.038, 0.005, 16), '#cdb77d')], PAINT, dome);
+  cup.position.set(-0.03, 0.142, 0); cup.visible = false;
+  return { root, body, dome, eye: eyes, eyeMat, cup, wheels, rgb: rgbMat };
 }
 
+// The mouse droid: a low black box on hidden wheels with a slanted nose, panelled sides, a ridged top deck, a small
+// arm tucked under the nose and a blinking light, zipping about the floor.
 function buildMouse() {
   const root = new THREE.Group();
+  const K = '#1c1e22', P = '#3d424a', L = '#5c636e';
   mesh([
-    piece(box(0.15, 0.07, 0.24), '#1d2025', [0, 0.06, 0]),
-    piece(box(0.12, 0.03, 0.17), '#5a616c', [0, 0.11, -0.01]),
-    piece(box(0.1, 0.025, 0.05), '#2a2e35', [0, 0.06, 0.13]),
-    ...[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([sx, sz]) => piece(cyl(0.025, 0.025, 0.02, 12), '#0d0e10', [sx * 0.078, 0.025, sz * 0.08], [0, 0, Math.PI / 2])),
-  ], SHELL, root);
-  const light = new THREE.Mesh(box(0.016, 0.01, 0.01), glow(3, 0.4, 0.2));
-  light.position.set(0.04, 0.126, 0.07); root.add(light);
+    piece(rbox(0.15, 0.06, 0.25, 0.012), K, [0, 0.05, -0.01]),
+    // The nose slopes down to the front.
+    piece(rbox(0.15, 0.045, 0.08, 0.01), K, [0, 0.07, 0.1], [0.42, 0, 0]),
+    piece(rbox(0.12, 0.022, 0.16, 0.008), P, [0, 0.087, -0.03]),
+    ...[-0.08, -0.04, 0, 0.04].map(z => piece(box(0.1, 0.006, 0.012), L, [0, 0.1, z - 0.03])),
+    ...[-1, 1].flatMap(s => [
+      piece(box(0.004, 0.034, 0.18), P, [s * 0.076, 0.05, -0.02]),
+      piece(box(0.005, 0.01, 0.12), L, [s * 0.078, 0.06, -0.02]),
+    ]),
+    piece(box(0.04, 0.012, 0.03), L, [0, 0.03, 0.14]),
+    piece(cyl(0.006, 0.006, 0.05, 8), L, [0, 0.03, 0.17], [Math.PI / 2, 0, 0]),
+    ...[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([sx, sz]) => piece(cyl(0.018, 0.018, 0.014, 12), '#0b0c0e', [sx * 0.066, 0.018, sz * 0.08], [0, 0, Math.PI / 2])),
+  ], PAINT, root);
+  const light = new THREE.Mesh(box(0.016, 0.008, 0.008), glow(3, 0.4, 0.2));
+  light.position.set(0.045, 0.1, 0.06); root.add(light);
   return { root, light };
 }
 
@@ -276,7 +277,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
 
   // ---------- BH-22 ----------
-  const r2 = agent(buildBH22(), 0.9, 0.8, 0.2);
+  const r2 = agent(buildBH22(), 0.9, 0.5, 0.15);
   const dock = b2t(...P.bh22_dock);
   place(r2, dock); r2.facing = Math.PI / 2; r2.state = 'dock'; r2.timer = rnd(12, 22); r2.chaseCool = 20; r2.stops = 0;
   let tipAt = 0;
@@ -318,7 +319,10 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     const look = r2.moving ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
     if (look !== null) r2.dome.rotation.y += (look - r2.dome.rotation.y) * Math.min(1, dt * 3);
     r2.body.rotation.x += ((r2.moving ? 0.07 : 0) - r2.body.rotation.x) * Math.min(1, dt * 5);
-    r2.eye.visible = (now % 3.1) > 0.12;
+    // Wheels roll with the ground covered; the body bobs a little on its legs; the LED eyes blink.
+    if (r2.moving) for (const w of r2.wheels) w.rotation.x += dt * r2.speed / 0.045;
+    r2.dome.position.y = 0.17 + (r2.moving ? Math.abs(Math.sin(now * 11)) * 0.006 : Math.sin(now * 2) * 0.002);
+    r2.eye.scale.y = (now % 3.1) < 0.12 ? 0.15 : 1;
     if (r2.state === 'dock' && !r2.moving) turn(r2, 1, 0, dt, 3);
     if (r2.state === 'dock' && (r2.timer -= dt) < 0) { r2.stops = 2 + Math.floor(rnd(0, 3)); r2Next(); }
     else if (r2.state === 'pause' && (r2.timer -= dt) < 0) r2Next();

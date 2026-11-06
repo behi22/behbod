@@ -181,7 +181,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   // The X-wing and TIE chase each other round the void, the record spins, the gull and BH-22 idle.
   const F = meta.fighters;
-  const fighters = F ? { x: gather(scene, named('ship_xwing'), b2t(...F.xwing)), t: gather(scene, named('ship_tie'), b2t(...F.tie)), ...F } : null;
+  let fighters = F ? { x: gather(scene, named('ship_xwing'), b2t(...F.xwing)), t: gather(scene, named('ship_tie'), b2t(...F.tie)), ...F } : null;
   const platter = named('platter').concat(named('record'), named('screen_nowplaying'));
   const spin = platter.length && meta.points.platter ? gather(scene, platter, b2t(...meta.points.platter)) : null;
   const gull = meta.points.gull ? gather(scene, named('gull_'), b2t(...meta.points.gull)) : null;
@@ -382,6 +382,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     deploy(t) { deployUntil = t + 3; },
     fan() { fanOn = !fanOn; return fanOn; },
     setRecord(on) { spinning = on; },
+    // The fleet (src/fleet.js) replaces the two baked ships.
+    retireFighters() { if (fighters) { fighters.x.visible = false; fighters.t.visible = false; fighters = null; } },
     // Daylight through the glass lifts the baked light a little and cools it; at night the bake shows as it is.
     daylight(k) {
       if (Math.abs(k - dayK) < 0.02) return;
