@@ -76,7 +76,7 @@ function gather(scene, meshes, pivot) {
 
 // The zones' baked geometry plus everything lit or moved at runtime.
 export function makeWorld(scene, zones, meta, screens, onDoor) {
-  const emits = {}, leds = [], clockHands = {}, aria = {}, pcGlow = [], deskThings = [], lavas = [], loose = [], baked = [];
+  const emits = {}, leds = [], clockHands = {}, aria = {}, pcGlow = [], pcParts = { a: [], b: [], c: [] }, deskThings = [], lavas = [], loose = [], baked = [];
   let dayK = 0;
   let mirrorMesh = null;
   for (const z of zones) {
@@ -121,7 +121,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
         o.material = new THREE.MeshBasicMaterial({ color: (m.color || new THREE.Color(0.2, 0.2, 0.2)).clone().multiplyScalar(0.55), fog: true });
       }
       // Each PC light remembers which RGB channel it follows: a (purple), b (teal) or c (the coolant).
-      if (/^(fan\d|coolant_tube|cpu_block|gpu\d_led|ram\d_led)$/.test(name)) pcGlow.push([o.material, o.material.color.clone(), /^(coolant_tube|cpu_block)$/.test(name) ? 'c' : m.name === 'E_purple' ? 'a' : 'b']);
+      if (/^(fan\d|rad_fan\d|coolant_\w+|cpu_block|gpu\d_led|ram\d_led)$/.test(name)) pcParts[/^(coolant_\w+|cpu_block)$/.test(name) ? 'c' : m.name === 'E_purple' ? 'a' : 'b'].push(o);
       if (/^(screen_(main|code|top|contrib|loss|pishi|laptop|timer)|kb_|monitor|mini_case|desk_mat|mouse)/.test(name)) deskThings.push(o);
     });
   }
@@ -139,6 +139,11 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   // The studio's RGB: light scenes from the terminal, holiday colours by default on a holiday, a green sweep on DEPLOY.
   const SCENES = { chill: [[0.55, 0.15, 1.0], [0.1, 0.9, 0.8]], focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[0.1, 0.85, 0.25], [0.95, 0.95, 0.95]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null };
   const COOLANT = { teal: [0.1, 0.9, 0.8], purple: [0.55, 0.15, 1.0], red: [1.0, 0.12, 0.1], gold: [1.0, 0.7, 0.15], white: [0.9, 0.95, 1.0] };
+  // The PC's lights are one mesh per channel, so the whole glass case is three draw calls.
+  for (const [fam, list] of Object.entries(pcParts)) {
+    const { merged, rest } = mergeByColour(scene, list, o => { o.updateMatrixWorld(true); return o.matrixWorld; });
+    for (const o of [...merged, ...rest]) pcGlow.push([o.material, o.material.color.clone(), fam]);
+  }
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
   let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0;
@@ -185,9 +190,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   const platter = named('platter').concat(named('record'), named('screen_nowplaying'));
   const spin = platter.length && meta.points.platter ? gather(scene, platter, b2t(...meta.points.platter)) : null;
   const gull = meta.points.gull ? gather(scene, named('gull_'), b2t(...meta.points.gull)) : null;
-  // The 3D printer's head runs back and forth while its print slowly grows.
-  const printHead = named('printer_head')[0], printPart = named('printer_print')[0];
-  const headX = printHead?.position.x ?? 0;
+  // The 3D printer's moving parts, which the printer module drives.
+  const printParts = { head: named('printer_head')[0], gantry: named('printer_gantry')[0], bed: named('printer_bed')[0] };
   const wardrobeDoors = named('wardrobe_door').concat(named('wardrobe_handle')).map(o => ({ o, x: o.position.x, side: o.name.endsWith('-1') ? -1 : 1 }));
   let wardrobeOpen = 0, wardrobeK = 0;
   const fish = named('fish').map((o, i) => ({ o, x: o.position.x, ph: i * 1.7 }));
@@ -218,7 +222,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
 
   // Static pieces that share a look are drawn together: one draw call per colour instead of one per piece.
-  const keep = new Set([...leds, ...deskThings, ...(aria.eyes || []), aria.tip, ...lavas, ...Object.values(clockHands), ...pcGlow.map(([m]) => m), mirrorMesh, deployBtn, cage]);
+  const keep = new Set([...leds, ...deskThings, ...(aria.eyes || []), aria.tip, ...lavas, ...Object.values(clockHands), ...pcGlow.map(([m]) => m), ...Object.values(printParts), mirrorMesh, deployBtn, cage]);
   const pinned = o => keep.has(o) || keep.has(o.material) || o.parent?.isGroup && o.parent.parent === scene && !zones.includes(o.parent);
   const buckets = new Map();
   for (const o of loose) {
@@ -236,7 +240,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   // Nothing in the baked zones moves except the pieces listed here, so every other matrix is worked out once instead of
   // every frame (walking the scene graph was a steady few percent of each frame on a slow machine).
-  const moving = new Set([printHead, printPart, ...wardrobeDoors.map(w => w.o), ...fish.map(f => f.o), ...(aria.eyes || []), aria.tip,
+  const moving = new Set([...Object.values(printParts), ...wardrobeDoors.map(w => w.o), ...fish.map(f => f.o), ...(aria.eyes || []), aria.tip,
     ...Object.values(clockHands), deployBtn].filter(Boolean));
   const freeze = o => { if (moving.has(o)) return; o.updateMatrix(); o.matrixAutoUpdate = false; };
   for (const z of zones) z.traverse(freeze);
@@ -341,8 +345,6 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       }
     }
     if (gull) { gull.rotation.y = Math.sin(t * 0.3) * 0.6; gull.position.y = b2t(...meta.points.gull).y + Math.abs(Math.sin(t * 0.8)) * 0.01; }
-    if (printHead) printHead.position.x = headX + Math.sin(t * 1.7) * 0.12;
-    if (printPart) printPart.scale.y = 0.3 + 0.7 * ((t / 90) % 1);
     wardrobeK += ((wardrobeOpen > t ? 1 : 0) - wardrobeK) * Math.min(1, dt * 3);
     for (const w of wardrobeDoors) w.o.position.x = w.x + w.side * wardrobeK * 0.45;
     for (const q of fish) { q.o.position.x = q.x + Math.sin(t * 0.4 + q.ph) * 0.25; q.o.rotation.y = Math.cos(t * 0.4 + q.ph) > 0 ? 0 : Math.PI; }
@@ -367,7 +369,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
 
   return {
-    tick, setGloss, deskThings, doors, merged,
+    tick, setGloss, deskThings, doors, merged, printParts,
     setMirror(on) { liveMirror = on; },
     toggleDoor(id) { const d = doors[id]; if (!d) return null; d.open = !d.open; return d; },
     openWardrobe(t) { wardrobeOpen = t + 6; },

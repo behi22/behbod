@@ -1,4 +1,4 @@
-// A reading panel over the room: the story book, the about board, and the guestbook and mailbox, which keep what you
+// A reading panel over the room: the story book, the about board, the 3D printer, and the guestbook and mailbox, which keep what you
 // write on this device only until their server is set up. Everything typed is shown with textContent, never as HTML.
 const CSS = `
 .pn { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(5, 7, 11, .55); padding: 16px; }
@@ -15,18 +15,24 @@ const CSS = `
 .pn-list { list-style: none; padding: 0; margin: 10px 0 0; }
 .pn-list li { padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); overflow-wrap: anywhere; }
 .pn-list b { color: #fff; font-weight: 600; }
+.pn.pn-low { place-items: end center; background: transparent; pointer-events: none; }
+.pn.pn-low .pn-box { pointer-events: auto; width: min(460px, 100%); }
+.pn-input { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.pn-box .pn-input input { margin: 0; flex: 1; min-width: 0; }
+.pn-chips { justify-content: flex-start; margin-top: 0; }
+.pn-box .pn-said { color: #3ee6c4; margin-bottom: 0; }
 `;
 const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; };
 
 export function makePanels(store) {
   if (!document.getElementById('pn-css')) { const s = document.createElement('style'); s.id = 'pn-css'; s.textContent = CSS; document.head.append(s); }
   let open = null;
-  function show(title, build) {
+  function show(title, build, variant = '') {
     close();
     const box = el('div', { className: 'pn-box' });
     const shut = el('button', { type: 'button', textContent: 'Close' });
     shut.addEventListener('click', close);
-    const root = el('div', { className: 'pn' }, box);
+    const root = el('div', { className: variant ? `pn pn-${variant}` : 'pn' }, box);
     root.setAttribute('role', 'dialog'); root.ariaLabel = title;
     root.addEventListener('pointerdown', e => { if (e.target === root) close(); });
     const render = () => { box.replaceChildren(el('h2', {}, title, shut), ...build(render)); };
@@ -92,6 +98,27 @@ export function makePanels(store) {
           el('ul', { className: 'pn-list' }, ...list.slice().reverse().map(g => el('li', {}, el('b', { textContent: g.name || 'Someone' }), ' ', g.text))),
         ];
       });
+    },
+    // The 3D printer: what you type becomes the print and more words change it. The panel sits low so the print shows.
+    printer(pr) {
+      let said = '';
+      const touch = matchMedia('(pointer: coarse)').matches;
+      show('3D PRINTER', render => {
+        const box = el('input', { maxLength: 60, placeholder: 'Type something to print', ariaLabel: 'What to print', enterKeyHint: 'go', autocomplete: 'off' });
+        const go = text => { said = pr.ask(text) || 'Nothing to print there. Try a shape, or any word at all.'; render(); };
+        const form = el('form', { className: 'pn-input' }, box, el('button', { type: 'submit', textContent: 'Print' }));
+        form.addEventListener('submit', e => { e.preventDefault(); go(box.value); });
+        const chip = w => { const b = el('button', { type: 'button', textContent: w }); b.addEventListener('click', () => go(w)); return b; };
+        // A moment's wait, so the E that opened the panel is not typed into it.
+        if (!touch) setTimeout(() => box.isConnected && box.focus(), 80);
+        const now = pr.print;
+        return [
+          el('p', { className: 'dim', textContent: 'Ask for a shape (vase, star, heart, gear, spiral, tower, flower, cup) or type any word. Then change it: taller, wider, twist, more points, spikier, or a colour.' }),
+          form,
+          el('div', { className: 'pn-row pn-chips' }, ...['star', 'heart', 'spiral', 'taller', 'twist', 'teal'].map(chip)),
+          el('p', { className: 'pn-said', textContent: said || `On the bed: ${now.colour} ${now.name}${pr.progress < 1 ? ', part way through' : ''}.` }),
+        ];
+      }, 'low');
     },
     // The mailbox cannot send yet, and says so; a note written here waits on this device.
     mailbox() {

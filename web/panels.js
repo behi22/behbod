@@ -1,6 +1,6 @@
 // The loft's other screens and prints, each a canvas: the boards, frames, labels and little displays around the
 // world. Anything that needs a server (Spotify, the guestbook, the range scores) says so until that part is built.
-import { drawGirih, drawPoster, drawProject, vanTime } from './room2.js';
+import { drawGirih, drawPoster, drawProject, vanTime, seeded } from './room2.js';
 import { holidayAt } from './src/pure/calendar.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
@@ -27,6 +27,66 @@ function nextHoliday(now) {
   for (let d = 1; d < 120 && !best; d++) { const h = holidayAt(new Date(now.getTime() + d * DAYS)); if (h) best = { ...h, days: d }; }
   nextCache.day = day; nextCache.val = best;
   return best;
+}
+
+// A tribute poster to Claude: a hand-drawn spark over the house's own floor plan, as if it lit the idea up.
+function drawClaude(g, c) {
+  const W = c.width, H = c.height, cx = W / 2, cy = H * 0.37, r = seeded(22);
+  const bg = g.createRadialGradient(cx, cy, 10, cx, cy, H * 0.75);
+  bg.addColorStop(0, '#3a2219'); bg.addColorStop(0.45, '#1d1512'); bg.addColorStop(1, '#100c0b');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // The plan: the house in thin lines, the studio, the stairs, the piano's round dais.
+  g.save();
+  g.translate(cx, cy); g.rotate(-0.08);
+  g.strokeStyle = 'rgba(240, 226, 210, 0.14)'; g.lineWidth = 1.5;
+  const u = W / 26;
+  g.strokeRect(-11 * u, -7.5 * u, 22 * u, 15 * u);
+  g.beginPath();
+  g.moveTo(-11 * u, -1 * u); g.lineTo(-4 * u, -1 * u); g.lineTo(-4 * u, -7.5 * u);
+  g.moveTo(4 * u, 7.5 * u); g.lineTo(4 * u, 2 * u); g.lineTo(11 * u, 2 * u);
+  for (let k = 0; k < 9; k++) { g.moveTo(-10.6 * u, (1 + k * 0.7) * u); g.lineTo(-8.8 * u, (1 + k * 0.7) * u); }
+  g.stroke();
+  g.beginPath(); g.arc(6.5 * u, -4 * u, 2.2 * u, 0, Math.PI * 2); g.stroke();
+  g.setLineDash([4, 6]); g.beginPath(); g.moveTo(-8 * u, 5 * u); g.bezierCurveTo(-3 * u, 3 * u, 0, 6 * u, 5 * u, 4 * u); g.stroke();
+  g.restore();
+  // Little points of light drifting out of the spark.
+  for (let i = 0; i < 70; i++) {
+    const a = r() * Math.PI * 2, d = W * (0.22 + r() * 0.5);
+    g.fillStyle = `rgba(242, 170, 130, ${0.15 + r() * 0.45})`;
+    g.beginPath(); g.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.9, 0.8 + r() * 2.2, 0, Math.PI * 2); g.fill();
+  }
+  // The spark: twelve tapered rays of uneven length, drawn by hand rather than traced.
+  const glow = g.createRadialGradient(cx, cy, 0, cx, cy, W * 0.36);
+  glow.addColorStop(0, 'rgba(217, 119, 87, 0.55)'); glow.addColorStop(1, 'rgba(217, 119, 87, 0)');
+  g.fillStyle = glow; g.fillRect(0, 0, W, H * 0.8);
+  g.fillStyle = '#d97757';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + 0.13 + (r() - 0.5) * 0.12, len = W * (0.19 + r() * 0.08), wid = W * (0.026 + r() * 0.01);
+    const ca = Math.cos(a), sa = Math.sin(a), px = -sa, py = ca;
+    g.beginPath();
+    g.moveTo(cx + px * wid * 0.55, cy + py * wid * 0.55);
+    g.quadraticCurveTo(cx + ca * len * 0.55 + px * wid * 0.62, cy + sa * len * 0.55 + py * wid * 0.62, cx + ca * len, cy + sa * len);
+    g.quadraticCurveTo(cx + ca * len * 0.55 - px * wid * 0.62, cy + sa * len * 0.55 - py * wid * 0.62, cx - px * wid * 0.55, cy - py * wid * 0.55);
+    g.closePath(); g.fill();
+    g.beginPath(); g.arc(cx + ca * len, cy + sa * len, wid * 0.2, 0, Math.PI * 2); g.fill();
+  }
+  g.beginPath(); g.arc(cx, cy, W * 0.045, 0, Math.PI * 2); g.fill();
+  // The words.
+  g.textAlign = 'center';
+  g.fillStyle = '#f3e9dc';
+  g.font = `600 ${Math.round(W * 0.15)}px Georgia, 'Times New Roman', serif`;
+  g.fillText('Claude', cx, H * 0.72);
+  g.fillStyle = '#d97757'; g.fillRect(cx - W * 0.09, H * 0.755, W * 0.18, 3);
+  g.fillStyle = '#e6d8c8';
+  g.font = `italic ${Math.round(W * 0.042)}px Georgia, 'Times New Roman', serif`;
+  g.fillText('A tribute to Claude,', cx, H * 0.815);
+  g.fillText('who helped me bring this idea to life.', cx, H * 0.86);
+  g.fillStyle = '#8f8176';
+  g.font = `${Math.round(W * 0.026)}px ${MONO}`;
+  g.fillText('WITH THANKS  ·  BEHBOD  ·  2026', cx, H * 0.93);
+  g.fillStyle = '#6c6159';
+  g.font = `${Math.round(W * 0.021)}px ${MONO}`;
+  g.fillText('Fan art. Not affiliated with Anthropic.', cx, H * 0.965);
 }
 
 export function makePanels(surface, ctx) {
@@ -89,6 +149,7 @@ export function makePanels(surface, ctx) {
   });
 
   add('poster', 560, 800, () => drawPoster(S.poster));
+  add('claude', 600, 860, drawClaude);
   add('girih', 640, 640, () => drawGirih(S.girih));
 
   // YouTube's thumbnails (served with open CORS, so the canvas stays usable as a texture), redrawn when they arrive.

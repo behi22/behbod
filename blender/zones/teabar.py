@@ -1,5 +1,5 @@
 """The tea bar: the island with turquoise tiles and a marble top, the samovar and estekans, three stools, brass lamps,
-and the tea cabinet at its east end with the girih print, the Persian corner of the loft."""
+the tea cabinet at its east end with the girih print, and a low back counter behind it; the Persian corner of the loft."""
 import math
 from lib.core import zone, box, cyl, sphere, plane, tube, collider, point, screen, interact, seat, char_light, lamp, META
 from zones.layout import TEABAR
@@ -72,5 +72,22 @@ def build(M, E, G):
         box('tea_cabinet_top_lamp', (0.14, 0.5, 0.03), (tx - 0.05, cy, 1.95), M['brass'])
         box('tea_cabinet_glow', (0.02, 0.46, 0.01), (tx - 0.12, cy, 1.93), E['warm_soft'], kind='emit')
         collider('tea_cabinet', (tx - 0.26, cy - 0.7, -1), (tx + 0.1, cy + 0.7, 1.9))
+        # The back counter: a low galley run behind the island, so it reads as a kitchen while the view to the water
+        # stays open over it. Kept quiet on purpose: the island's walnut and marble, handleless doors, and only a sink,
+        # its tap and one pot of herbs on top.
+        BX0, BX1, BY0, BY1 = cx - 1.15, cx + 1.15, IY1 + 1.2, IY1 + 1.8
+        bx, by = (BX0 + BX1) / 2, (BY0 + BY1) / 2
+        box('back_base', (BX1 - BX0 - 0.06, BY1 - BY0 - 0.06, TOP - 0.05), (bx, by, (TOP - 0.05) / 2), M['walnut'], bevel=0.01)
+        box('back_kick', (BX1 - BX0 - 0.1, 0.05, 0.08), (bx, BY0 + 0.05, 0.04), M['black'])
+        for k in (1, 2):
+            box(f'back_gap{k}', (0.006, 0.012, TOP - 0.2), (BX0 + k * (BX1 - BX0) / 3, BY0 + 0.025, (TOP - 0.05) / 2 + 0.06), M['black'])
+        box('back_top', (BX1 - BX0, BY1 - BY0, 0.05), (bx, by, TOP - 0.025), M['marble'], bevel=0.01)
+        box('back_sink', (0.5, 0.36, 0.006), (bx - 0.35, by, TOP + 0.001), M['black'], bevel=0.02)
+        tube('back_tap', [(bx - 0.35, by + 0.22, TOP), (bx - 0.35, by + 0.22, TOP + 0.3), (bx - 0.35, by + 0.12, TOP + 0.33), (bx - 0.35, by + 0.06, TOP + 0.26)], 0.012, M['brass'])
+        cyl('herb_pot', 0.07, 0.13, (bx + 0.75, by + 0.05, TOP + 0.065), M['pot'], seg=20, r2=0.085)
+        for i in range(7):
+            a = i * 2.4
+            sphere(f'herb_leaf{i}', 0.045, (bx + 0.75 + math.cos(a) * 0.04, by + 0.05 + math.sin(a) * 0.04, TOP + 0.17 + (i % 3) * 0.025), M['leaf'] if i % 2 else M['leaf2'], sub=1, scale=(1, 1, 0.7))
+        collider('back_counter', (BX0, BY0, -1), (BX1, BY1, TOP))
         char_light('point', '#ffb070', 2.0, (cx, cy, 1.9), 4.0)
         META['looks'] += [[sx, sy, TOP + 0.3], [tx - 0.126, cy, 2.27]]

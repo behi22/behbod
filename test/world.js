@@ -5,7 +5,7 @@ const OUT = process.argv[2] || 'test-output';
 require('fs').mkdirSync(OUT, { recursive: true });
 const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&stats';
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
-const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], studio: [15.6, 4.4, 0.45, -2.2], piano: [16.0, 8.9, 0, 0.6], teabar: [14.6, 9.4, 0, 0.1],
+const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], studio: [15.6, 4.4, 0.45, -2.2], desk: [19.0, 2.6, 0.45, -2.3], piano: [16.0, 8.9, 0, 0.6], teabar: [14.6, 9.4, 0, 0.1],
   mezz: [9.5, 2.0, 3.0, 2.0], balcony: [11.6, 16.2, 0, Math.PI], range: [8.1, -0.8, 0, -1.6], entry: [2.2, 3.6, 0, 2.6], stairs: [2.0, 9.2, 0, 2.4], videos: [19.2, 9.6, 0, -1.4], library: [9.0, 3.6, 0, -2.4] };
 
 (async () => {
@@ -259,6 +259,30 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const seated = await p.evaluate(() => [__loft.mode, __loft.me.root.position.distanceTo(__loft.chair), document.getElementById('prompt').classList.contains('on')]);
   await p.evaluate(() => __loft.leaveDesk()); await p.waitForTimeout(2500);
   console.log('walk to the desk: mode', seated[0], 'off the chair by', seated[1].toFixed(2), 'm, prompt shown', seated[2], seated[0] === 'desk' && seated[1] < 0.05 && !seated[2] ? 'PASS' : 'FAIL');
+
+  // The 3D printer: type a word, it prints a layer at a time with the head moving, then keeps the print for next time.
+  await spot('printer');
+  await p.evaluate(() => __loft.act('printer'));
+  await p.waitForTimeout(300);
+  const headRest = await p.evaluate(() => __loft.world.printParts.head.position.toArray());
+  await p.keyboard.type('a teal star'); await p.keyboard.press('Enter');
+  await p.waitForTimeout(2500);
+  const mid = await p.evaluate(() => ({ name: __loft.printer.print.name, colour: __loft.printer.print.colour, k: __loft.printer.progress, head: __loft.world.printParts.head.position.toArray(), said: document.querySelector('.pn-said')?.textContent }));
+  const headMoved = Math.hypot(...mid.head.map((v, i) => v - headRest[i]));
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => __loft.printer.progress === 1, null, { timeout: 20000 }).catch(() => {});
+  const kept = await p.evaluate(() => [__loft.printer.progress, JSON.parse(localStorage.getItem('home.print') || 'null')?.name, !!document.querySelector('.pn')]);
+  const printOk = mid.name === 'star' && mid.colour === 'teal' && mid.k > 0.05 && mid.k < 0.5 && headMoved > 0.02 && /teal star/.test(mid.said || '') && kept[0] === 1 && kept[1] === 'star' && !kept[2];
+  console.log('3D printer:', mid.said, '| part way', mid.k.toFixed(2), '| head moved', headMoved.toFixed(3), 'm | done', kept[0], 'kept', kept[1], printOk ? 'PASS' : 'FAIL');
+
+  // The Rubik's cube on the desk turns its layers while you are near it.
+  await p.evaluate(q => { __loft.pos.set(q.x, q.y + 0.05, q.z); }, b2t(19.6, 1.4, 0.45));
+  // It may be resting solved for a few seconds first; wait for a layer to start turning, then watch it turn.
+  const started = await p.waitForFunction(() => __loft.rubik.group.children[1].visible, null, { timeout: 15000 }).then(() => true, () => false);
+  const turns = [];
+  for (let i = 0; i < 8; i++) { turns.push(await p.evaluate(() => { const l = __loft.rubik.group.children[1]; return [l.quaternion.w.toFixed(3), __loft.rubik.phase].join(' '); })); await p.waitForTimeout(70); }
+  const cubeOk = started && new Set(turns).size > 2;
+  console.log("Rubik's cube:", new Set(turns).size, 'different moments,', turns[turns.length - 1], cubeOk ? 'PASS' : 'FAIL');
 
   // Regression: a second video used to open on top of the first, both playing.
   await p.evaluate(() => { __loft.act('video0'); __loft.act('tv'); });

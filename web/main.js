@@ -18,6 +18,8 @@ import { makePianoMode } from './src/pianomode.js';
 import { makePanels } from './src/panel.js';
 import { makeLiveVideo } from './src/livevideo.js';
 import { makeFleet } from './src/fleet.js';
+import { makePrinter } from './src/printer.js';
+import { makeRubik } from './src/rubik.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -157,6 +159,8 @@ const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: ()
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
+const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
+const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 world.retireFighters();
 function enterRange() {
   if (mode !== 'walk') return;
@@ -191,6 +195,10 @@ screens.command('deploy', say => { say('deploying...', 'build passed. shipped.')
 screens.command('scene', (say, arg) => say(world.scene(arg) ? `lights: ${arg}` : 'scenes: ' + world.scenes.join('  ')));
 screens.command('coolant', (say, arg) => say(world.coolant(arg) ? `coolant: ${arg}` : 'coolant colours: teal  purple  red  gold  white'));
 screens.command('fan', say => say(world.fan() ? 'fan on.' : 'fan off.'));
+screens.command('print', (say, arg) => {
+  const r = printer?.ask(arg);
+  say(...(r ? [r.toLowerCase()] : ['print <shape or any word>: vase  star  heart  gear  spiral  tower  flower  cup', '  then: taller  wider  twist  more points  spikier  or a colour']));
+});
 screens.command('music', (say, arg) => {
   const recs = audio.music.records;
   if (arg === 'off') { audio.music.stop(); world.setRecord(false); say('music off.'); return; }
@@ -322,7 +330,7 @@ const SAY = {
   resume: 'My resume is coming with the LinkedIn update.',
   secret_room: 'Locked. A score of 50 at the holo range opens it.',
   projects: 'My projects, all the way up the stairs.',
-  printer: 'The 3D printer is making a little BH-22.',
+  claude: 'A tribute to Claude, who helped me bring this idea to life.',
   wall: 'The weather and this month, holidays circled.',
   trophies: 'The trophy shelf.',
   collection: 'The collection case.',
@@ -363,6 +371,7 @@ function act(it) {
   if (it.id === 'tea') { earn('tea'); audio.sfx.pour(at); }
   if (it.id === 'book') { earn('book'); return panels.book(); }
   if (it.id === 'about' || it.id === 'guestbook' || it.id === 'mailbox') return panels[it.id]();
+  if (it.id === 'printer' && printer) return panels.printer(printer);
   if (it.id === 'secret_room' && progress.unlocked().includes('vault')) { earn('vault'); return toast('The secret room is yours. It opens in the next build.'); }
   // The TV flips through every video in turn; the frames each keep their own.
   if (it.id === 'tv') { const n = videos().length; playVideo(n ? tvNext++ % n : 0); return; }
@@ -611,7 +620,8 @@ function walk(dt, now) {
     near = !c ? a : !a ? c : Math.hypot(pos.x - c.x, pos.z - c.z) < Math.hypot(pos.x - a.x, pos.z - a.z) ? c : a;
   }
   if (near && (near !== was || $('prompt').lastChild.nodeValue !== near.label)) $('prompt').lastChild.nodeValue = near.label;
-  $('prompt').classList.toggle('on', !!near);
+  // A panel open over the room hides the prompt, so the two never overlap.
+  $('prompt').classList.toggle('on', !!near && !panels.open);
   return hs;
 }
 
@@ -672,6 +682,8 @@ function step() {
   range.tick(dt, t); scope.tick(dt);
   liveVideo.tick();
   fleet.tick(dt, t, camera.position);
+  printer?.tick(dt, camera.position);
+  rubik?.tick(dt, camera.position);
   me.drawFace(now);
   me.tickMosaic(now, camera, engine.mosaicU);
   screens.tick(now, dt, mode === 'desk', camera.position.distanceTo(deskUse) < 10);
@@ -731,7 +743,7 @@ $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag
 $('enter').classList.add('ready');
 $('enter').addEventListener('click', () => { $('gate').classList.add('gone'); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); });
 if (params.has('auto')) $('gate').classList.add('gone');
-window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, act: id => act(things.items.find(i => i.id === id)), stand,
+window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, printer, rubik, act: id => act(things.items.find(i => i.id === id)), stand,
   walkTo: (x, y, z) => walkTo(b2t(x, y, z)), goTo, chair, get route() { return route ? route.points.length : 0; }, wardrobe,
   get near() { return near?.id ?? null; }, get facing() { return facing; },
   get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, get physics() { return physName; },

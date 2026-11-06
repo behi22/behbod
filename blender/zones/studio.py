@@ -14,9 +14,10 @@ RX0, RY0, RY1 = 13.95, 1.0, 1.6     # the return on the right (south) end
 MW, MH, MR = 1.07, 0.45, 1.6        # 45 inch ultrawide, curved
 MC = Vector((15.58, 2.2, DZ + 0.41))
 CHAIR = Vector((14.45, 2.2, Z0))
-# The battlestation is written against an east wall at x 16 and moved onto the real one with at().
+# The battlestation is written against an east wall at x 16 and moved onto the real one with at(): the main run on the
+# east wall from the corner, the return flat along the south wall, so the desk wraps the corner.
 EW = 16.0
-DESK_AT = (W - EW, 0.8, 0.0)
+DESK_AT = (W - EW, -1.0, 0.0)
 
 
 def curved_screen(M, E):
@@ -162,12 +163,18 @@ def build(M, E, G):
                 tube(f'shock{dz:+.2f}', [(MIC.x + math.cos(2 * math.pi * k / 24) * 0.045, MIC.y + math.sin(2 * math.pi * k / 24) * 0.045, MIC.z + dz) for k in range(25)], 0.003, M['metal'])
             tube('pop_ring', [(MIC.x - 0.12, MIC.y + math.cos(2 * math.pi * k / 32) * 0.062, MIC.z + 0.02 + math.sin(2 * math.pi * k / 32) * 0.062) for k in range(33)], 0.004, M['black'])
             cyl('pop_filter', 0.06, 0.004, (MIC.x - 0.12, MIC.y, MIC.z + 0.02), M['cone'], axis='X', seg=32)
-            box('onair_box', (0.03, 0.3, 0.09), (EW - 0.02, MC.y, 2.62), M['black'], bevel=0.006)
-            plane('onair', 0.27, 0.065, (EW - 0.04, MC.y, 2.62), E['onair'], '-X')
+            # In front of the slats (their face is 4.5 cm off the wall).
+            box('onair_box', (0.03, 0.3, 0.09), (EW - 0.062, MC.y, 2.62), M['black'], bevel=0.006)
+            plane('onair', 0.27, 0.065, (EW - 0.079, MC.y, 2.62), E['onair'], '-X')
 
             # ---------- the maxed PC behind glass on the return, facing the room ----------
             PCX, PCY = 14.28, 1.3
-            box('pc_case', (0.5, 0.26, 0.52), (PCX, PCY, DZ + 0.26), M['black'], bevel=0.01)
+            # The case is open on the glass side, so everything inside shows.
+            box('pc_back', (0.5, 0.012, 0.52), (PCX, PCY - 0.124, DZ + 0.26), M['black'], bevel=0.004)
+            for nm, z in (('pc_floor', DZ + 0.006), ('pc_roof', DZ + 0.514)):
+                box(nm, (0.5, 0.26, 0.012), (PCX, PCY, z), M['black'], bevel=0.004)
+            for sx in (-1, 1):
+                box(f'pc_side{sx}', (0.012, 0.26, 0.52), (PCX + sx * 0.244, PCY, DZ + 0.26), M['black'], bevel=0.004)
             box('pc_board', (0.42, 0.01, 0.44), (PCX, PCY - 0.11, DZ + 0.27), M['plastic'])
             for i, z in enumerate((0.2, 0.33)):
                 box(f'gpu{i + 1}', (0.34, 0.05, 0.1), (PCX - 0.02, PCY - 0.05, DZ + z), M['metal'], bevel=0.006)
@@ -180,13 +187,25 @@ def build(M, E, G):
                 for g in rr['geom']:
                     if isinstance(g, bmesh.types.BMVert):
                         g.co *= 0.82
-                bmesh.ops.translate(bm, vec=P((PCX - 0.245, PCY, DZ + 0.12 + i * 0.13)), verts=bm.verts)
+                bmesh.ops.translate(bm, vec=P((PCX - 0.232, PCY, DZ + 0.12 + i * 0.13)), verts=bm.verts)
                 link(f'fan{i}', bm, E['rgb_teal'], 'emit')
-            cyl('coolant_tube', 0.009, 0.36, (PCX + 0.1, PCY - 0.03, DZ + 0.27), E['rgb_teal'], seg=10, kind='emit')
             cyl('cpu_block', 0.035, 0.02, (PCX + 0.06, PCY - 0.09, DZ + 0.37), E['rgb_teal'], axis='Y', kind='emit')
             for i in range(4):
                 box(f'ram{i}', (0.006, 0.004, 0.05), (PCX + 0.12 + i * 0.012, PCY - 0.09, DZ + 0.41), M['black'])
                 box(f'ram{i}_led', (0.006, 0.0045, 0.006), (PCX + 0.12 + i * 0.012, PCY - 0.09, DZ + 0.438), E['rgb_purple'] if i % 2 else E['rgb_teal'], kind='emit')
+            # Water cooling you can see through the glass: a lit reservoir, a radiator with three fans under the roof, and
+            # hard tubes round the loop (reservoir, CPU block, radiator, down the far side and back), clear of the cards.
+            cyl('coolant_res', 0.032, 0.17, (PCX + 0.2, PCY + 0.04, DZ + 0.2), E['rgb_teal'], seg=20, kind='emit')
+            cyl('res_cap', 0.034, 0.012, (PCX + 0.2, PCY + 0.04, DZ + 0.29), M['metal'], seg=20)
+            box('radiator', (0.4, 0.12, 0.028), (PCX - 0.01, PCY - 0.04, DZ + 0.48), M['black'], bevel=0.004)
+            for i in range(3):
+                cyl(f'rad_fan{i}', 0.042, 0.006, (PCX - 0.14 + i * 0.13, PCY - 0.04, DZ + 0.464), E['rgb_teal'], seg=24, kind='emit')
+            for i, pts in enumerate((
+                [(0.2, 0.04, 0.296), (0.2, 0.04, 0.44), (0.075, -0.04, 0.44), (0.075, -0.04, 0.39), (0.075, -0.08, 0.39)],
+                [(0.04, -0.08, 0.39), (0.04, -0.05, 0.39), (0.04, -0.05, 0.466)],
+                [(-0.2, -0.04, 0.466), (-0.2, 0.0, 0.44), (-0.2, 0.0, 0.09), (0.2, 0.04, 0.09), (0.2, 0.04, 0.114)],
+            )):
+                tube(f'coolant_pipe{i}', [(PCX + x, PCY + y, DZ + z) for x, y, z in pts], 0.006, E['rgb_teal'], seg=8, kind='emit')
             plane('pc_glass', 0.48, 0.5, (PCX, PCY + 0.131, DZ + 0.26), G['glass'], '+Y', kind='glass')
 
             # ---------- the laptop, open on a stand, with its dock ----------
@@ -265,6 +284,8 @@ def build(M, E, G):
             cyl('aria_antenna', 0.003, 0.05, (AR.x, AR.y, AR.z + 0.095), M['metal'])
             sphere('aria_tip', 0.009, (AR.x, AR.y, AR.z + 0.124), E['warm'], sub=2, kind='emit')
             point('aria', AR)
+            # Where the Rubik's cube sits, solving itself (built and turned by the page).
+            point('rubik', (15.45, 1.36, DZ))
 
             # ---------- shelf above: books, figures, the LEGO build, a trophy; Vancouver and Tehran clocks ----------
             SZ = 2.95
@@ -281,6 +302,19 @@ def build(M, E, G):
             for i, (fy, col) in enumerate(((2.55, 'clockface'), (2.7, 'red'), (2.85, 'lego_b'))):
                 sphere(f'figure{i}_head', 0.028, (EW - 0.12, fy, SZ + 0.16), M['clockface'], sub=2)
                 cyl(f'figure{i}_body', 0.028, 0.11, (EW - 0.12, fy, SZ + 0.07), M[col])
+            # A LEGO set half built on the shelf: a baseplate with two courses of wall, loose bricks and the open
+            # instruction booklet.
+            WIP = Vector((EW - 0.12, 2.05, SZ + 0.015))
+            box('lego_wip_plate', (0.13, 0.13, 0.006), WIP + Vector((0, 0, 0.003)), M['leaf'], bevel=0.001)
+            k = 0
+            for course in range(2):
+                bricks = [((0.016, 0.032), (-0.045, y)) for y in (-0.04, 0.0, 0.04)] + [((0.032, 0.016), (x, -0.055)) for x in (-0.015, 0.02)]
+                for size, (dx, dy) in (bricks if course == 0 else bricks[:2] + bricks[3:4]):
+                    box(f'lego_wip{k}', (*size, 0.019), WIP + Vector((dx, dy, 0.006 + 0.0095 + course * 0.019)), M['lego_r' if course else 'lego_w'], bevel=0.001)
+                    k += 1
+            for i, (dx, dy, c, r) in enumerate(((0.03, 0.09, 'lego_y', 0.4), (0.0, 0.1, 'lego_b', 1.1), (-0.035, 0.095, 'lego_r', 2.0))):
+                box(f'lego_loose{i}', (0.016, 0.032, 0.019), WIP + Vector((dx, dy, 0.0095)), M[c], bevel=0.001, rot=r)
+            box('lego_booklet', (0.07, 0.09, 0.003), WIP + Vector((0.0, -0.12, 0.002)), M['paper'], rot=0.2)
             LG = Vector((EW - 0.12, 3.0, SZ + 0.015))
             for i, (dy, dz, c) in enumerate(((0, 0, 'lego_r'), (0.032, 0, 'lego_r'), (0.016, 0.019, 'lego_y'), (-0.016, 0.019, 'lego_b'), (0.016, 0.038, 'lego_w'), (0, 0.057, 'lego_y'))):
                 box(f'lego{i}', (0.032, 0.064, 0.019), LG + Vector((0, dy, dz + 0.0095)), M[c], bevel=0.001)
@@ -295,9 +329,10 @@ def build(M, E, G):
                 META['clocks'][nm] = L((EW - 0.04, yy, 3.4))
 
             # ---------- the wall behind: walnut slats with a teal strip, hex acoustic panels above ----------
-            for i in range(30):
-                box(f'slat{i}', (0.03, 0.045, 2.6), (EW - 0.03, 0.75 + i * 0.1, Z0 + 1.3), M['slat'], bevel=0.004)
-            box('slat_led_top', (0.02, 3.0, 0.02), (EW - 0.07, 2.2, Z0 + 2.62), E['rgb_teal'], kind='emit')
+            # They start just off the south wall, where the desk now meets it.
+            for i in range(27):
+                box(f'slat{i}', (0.03, 0.045, 2.6), (EW - 0.03, 1.05 + i * 0.1, Z0 + 1.3), M['slat'], bevel=0.004)
+            box('slat_led_top', (0.02, 2.62, 0.02), (EW - 0.07, 2.38, Z0 + 2.62), E['rgb_teal'], kind='emit')
             hexes = [(1.2, 3.6, 'panel'), (1.55, 3.8, 'panel2'), (1.9, 3.6, 'panel'), (2.25, 3.8, 'panel'), (2.6, 3.6, 'panel2'), (2.95, 3.8, 'panel'),
                      (1.55, 4.2, 'panel'), (2.25, 4.2, 'panel2'), (2.95, 4.2, 'panel'), (1.9, 4.0, 'panel2'), (2.6, 4.0, 'panel')]
             for i, (py, pz, m) in enumerate(hexes):
@@ -344,7 +379,8 @@ def build(M, E, G):
             char_light('point', '#ffc48a', 2.0, (14.4, 2.2, 3.2), 4.5)
             META['looks'] += [L(MC), META['points']['aria'], META['screens']['pishi']['center']]
         # ---------- the rack in the corner with the 3D printer on top ----------
-        RXc, RYc = 21.6, 0.45
+        # Just past the desk's end on the east wall.
+        RXc, RYc = 21.62, 2.98
         box('rack', (0.62, 0.62, 1.25), (RXc, RYc, Z0 + 0.625), M['black'], bevel=0.012)
         for u in range(7):
             box(f'rack_unit{u}', (0.01, 0.54, 0.12), (RXc - 0.31, RYc, Z0 + 0.18 + u * 0.15), M['plastic'])
@@ -354,16 +390,19 @@ def build(M, E, G):
                 META['leds'].append(nm)
         collider('rack', (RXc - 0.31, RYc - 0.31, Z0 - 1), (RXc + 0.31, RYc + 0.31, Z0 + 1.25))
         PZ = Z0 + 1.25
+        # A bed-slinger facing the room: the gantry spans left to right and rides up a layer at a time, the head runs along
+        # it and the bed slides in and out, so the nozzle traces each layer (the page moves the three and grows the print).
         box('printer_base', (0.42, 0.42, 0.06), (RXc, RYc, PZ + 0.03), M['white'], bevel=0.008)
-        for sx in (-1, 1):
-            box(f'printer_post{sx}', (0.03, 0.03, 0.46), (RXc + sx * 0.19, RYc + 0.15, PZ + 0.29), M['black'])
-        box('printer_gantry', (0.42, 0.04, 0.04), (RXc, RYc + 0.15, PZ + 0.38), M['black'])
-        box('printer_head', (0.06, 0.06, 0.07), (RXc - 0.05, RYc + 0.12, PZ + 0.34), M['black'], kind='emit')
-        box('printer_bed', (0.3, 0.3, 0.008), (RXc, RYc, PZ + 0.1), M['metal'])
-        cyl('printer_print', 0.04, 0.09, (RXc - 0.05, RYc - 0.02, PZ + 0.15), M['lego_y'], seg=16, kind='emit')
+        for sy in (-1, 1):
+            box(f'printer_post{sy}', (0.03, 0.03, 0.46), (RXc + 0.04, RYc + sy * 0.2, PZ + 0.29), M['black'])
+        box('printer_top', (0.03, 0.43, 0.03), (RXc + 0.04, RYc, PZ + 0.535), M['black'])
+        box('printer_gantry', (0.035, 0.4, 0.035), (RXc + 0.04, RYc, PZ + 0.38), M['black'], kind='emit')
+        box('printer_head', (0.06, 0.06, 0.07), (RXc - 0.008, RYc, PZ + 0.37), M['black'], kind='emit')
+        box('printer_bed', (0.3, 0.3, 0.008), (RXc - 0.008, RYc, PZ + 0.1), M['metal'], kind='emit')
         box('printer_led', (0.003, 0.3, 0.006), (RXc - 0.2, RYc, PZ + 0.07), E['rgb_teal'], kind='emit')
-        point('printer', (RXc - 0.05, RYc + 0.12, PZ + 0.34))
-        interact('printer', 'Check the 3D print', (RXc - 0.9, RYc + 0.6, Z0), r=0.7)
+        point('printer', (RXc - 0.008, RYc, PZ + 0.37))
+        point('print_bed', (RXc - 0.008, RYc, PZ + 0.104))
+        interact('printer', 'Print something', (RXc - 0.9, RYc + 0.6, Z0), r=0.7)
 
         # ---------- the south wall: the GPU rig shelf and a pegboard, the glass board and STAY CURIOUS ----------
         box('rig_shelf', (0.9, 0.3, 0.03), (20.6, 0.16, Z0 + 2.2), M['walnut'], bevel=0.005)
@@ -392,6 +431,12 @@ def build(M, E, G):
         plane('screen_poster', 0.56, 0.8, (16.0, 0.027, Z0 + 1.55), M['paper'], '+Y')
         screen('poster', (16.0, 0.027, Z0 + 1.55), 0.56, 0.8, normal='+Y')
         wallspot('poster', 's', 15.69, 16.31, Z0 + 1.12, Z0 + 1.98)
+        # The Claude poster: a tribute to the AI that helped bring this place to life.
+        box('frame_claude', (0.66, 0.025, 0.92), (17.95, 0.013, Z0 + 1.58), M['frame'], bevel=0.004)
+        plane('screen_claude', 0.6, 0.86, (17.95, 0.027, Z0 + 1.58), M['paper'], '+Y')
+        screen('claude', (17.95, 0.027, Z0 + 1.58), 0.6, 0.86, normal='+Y')
+        wallspot('claude', 's', 17.62, 18.28, Z0 + 1.12, Z0 + 2.04)
+        interact('claude', 'Look at the poster', (17.95, 0.9, Z0), r=0.6)
         interact('board', 'Read the glass board', (13.95, 1.2, Z0), r=1.1)
 
         # ---------- a meeting corner by the board: a small sofa and a low table ----------
@@ -422,7 +467,7 @@ def build(M, E, G):
         collider('arcade', (AX - 0.32, AY - 0.36, Z0 - 1), (AX + 0.58, AY + 0.36, Z0 + 1.75))
         interact('arcade', 'Play Striker 22', (AX + 1.1, AY, Z0), r=0.8)
         potted('studio_plant', (11.85, 0.5, Z0), M, r=0.2, h=0.5, mat='pot_white', leaves=11, size=0.2)
-        potted('studio_plant2', (17.6, 0.45, Z0), M, r=0.22, h=0.55, mat='pot', leaves=12, size=0.22)
+        potted('studio_plant2', (17.0, 0.45, Z0), M, r=0.22, h=0.55, mat='pot', leaves=12, size=0.22)
         lamp('L_arcade', 25, (AX + 0.5, AY, Z0 + 1.4), (0.4, 0.9, 0.85))
         area('L_board', 80, (2.6, 0.6), (13.95, 0.8, Z0 + 2.6), (math.radians(30), 0, 0), (1.0, 0.85, 0.7))
         META['looks'] += [[13.95, 0.05, Z0 + 1.45]]

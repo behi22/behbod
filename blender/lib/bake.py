@@ -159,9 +159,17 @@ def load_raw(zid, raw_dir, quiet=False):
     return True
 
 
-def build_all(root, draft, exposure=1.3, reuse=False, only=None):
+def build_all(root, draft, exposure=1.3, reuse=False, only=None, cpu=0):
     scn = bpy.context.scene
-    use_gpu(scn)
+    if cpu:
+        # A fixed number of processor cores, for when the graphics chip is busy or stuck.
+        scn.render.engine = 'CYCLES'
+        scn.cycles.device = 'CPU'
+        scn.render.threads_mode = 'FIXED'
+        scn.render.threads = cpu
+        print('bake device CPU,', cpu, 'threads', flush=True)
+    else:
+        use_gpu(scn)
     raw_dir = os.path.join(root, 'blender', 'build')
     out_dir = os.path.join(root, 'web', 'assets', 'zones')
     os.makedirs(raw_dir, exist_ok=True)
