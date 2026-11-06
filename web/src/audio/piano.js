@@ -1,14 +1,27 @@
-import { pianoVoice } from './synths.js';
+import { pianoVoice, sampleVoice } from './synths.js';
 import { makeKeyMap } from './pure/notes.js';
 import { SONGS, buildSong } from './pure/songs.js';
 import { stats, ahead } from './core.js';
 
 const MAX_VOICES = 40;
+// The recorded grand: one file every third semitone from A0 (21) to C8 (108), in web/assets/piano.
+const NOTE = ['C', 'Cs', 'D', 'Ds', 'E', 'F', 'Fs', 'G', 'Gs', 'A', 'As', 'B'];
+const SAMPLED = Array.from({ length: 30 }, (_, i) => 21 + i * 3);
+const fileFor = m => `assets/piano/${NOTE[m % 12]}${Math.floor(m / 12) - 1}.mp3`;
 
 export function makePiano(env) {
   const keymap = makeKeyMap(60);
   const down = new Map(), live = new Set();
-  let sustain = false, song = null;
+  let sustain = false, song = null, bank = null, loading = null, lastNote = -1e9;
+  // The recordings load the first time the sound engine is up; until they arrive the piano plays its synth voice.
+  function load(e) {
+    if (loading || typeof fetch === 'undefined') return;
+    loading = Promise.all(SAMPLED.map(m => fetch(fileFor(m)).then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+      .then(b => e.ctx.decodeAudioData(b)).then(buf => [m, buf])))
+      .then(list => { bank = new Map(list); })
+      .catch(() => { bank = null; });
+  }
+  const voice = (e, t, midi, v) => { lastNote = performance.now(); return bank ? sampleVoice(e, e.pianoIn, t, midi, v, bank) : pianoVoice(e, e.pianoIn, t, midi, v); };
 
   const track = v => {
     live.add(v);
@@ -29,9 +42,10 @@ export function makePiano(env) {
     let v = +vel;
     if (!(v >= 0)) v = 0.7;
     if (v > 1) v /= 127;
+    load(e);
     const now = e.ctx.currentTime, old = down.get(midi);
     if (old) old.voice.release(now, 0.04);
-    down.set(midi, { voice: track(pianoVoice(e, e.pianoIn, now, midi, v)), key: true });
+    down.set(midi, { voice: track(voice(e, now, midi, v)), key: true });
   }
 
   function noteOff(midi) {
@@ -60,6 +74,7 @@ export function makePiano(env) {
     stopSong();
     const e = env.eng(), data = e && buildSong(id, { duet: !!opts.duet });
     if (!data) return 0;
+    load(e);
     const ctx = e.ctx, start = ctx.currentTime + 0.15, notes = data.notes;
     const cues = notes.flatMap(n => [{ at: n.t, on: true, n }, { at: n.t + n.dur, on: false, n }]).sort((a, b) => a.at - b.at || a.on - b.on);
     const lit = new Set(), voices = new Set();
@@ -88,7 +103,7 @@ export function makePiano(env) {
         while (ni < notes.length && start + notes[ni].t <= horizon) {
           const n = notes[ni++], t = start + n.t;
           if (t < now - 0.05 || !env.sound.on) continue;
-          const v = track(pianoVoice(e, e.pianoIn, Math.max(t, now), n.midi, n.vel));
+          const v = track(voice(e, Math.max(t, now), n.midi, n.vel));
           v.release(t + n.dur);
           voices.add(v);
           v.S.onDone = () => { live.delete(v); voices.delete(v); };
@@ -108,6 +123,20 @@ export function makePiano(env) {
     keyToMidi: (code, type, repeat) => keymap.keyToMidi(code, type, repeat),
     get octave() { return keymap.octave; },
     get playing() { return !!song; },
+    // Seconds since a key last sounded (played or from a song).
+    get idle() { return (performance.now() - lastNote) / 1000; },
+    get sampled() { return !!bank; },
+    preload() { const e = env.eng(); if (e) load(e); },
+    setOctave: o => keymap.setOctave(o),
+    // A song's melody notes, for learning it.
+    lead: id => (buildSong(id, { duet: false })?.notes || []).filter(n => n.part === 'lead').sort((a, b) => a.t - b.t),
+    // Where the piano stands (three's axes), so its sound comes from there.
+    setPosition(p) {
+      const e = env.eng();
+      if (!e || !e.pianoPan) return;
+      const P = e.pianoPan;
+      if (P.positionX) { P.positionX.value = p.x; P.positionY.value = p.y; P.positionZ.value = p.z; } else P.setPosition(p.x, p.y, p.z);
+    },
     songs: SONGS.map(({ id, title }) => ({ id, title })),
   };
 }

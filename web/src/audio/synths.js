@@ -54,6 +54,27 @@ export function pianoVoice(e, dest, t, midi, vel) {
   };
 }
 
+// The recorded grand (Salamander, a Yamaha C5, one sample every three semitones): the nearest recording, pitched the
+// last semitone or two; softer notes are darker; the damper falls on release except in the top octaves, which ring.
+export function sampleVoice(e, dest, t, midi, vel, bank) {
+  const v = clamp(vel, 0.05, 1), base = 21 + 3 * Math.round((midi - 21) / 3), buf = bank.get(base);
+  const S = shot(e, dest), src = S.buffer(buf), rate = Math.pow(2, (midi - base) / 12);
+  src.playbackRate.value = rate;
+  const lp = S.filt('lowpass', 1400 + 16000 * v * v, 0.5), amp = S.gain(0.05 + 0.9 * Math.pow(v, 1.25)), rel = S.gain(1);
+  src.connect(lp).connect(amp).connect(rel).connect(S.out);
+  const end = t + buf.duration / rate;
+  S.play(t, end);
+  return {
+    S, midi, start: t, end,
+    release(tr, rtau) {
+      if (midi >= 89 && rtau === undefined) return;
+      const at = Math.max(tr, t + 0.004), rt = rtau ?? (midi < 40 ? 0.2 : 0.11);
+      rel.gain.setTargetAtTime(0, at, rt);
+      S.stop(Math.min(end, at + rt * 7));
+    },
+  };
+}
+
 export function piano(e, P, t, { m, v, d }) {
   pianoVoice(e, P.in, t, m, v).release(t + d);
 }

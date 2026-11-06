@@ -50,6 +50,7 @@ export function makeKeyMap(base = 60) {
   const held = new Map();
   return {
     get octave() { return octave; },
+    setOctave(o) { octave = Math.max(-3, Math.min(3, Math.round(+o) || 0)); held.clear(); },
     keyToMidi(code, type = 'keydown', repeat = false) {
       if (code && typeof code === 'object') { type = code.type || type; repeat = !!code.repeat; code = code.code; }
       const up = type === 'keyup';

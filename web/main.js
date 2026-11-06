@@ -153,7 +153,7 @@ const scope = makeTelescope(scene, camera, meta, {
   onSpot: () => { toast('That is no moon.'); earn('telescope'); },
   onExit: () => { mode = 'walk'; me.root.visible = true; },
 });
-const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano') });
+const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano'), onLearned: title => toast(`You played ${title} all the way through.`) });
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
@@ -618,9 +618,15 @@ function walk(dt, now) {
 // ---------- sound of the room: the city through the glass, the sea and wind outside, rain, the fire, the printer ----------
 let ambT = 0, printing = false;
 const printerAt = meta.points.printer ? b2t(...meta.points.printer) : null;
+let pianoPlaced = false, musicDucked = false;
 function ambience(dt) {
   if ((ambT -= dt) > 0) return;
   ambT = 0.5;
+  // The piano's sound comes from the piano; its recordings load once the sound is on.
+  if (!pianoPlaced && sound.ctx && meta.points.piano_seat) { audio.piano.setPosition(b2t(...meta.points.piano_seat).add(new THREE.Vector3(0, 0.9, -0.9))); audio.piano.preload(); pianoPlaced = true; }
+  // The records fade out while the piano is in use or playing, and come back a few seconds after it stops.
+  const pianoBusy = pianoMode.active || audio.piano.playing || audio.piano.idle < 3;
+  if (pianoBusy !== musicDucked) { musicDucked = pianoBusy; audio.duckMusic(pianoBusy ? 0 : 1, pianoBusy ? 0.9 : 3); }
   const north = -pos.z, out = north > 15.1, rainy = outside.weather === 'rain';
   audio.ambience.set('city', out ? 0.9 : Math.max(0.15, 0.6 - Math.max(0, 15 - north) * 0.05));
   audio.ambience.set('waves', out ? 0.6 : 0);

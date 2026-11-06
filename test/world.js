@@ -207,6 +207,15 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const lit = await p.evaluate(() => document.querySelectorAll('.pm .on').length);
   await p.keyboard.up('KeyA'); await p.waitForTimeout(150);
   const played = await p.evaluate(() => __loft.progress.has('piano'));
+  // Learn: the first song's next keys glow gold; hitting one moves the lesson on.
+  await p.click('.pm-song button');
+  await p.waitForTimeout(200);
+  const step1 = await p.evaluate(() => [document.querySelector('.pm .grow').textContent, document.querySelectorAll('.pm .next').length]);
+  const nk = await p.locator('.pm .next').first().boundingBox();
+  if (nk) { await p.mouse.move(nk.x + nk.width / 2, nk.y + nk.height - 8); await p.mouse.down(); await p.waitForTimeout(80); await p.mouse.up(); }
+  await p.waitForTimeout(200);
+  const step2 = await p.evaluate(() => document.querySelector('.pm .grow').textContent);
+  console.log('piano learn:', step1[0], '| gold keys', step1[1], '| after hitting one:', step2, / 1 of /.test(step1[0]) && step1[1] > 0 && / 2 of /.test(step2) ? 'PASS' : 'FAIL');
   await p.keyboard.press('Escape'); await p.waitForTimeout(1600);
   const pianoOut = await p.evaluate(() => [__loft.mode, !!document.querySelector('.pm')]);
   console.log('piano: key lit', lit, 'played', played, '| after Esc', pianoOut.join(' overlay '), lit === 1 && played && pianoOut[0] === 'walk' && !pianoOut[1] ? 'PASS' : 'FAIL');
@@ -220,6 +229,17 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const rec = await p.evaluate(() => [__loft.audio.music.current, __loft.progress.has('record'), document.getElementById('snd').textContent, document.getElementById('toast').textContent]);
   await p.evaluate(() => __loft.audio.music.stop());
   console.log('records: playing', rec[0], 'earned', rec[1], rec[0] === 'night-shift' && rec[1] ? 'PASS' : `FAIL (before: ${sndBefore}; now: ${rec[2]}; ${rec[3]})`);
+
+  // The recorded grand loads once the sound is on, and the music fades out while the piano plays.
+  await p.waitForFunction(() => __loft.audio.piano.sampled, null, { timeout: 20000 }).catch(() => {});
+  const sampled = await p.evaluate(() => __loft.audio.piano.sampled);
+  await p.evaluate(() => __loft.audio.music.play('night-shift'));
+  await p.waitForTimeout(2500);
+  await p.evaluate(() => __loft.audio.piano.playSong('ode-to-joy'));
+  await p.waitForTimeout(2500);
+  const ducked = await p.evaluate(() => __loft.audio.musicLevel());
+  await p.evaluate(() => { __loft.audio.piano.stopSong(); __loft.audio.music.stop(); });
+  console.log('piano: recordings loaded', sampled, '| music level while it plays', ducked.toFixed(2), sampled && ducked < 0.1 ? 'PASS' : 'FAIL');
 
   // Regression: a held E repeats, and the repeats used to stand me up and sit me down again.
   await spot('couch_north');

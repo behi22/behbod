@@ -37,6 +37,10 @@ export function makeAudio(sound) {
         L.setOrientation(fx, fy, fz, ...up);
       }
     },
+    // Fades the records toward `level` over about `seconds`, so the piano and the music never play over each other.
+    // How loud the records are let through right now (1 full, 0 faded out).
+    musicLevel() { const e = env.eng(); return e ? e.musicIn.gain.value : 1; },
+    duckMusic(level, seconds = 1.2) { const e = env.eng(); if (!e) return; e.musicIn.gain.setTargetAtTime(Math.max(0, Math.min(1, level)), e.ctx.currentTime, seconds / 3); },
     tick() {
       if (!env.eng()) return;
       amb.sync();

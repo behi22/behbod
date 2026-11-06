@@ -29,8 +29,10 @@ export function makeEngine(ctx, dest) {
   const musicIn = gain(1), analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
   musicIn.connect(comp(-12, 6)).connect(analyser).connect(out);
-  const pianoIn = gain(1), pianoSend = gain(0.22);
-  pianoIn.connect(comp(-10, 4)).connect(out);
+  // The piano sounds from where the piano stands, so a song left playing fades as you walk away.
+  const pianoIn = gain(1), pianoSend = gain(0.22), pianoPan = ctx.createPanner();
+  Object.assign(pianoPan, { panningModel: 'equalpower', distanceModel: 'inverse', refDistance: 2.5, maxDistance: 40, rolloffFactor: 0.9 });
+  pianoIn.connect(comp(-10, 4)).connect(pianoPan).connect(out);
   pianoIn.connect(pianoSend).connect(reverbIn);
   const sfxIn = gain(1), sfxSend = gain(0.25);
   sfxIn.connect(out);
@@ -39,7 +41,7 @@ export function makeEngine(ctx, dest) {
   ambIn.connect(out);
   const cache = new Map();
   return {
-    ctx, out, reverbIn, musicIn, analyser, pianoIn, sfxIn, sfxSend, ambIn,
+    ctx, out, reverbIn, musicIn, analyser, pianoIn, pianoPan, sfxIn, sfxSend, ambIn,
     noise: toBuffer(ctx, [noiseData]),
     waves: new Map(),
     texture(name) {
