@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LOCO, CROUCH, blendWeights, strideRate } from '../../web/src/pure/blend.js';
-import { tierStep, ease, p90 } from '../../web/src/pure/tier.js';
+import { tierStep, ease, p90, TIER_ORDER } from '../../web/src/pure/tier.js';
 
 const sum = m => [...m.values()].reduce((a, b) => a + b, 0);
 
@@ -40,30 +40,61 @@ test('strides get longer when running', () => {
   near(strideRate(5.8), 2);
 });
 
+// Runs a series of stretches through the quality judge, one every 2.5 s from `start`, and returns the tier after each.
+function run(tier, stretches, start = 7000, state = { top: tier }) {
+  const seen = [];
+  stretches.forEach((times, k) => { state = tierStep(tier, times, start + k * 2500, state); tier = state.tier; seen.push(tier); });
+  return { seen, state };
+}
+const slow = Array(60).fill(30), fast = Array(60).fill(16.7);
+
 test('quality never drops during the first six seconds', () => {
-  let r = { tier: 'high', slowRuns: 0 };
-  for (const now of [3000, 4000, 5500]) r = tierStep(r.tier, Array(60).fill(40), now, r.slowRuns);
-  assert.deepEqual(r, { tier: 'high', slowRuns: 0 });
+  let r = { tier: 'ultra', top: 'ultra' };
+  for (const now of [3000, 4000, 5500]) r = tierStep(r.tier, Array(60).fill(40), now, r);
+  assert.equal(r.tier, 'ultra');
+  assert.equal(r.slowRuns, 0);
 });
 
 test('one slow stretch is not enough, two in a row drop one step', () => {
-  let r = tierStep('high', Array(60).fill(30), 7000, 0);
-  assert.deepEqual(r, { tier: 'high', slowRuns: 1 });
-  r = tierStep(r.tier, Array(60).fill(30), 9500, r.slowRuns);
-  assert.deepEqual(r, { tier: 'medium', slowRuns: 0 });
+  assert.deepEqual(run('ultra', [slow, slow]).seen, ['ultra', 'high']);
+});
+
+test('the first step down only lowers the pixel count, the effects stay', () => {
+  assert.equal(TIER_ORDER.indexOf('ultra') - TIER_ORDER.indexOf('high'), 1);
+  assert.deepEqual(run('ultra', [slow, slow, slow, slow, slow, slow]).seen, ['ultra', 'high', 'high', 'medium', 'medium', 'low']);
 });
 
 test('a fast stretch in between resets the count', () => {
-  let r = tierStep('high', Array(60).fill(30), 7000, 0);
-  r = tierStep(r.tier, Array(60).fill(12), 9500, r.slowRuns);
-  r = tierStep(r.tier, Array(60).fill(30), 12000, r.slowRuns);
-  assert.deepEqual(r, { tier: 'high', slowRuns: 1 });
+  assert.deepEqual(run('ultra', [slow, fast, slow]).seen, ['ultra', 'ultra', 'ultra']);
 });
 
 test('low is the floor', () => {
-  let r = { tier: 'low', slowRuns: 5 };
-  r = tierStep(r.tier, Array(60).fill(60), 20000, r.slowRuns);
-  assert.equal(r.tier, 'low');
+  assert.equal(tierStep('low', Array(60).fill(60), 20000, { slowRuns: 5, top: 'ultra' }).tier, 'low');
+});
+
+// Regression: one slow patch (a busy moment, another program) used to lower the quality for the rest of the visit.
+test('after a slow patch, steady frames bring the quality back', () => {
+  const { seen } = run('ultra', [slow, slow, fast, fast, fast, fast]);
+  assert.deepEqual(seen, ['ultra', 'high', 'high', 'high', 'high', 'ultra']);
+});
+
+test('it never climbs above where it started', () => {
+  const { seen } = run('medium', Array(20).fill(fast));
+  assert.ok(seen.every(t => t === 'medium'));
+});
+
+test('each try back up waits three times longer, so an edge machine settles', () => {
+  // Slow at ultra, fine at high: it tries ultra again after 4 good stretches, then 12, then 36.
+  let tier = 'ultra', state = { top: 'ultra' }, now = 7000;
+  const ups = [];
+  for (let k = 0; k < 120; k++) {
+    state = tierStep(tier, tier === 'ultra' ? slow : fast, now, state);
+    if (state.tier === 'ultra' && tier === 'high') ups.push(k);
+    tier = state.tier; now += 2500;
+  }
+  const gaps = ups.slice(1).map((u, i) => u - ups[i]);
+  assert.ok(ups.length >= 3, `tried ${ups.length} times`);
+  assert.ok(gaps.every((g, i) => i === 0 || g > gaps[i - 1] * 2), `gaps ${gaps}`);
 });
 
 test('the ease curve starts at 0, ends at 1, is centred and only climbs', () => {
@@ -79,9 +110,7 @@ test('a stutter every tenth frame steps down even when the average looks fine', 
   const stretch = [...Array(88).fill(16.7), ...Array(12).fill(33.3)];
   const avg = stretch.reduce((a, b) => a + b, 0) / stretch.length;
   assert.ok(avg < 22, 'the average alone would hide it');
-  let r = tierStep('high', stretch, 7000, 0);
-  r = tierStep(r.tier, stretch, 9500, r.slowRuns);
-  assert.equal(r.tier, 'medium');
-  assert.equal(tierStep('high', Array(100).fill(16.7), 7000, 1).tier, 'high', 'a steady 60 fps stays');
+  assert.deepEqual(run('ultra', [stretch, stretch]).seen, ['ultra', 'high']);
+  assert.equal(tierStep('ultra', Array(100).fill(16.7), 7000, { slowRuns: 1, top: 'ultra' }).tier, 'ultra', 'a steady 60 fps stays');
   assert.equal(p90(stretch), 33.3);
 });

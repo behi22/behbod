@@ -9,6 +9,9 @@ from mathutils import Vector, Matrix, Euler
 
 META = {'zones': [], 'colliders': [], 'floors': [], 'screens': {}, 'points': {}, 'leds': [], 'clocks': {}, 'interact': [], 'lights': [], 'looks': [], 'spots': {}, 'rugs': [], 'walls': []}
 GROUPS = {}
+# Surfaces baked as one material but shown darker, per channel, so the light they bounce onto the room stays the same.
+# The mezzanine's boards bake as oak and show as the dark wood of the version he liked.
+SHADE = {'oak_mezz': (0.093, 0.082, 0.047)}
 _zone = [None]
 _off = [Vector()]
 
@@ -205,6 +208,7 @@ def make_materials():
         'felt': principled('felt', (0.05, 0.05, 0.06), 0.9),
         'desk': node_mat('desk', noisy((0.16, 0.085, 0.045), 40, 0.25, 0.4)),
         'oak': node_mat('oak', noisy((0.42, 0.27, 0.14), 40, 0.25, 0.5)),
+        'oak_mezz': node_mat('oak_mezz', noisy((0.42, 0.27, 0.14), 40, 0.25, 0.5)),
         'walnut': node_mat('walnut', noisy((0.13, 0.07, 0.04), 40, 0.25, 0.45)),
         'metal': principled('metal', (0.11, 0.115, 0.12), 0.35, 0.3),
         'steel': principled('steel', (0.5, 0.52, 0.55), 0.3, 0.8),

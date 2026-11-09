@@ -40,7 +40,7 @@ const engine = makeEngine(canvas, coarse);
 const { renderer, scene, camera } = engine;
 // An unknown ?q= falls back to auto rather than stopping the page.
 let tierName = Object.hasOwn(TIERS, params.get('q') || '') ? params.get('q') : 'auto', autoTier = tierName === 'auto';
-engine.onTier(name => { world?.setGloss(name === 'high'); world?.setMirror(name !== 'low'); $('q').textContent = 'Quality: ' + (autoTier ? 'auto, ' : '') + name; });
+engine.onTier(name => { world?.setGloss(name === 'high' || name === 'ultra'); world?.setMirror(name !== 'low'); $('q').textContent = 'Quality: ' + (autoTier ? 'auto, ' : '') + name; });
 
 // ---------- loading ----------
 const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
@@ -92,7 +92,7 @@ function findPath(from, to) {
 // The real 3D world outside the glass; if it cannot start, the painted backdrop stays.
 let out3d = null;
 try {
-  out3d = makeOutside3d({ now: () => new Date(), weather: () => outside.weather, holiday: () => screens.holiday, quality: () => (tierName === 'auto' ? 'medium' : tierName) });
+  out3d = makeOutside3d({ now: () => new Date(), weather: () => outside.weather, holiday: () => screens.holiday, quality: () => ({ auto: 'medium', ultra: 'high' }[tierName] || tierName) });
   engine.setBackground(out3d);
   scene.traverse(o => { if (o.name === 'backdrop') o.visible = false; });
   screens.stopBackdrop();
@@ -651,7 +651,7 @@ function ambience(dt) {
 const tmpP = new THREE.Vector3(), tmpL = new THREE.Vector3();
 const FOG_NIGHT = new THREE.Color(0x0a0f1c), FOG_DAY = new THREE.Color(0x6f8197);
 const clock = new THREE.Clock();
-let frameTimes = [], tierChecked = 0, slowRuns = 0, lastFrame = performance.now();
+let frameTimes = [], tierChecked = 0, tierState = {}, lastFrame = performance.now();
 function step() {
   const dt = Math.min(clock.getDelta(), 1 / 20), now = performance.now(), t = now / 1000;
   renderer.info.reset();
@@ -707,9 +707,8 @@ function step() {
   frameTimes.push(now - lastFrame); lastFrame = now;
   if (autoTier && frameTimes.length > 40 && now - tierChecked > 2500) {
     tierChecked = now;
-    const r = tierStep(tierName, frameTimes, now, slowRuns);
-    slowRuns = r.slowRuns;
-    if (r.tier !== tierName) { tierName = r.tier; engine.setTier(tierName); }
+    tierState = tierStep(tierName, frameTimes, now, tierState);
+    if (tierState.tier !== tierName) { tierName = tierState.tier; engine.setTier(tierName); }
     frameTimes = [];
   }
   if (showStats) $('stats').textContent = `${(1 / Math.max(dt, 1e-3)).toFixed(0)} fps · ${renderer.info.render.calls} calls · ${(renderer.info.render.triangles / 1000).toFixed(0)}k tris · ${physName} · ${outside.weather}${screens.holiday ? ' · ' + screens.holiday.id : ''}`;
@@ -717,22 +716,25 @@ function step() {
 }
 
 $('q').addEventListener('click', () => {
-  const order = ['auto', 'low', 'medium', 'high'];
+  const order = ['auto', 'low', 'medium', 'high', 'ultra'];
   const next = order[(order.indexOf(autoTier ? 'auto' : tierName) + 1) % order.length];
   autoTier = next === 'auto';
-  tierName = autoTier ? 'high' : next;
+  tierName = autoTier ? startTier() : next;
+  tierState = { top: tierName };
   engine.setTier(tierName);
 });
 $('who').addEventListener('click', () => { if (mode === 'walk') me.nextHead(); });
 $('snd').addEventListener('click', () => { const on = sound.toggle(); $('snd').textContent = on ? 'Sound on' : 'Sound off'; $('snd').classList.toggle('on', on); });
 if (showStats) $('stats').style.display = 'block';
 
-// Weaker machines start a step lower instead of stuttering through the first seconds; the automatic quality still
-// steps down from there if frames are slow.
-if (tierName === 'auto') {
+// Full sharpness on a capable computer; weaker machines and phones start lower instead of stuttering through the first
+// seconds. The automatic quality steps down from there when frames are slow and back up when they recover.
+function startTier() {
   const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
-  tierName = coarse && weak ? 'low' : coarse || weak ? 'medium' : 'high';
+  return coarse && weak ? 'low' : coarse || weak ? 'medium' : 'ultra';
 }
+if (tierName === 'auto') tierName = startTier();
+tierState = { top: tierName };
 engine.setTier(tierName);
 engine.resize();
 const start = follow();

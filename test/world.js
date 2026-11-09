@@ -296,11 +296,19 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const p2 = await b.newPage({ viewport: { width: 800, height: 600 } });
   const errs2 = [];
   p2.on('pageerror', e => errs2.push(e.message));
-  await p2.goto(URL.replace('?auto', '?auto&q=ultra'));
+  await p2.goto(URL.replace('?auto', '?auto&q=max'));
   const up = await p2.waitForFunction(() => !!window.__loft, null, { timeout: 120000 }).then(() => true, () => false);
   const tier2 = up ? await p2.evaluate(() => __loft.tier) : null;
   await p2.close();
-  console.log('?q=ultra still loads:', up, 'tier', tier2, up && !errs2.length ? 'PASS' : 'FAIL ' + errs2.join(' | '));
+  console.log('?q=max (unknown) still loads:', up, 'tier', tier2, up && !errs2.length ? 'PASS' : 'FAIL ' + errs2.join(' | '));
+
+  // A capable computer starts at the screen's full sharpness (on a 2x screen, 2x pixels), with every effect on.
+  const p3 = await b.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 2 });
+  await p3.goto(URL);
+  await p3.waitForFunction(() => !!window.__loft, null, { timeout: 120000 });
+  const sharp = await p3.evaluate(() => [__loft.tier, __loft.renderer.getPixelRatio()]);
+  await p3.close();
+  console.log('full sharpness at the start:', sharp.join(' at '), 'x', sharp[0] === 'ultra' && sharp[1] === 2 ? 'PASS' : 'FAIL');
 
   console.log('missing screens', warns.length ? warns.join(' | ') : 'none');
   console.log('errors', errs.length ? errs.join(' | ') : 'none');

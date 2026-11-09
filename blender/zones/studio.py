@@ -344,7 +344,8 @@ def build(M, E, G):
                 link(f'acoustic{i}', bm, M[m])
 
             # ---------- the racing chair: white with gold stitching and a purple stripe, on a Persian rug ----------
-            rug('rug_studio', (CHAIR.x - 0.1, CHAIR.y, Z0), M['rug'], r=1.05)
+            # Slid out of the corner: the chair stays on it, and it sits on open floor clear of the desk's return.
+            rug('rug_studio', (CHAIR.x - 0.4, CHAIR.y + 0.5, Z0), M['rug'], r=1.05)
             cx, cy = CHAIR.x, CHAIR.y
             box('chair_seat', (0.5, 0.52, 0.1), (cx, cy, Z0 + 0.5), M['rm_white'], bevel=0.04, seg=3)
             for s in (-1, 1):

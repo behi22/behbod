@@ -7,8 +7,9 @@ export const b2t = (x, y, z) => new THREE.Vector3(x, z, -y);
 export const TIERS = {
   low: { ratio: 1, post: false, bloom: false },
   medium: { ratio: 1.25, post: true, bloom: true },
-  // 1.5x pixels at most: at 2x a laptop's integrated graphics spend everything on pixels and the frames stutter.
   high: { ratio: 1.5, post: true, bloom: true, smaa: true, grain: true },
+  // The screen's full sharpness, up to 2x. The first step down when frames stutter is to `high`, which keeps every effect.
+  ultra: { ratio: 2, post: true, bloom: true, smaa: true, grain: true },
 };
 
 // The mosaic that hides the toy head moves the image's UVs, so it needs its own pass ahead of the others.

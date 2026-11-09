@@ -127,8 +127,10 @@ def build(M, E, G):
         ka, kb, kc, kd = SKYLIGHT
         for name, (u0, v0, u1, v1) in {'w': (0, 0, ka, D), 'e': (kc, 0, W, D), 's': (ka, 0, kc, kb), 'n': (ka, kd, kc, D)}.items():
             box(f'ceiling_{name}', (u1 - u0, v1 - v0, 0.2), ((u0 + u1) / 2, (v0 + v1) / 2, H + 0.1), M['ceiling'])
-        for name, (u0, v0, u1, v1) in {'w': (ka - 0.06, kb, ka, kd), 'e': (kc, kb, kc + 0.06, kd), 's': (ka, kb - 0.06, kc, kb), 'n': (ka, kd, kc, kd + 0.06)}.items():
-            box(f'skylight_frame_{name}', (u1 - u0, v1 - v0, 0.5), ((u0 + u1) / 2, (v0 + v1) / 2, H + 0.25), M['black'])
+        # The frame stands 2 mm proud of the ceiling and the opening, so none of its faces shares a plane with the ceiling's.
+        e = 0.002
+        for name, (u0, v0, u1, v1) in {'w': (ka - 0.06, kb, ka + e, kd), 'e': (kc - e, kb, kc + 0.06, kd), 's': (ka, kb - 0.06, kc, kb + e), 'n': (ka, kd - e, kc, kd + 0.06)}.items():
+            box(f'skylight_frame_{name}', (u1 - u0, v1 - v0, 0.5 + e), ((u0 + u1) / 2, (v0 + v1) / 2, H + 0.25 - e / 2), M['black'])
         plane('skylight_glass', kc - ka, kd - kb, ((ka + kc) / 2, (kb + kd) / 2, H + 0.45), G['glass'], '+Z', kind='glass')
         plane('skylight_sky', kc - ka + 0.4, kd - kb + 0.4, ((ka + kc) / 2, (kb + kd) / 2, H + 1.2), E['sky'], '+Z', kind='emit')
         for i, y in enumerate((6.5, 9.0, 13.0)):
@@ -138,8 +140,9 @@ def build(M, E, G):
 
         # The mezzanine slab over the entry and the library, edged in walnut, with a glass rail.
         a, b, c, d = MEZZ
-        box('mezz_slab', (c - a, d - b, MEZZ_Z - MEZZ_UNDER), ((a + c) / 2, (b + d) / 2, (MEZZ_Z + MEZZ_UNDER) / 2), M['ceiling'])
-        box('mezz_floor', (c - a, d - b, 0.03), ((a + c) / 2, (b + d) / 2, MEZZ_Z - 0.015), M['oak'])
+        # The slab stops under the floorboards: a face shared with the boards' top baked black on the mezzanine.
+        box('mezz_slab', (c - a, d - b, MEZZ_Z - 0.03 - MEZZ_UNDER), ((a + c) / 2, (b + d) / 2, (MEZZ_Z - 0.03 + MEZZ_UNDER) / 2), M['ceiling'])
+        box('mezz_floor', (c - a, d - b, 0.03), ((a + c) / 2, (b + d) / 2, MEZZ_Z - 0.015), M['oak_mezz'])
         box('mezz_fascia_n', (c - a, 0.03, MEZZ_Z - MEZZ_UNDER + 0.02), ((a + c) / 2, d + 0.015, (MEZZ_Z + MEZZ_UNDER) / 2), M['walnut'])
         box('mezz_fascia_e', (0.03, d - b, MEZZ_Z - MEZZ_UNDER + 0.02), (c + 0.015, (b + d) / 2, (MEZZ_Z + MEZZ_UNDER) / 2), M['walnut'])
         box('mezz_under_led', (c - a - 0.2, 0.012, 0.012), ((a + c) / 2, d - 0.03, MEZZ_UNDER - 0.006), E['warm_soft'], kind='emit')

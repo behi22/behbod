@@ -1,8 +1,8 @@
 """Bake every zone's light into its own lightmap, with the whole loft in the scene so light and shadow cross zones,
 then turn each raw bake into a runtime texture and export one model per zone plus the world metadata."""
-import bpy, json, math, os, time
+import bpy, hashlib, json, math, os, time
 import numpy as np
-from .core import GROUPS, META
+from .core import GROUPS, META, SHADE
 
 
 def use_gpu(scn):
@@ -100,6 +100,40 @@ def edge_aware(rgb, filled, r=3, band=256):
     return out
 
 
+def faces_mask(o, name, w, h, grow=5):
+    # The lightmap texels of the faces that use material `name`, grown a few texels for the bake's margin (islands are
+    # packed about 8 texels apart, so the growth stays off its neighbours).
+    slots = {i for i, s in enumerate(o.material_slots) if s.material and s.material.name == name}
+    if not slots:
+        return None
+    uv = o.data.uv_layers['Lightmap'].data
+    mask = np.zeros((h, w), bool)
+    for p in o.data.polygons:
+        if p.material_index not in slots:
+            continue
+        q = np.array([uv[i].uv[:] for i in p.loop_indices], np.float64) * (w, h)
+        for k in range(1, len(q) - 1):
+            a, b, c = q[0], q[k], q[k + 1]
+            x0, y0 = np.floor(np.minimum.reduce([a, b, c])).astype(int)
+            x1, y1 = np.ceil(np.maximum.reduce([a, b, c])).astype(int)
+            x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, w), min(y1, h)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            gx, gy = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+            d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+            if abs(d) < 1e-12:
+                continue
+            l1 = ((b[1] - c[1]) * (gx - c[0]) + (c[0] - b[0]) * (gy - c[1])) / d
+            l2 = ((c[1] - a[1]) * (gx - c[0]) + (a[0] - c[0]) * (gy - c[1])) / d
+            inside = (l1 >= -1e-6) & (l2 >= -1e-6) & (1 - l1 - l2 >= -1e-6)
+            mask[y0:y1, x0:x1] |= inside
+    for _ in range(grow):
+        g = mask.copy()
+        g[1:] |= mask[:-1]; g[:-1] |= mask[1:]; g[:, 1:] |= mask[:, :-1]; g[:, :-1] |= mask[:, 1:]
+        mask = g
+    return mask
+
+
 def finish(zid, exposure, out_dir):
     # Light denoise that keeps edges, exposure, a soft filmic shoulder, then sRGB. Pixels move through numpy
     # buffers directly: a Python list of a 4096 pixel map's floats alone needs about 2 GB.
@@ -112,6 +146,11 @@ def finish(zid, exposure, out_dir):
     filled = px[:, :, 3] > 0.5 if px[:, :, 3].min() < 0.5 else np.any(rgb > 0, axis=2)
     x = edge_aware(rgb, filled) * exposure
     del px, rgb, filled
+    for name, k in SHADE.items():
+        mask = faces_mask(GROUPS[zid]['object'], name, w, h)
+        if mask is not None:
+            x[mask] *= np.array(k, np.float32)
+            print(f'  {zid}: {name} shown darker over {int(mask.sum())} texels', flush=True)
     x = x * (1 + x / 6.0) / (1 + x)
     srgb = np.where(x <= 0.0031308, 12.92 * x, 1.055 * np.power(np.clip(x, 0, None), 1 / 2.4) - 0.055)
     del x
@@ -148,6 +187,27 @@ def export(zid, out_dir):
                               export_draco_mesh_compression_enable=False, export_image_format='WEBP', export_yup=True, export_apply=True)
 
 
+def layout_key(zid):
+    # The joined mesh's vertices and lightmap UVs. A saved bake only fits the exact layout it was baked on: the same
+    # parts joined in another order paint the light onto the wrong surfaces.
+    me = GROUPS[zid]['object'].data
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    uv = np.empty(len(me.loops) * 2, np.float32)
+    me.uv_layers['Lightmap'].data.foreach_get('uv', uv)
+    h = hashlib.md5(np.round(co, 4).tobytes())
+    h.update(np.round(uv, 5).tobytes())
+    return h.hexdigest()
+
+
+def saved_layout(zid, raw_dir):
+    try:
+        with open(os.path.join(raw_dir, f'{zid}_raw.json')) as f:
+            return json.load(f).get('layout')
+    except (OSError, ValueError):
+        return None
+
+
 def load_raw(zid, raw_dir, quiet=False):
     path = os.path.join(raw_dir, f'{zid}_raw.exr')
     if not os.path.exists(path):
@@ -178,22 +238,37 @@ def build_all(root, draft, exposure=1.3, reuse=False, only=None, cpu=0):
     baked = [zid for zid in zones if GROUPS[zid]['baked']]
     for zid in baked:
         join(zid)
+    # `only`: bake just these zones. The rest are reused only when their saved bake still fits their layout; one that
+    # does not is left exactly as it is on disk, never re-exported with light that lands on the wrong surfaces.
+    keep = []
     for zid in baked:
-        # `only`: bake just the zones that changed and reuse the saved full bakes of the rest.
-        if (reuse or (only and zid not in only)) and load_raw(zid, raw_dir):
+        if reuse or (only and zid not in only):
+            if os.path.exists(os.path.join(raw_dir, f'{zid}_raw.exr')) and saved_layout(zid, raw_dir) == layout_key(zid):
+                load_raw(zid, raw_dir)
+                continue
+            why = 'its saved bake no longer fits its layout' if saved_layout(zid, raw_dir) else 'it has no bake with a layout record'
+            if reuse and (not only or zid in only):
+                raise RuntimeError(f'{zid}: {why}; bake it (only={zid})')
+            print(f'  {zid} left as it is: {why} (only={zid} bakes it)', flush=True)
+            keep.append(zid)
             continue
         px = 1024 if draft else GROUPS[zid]['px']
         t0 = time.time()
         bake(zid, px, 40 if draft else 128, raw_dir)
+        with open(os.path.join(raw_dir, f'{zid}_raw.json'), 'w') as f:
+            json.dump({'layout': layout_key(zid), 'px': px}, f)
         print(f'  {zid} baked in {time.time() - t0:.0f} s', flush=True)
     for o in [o for o in bpy.data.objects if o.type == 'LIGHT']:
         bpy.data.objects.remove(o)
     for zid in baked:
+        if zid in keep:
+            continue
         if not load_raw(zid, raw_dir, quiet=True):
             raise RuntimeError(f'no bake saved for {zid}')
         finish(zid, exposure, raw_dir)
     for zid in zones:
-        export(zid, out_dir)
+        if zid not in keep:
+            export(zid, out_dir)
     with open(os.path.join(root, 'web', 'assets', 'world.json'), 'w') as f:
         json.dump(META, f, indent=1)
     print('world', len(zones), 'zones,', len(META['colliders']), 'colliders,', len(META['floors']), 'floors,', len(META['interact']), 'things to use', flush=True)

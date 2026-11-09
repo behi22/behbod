@@ -3,7 +3,8 @@
 blender -b --factory-startup -P blender/build_world.py -- draft    (about two minutes, a quick look)
 blender -b --factory-startup -P blender/build_world.py              (full quality)
 blender -b --factory-startup -P blender/build_world.py -- reuse     (finish and export the last full bake again)
-blender -b --factory-startup -P blender/build_world.py -- only=gallery,shell   (bake just these zones, reuse the rest)
+blender -b --factory-startup -P blender/build_world.py -- reuse only=shell   (finish and export just these again from their saved bakes)
+blender -b --factory-startup -P blender/build_world.py -- only=gallery,shell   (bake just these zones; the rest stay as they are)
 blender -b --factory-startup -P blender/build_world.py -- meta  (only write web/assets/world.json, for the layout checks)
 blender -b --factory-startup -P blender/build_world.py -- only=studio cpu=8   (bake on 8 processor cores instead of the graphics chip)
 """
