@@ -2,6 +2,7 @@
 // uses the desk and logs no errors. Then live reload: touching a file under web/ reloads an open page.
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
+const { launch } = require('./quiet');
 const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&q=low';
 const VIEWS = [['desktop', { viewport: { width: 1280, height: 800 } }], ['phone', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]];
 
@@ -35,8 +36,9 @@ async function run(name, launch) {
     await p.waitForTimeout(1800);
     const back = await p.evaluate(() => __loft.mode);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-    const ok = moved > 0.5 && atDesk === 'desk' && back === 'walk' && over <= 0 && !errs.length;
-    rows.push(`${name} ${view} ${scheme}: moved ${moved.toFixed(2)} desk ${atDesk} back ${back} sideways ${over > 0} errors ${errs.length ? errs.join(' | ') : 0} ${ok ? 'PASS' : 'FAIL'}`);
+    const quiet = await p.evaluate(() => window.__quiet === true);
+    const ok = moved > 0.5 && atDesk === 'desk' && back === 'walk' && over <= 0 && quiet && !errs.length;
+    rows.push(`${name} ${view} ${scheme}: moved ${moved.toFixed(2)} desk ${atDesk} back ${back} sideways ${over > 0} muted ${quiet} errors ${errs.length ? errs.join(' | ') : 0} ${ok ? 'PASS' : 'FAIL'}`);
     await ctx.close();
   }
   await b.close();
@@ -45,13 +47,13 @@ async function run(name, launch) {
 
 (async () => {
   const all = [
-    ...await run('chrome', () => pw.chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] })),
-    ...await run('firefox', () => pw.firefox.launch()),
-    ...await run('webkit', () => pw.webkit.launch()),
+    ...await run('chrome', () => launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] })),
+    ...await run('firefox', () => launch(pw.firefox)),
+    ...await run('webkit', () => launch(pw.webkit)),
   ];
   console.log(all.join('\n'));
 
-  const b = await pw.chromium.launch({ channel: 'chrome' });
+  const b = await launch(pw.chromium, { channel: 'chrome' });
   const p = await b.newPage();
   await p.goto(URL);
   await p.waitForFunction(() => !!window.__loft, null, { timeout: 90000 });

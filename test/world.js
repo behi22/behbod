@@ -1,6 +1,7 @@
 // The whole loft: it loads with no errors or missing screens, every thing you can use is reachable and answers E,
 // the secret bookcase opens into the range, sitting works, and a screenshot from each zone goes to the out folder.
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
+const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output';
 require('fs').mkdirSync(OUT, { recursive: true });
 const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&stats';
@@ -9,7 +10,7 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   mezz: [9.5, 2.0, 3.0, 2.0], balcony: [11.6, 16.2, 0, Math.PI], range: [8.1, -0.8, 0, -1.6], entry: [2.2, 3.6, 0, 2.6], stairs: [2.0, 9.2, 0, 2.4], videos: [19.2, 9.6, 0, -1.4], library: [9.0, 3.6, 0, -2.4] };
 
 (async () => {
-  const b = await pw.chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
+  const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   const p = await b.newPage({ viewport: { width: 1400, height: 820 } });
   const errs = [], warns = [];
   p.on('pageerror', e => errs.push(e.message));

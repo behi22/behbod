@@ -1,10 +1,11 @@
 // Character and desk check in the loft: loads, walks, the lounge edge, the desk close-up, typing, moves, heads, phone.
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
+const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output';
 require('fs').mkdirSync(OUT, { recursive: true });
 const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&stats';
 (async () => {
-  const b = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'] });
+  const b = await launch(chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'] });
   const errs = [];
   const p = await b.newPage({ viewport: { width: 1400, height: 820 } });
   p.on('pageerror', e => errs.push('page: ' + e.message));

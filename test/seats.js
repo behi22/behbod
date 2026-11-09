@@ -2,6 +2,7 @@
 // them (on the floor for most; the stool's footrest, the egg chair's and the window seat's cushions for the rest).
 // Then stand back up. A screenshot of each seat goes to the out folder.
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
+const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output';
 require('fs').mkdirSync(OUT, { recursive: true });
 const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&q=medium';
@@ -10,7 +11,7 @@ const b2t = (x, y, z) => ({ x, y: z, z: -y });
 const FEET_UP = { stool: 0.30, egg: 0.87, nook: 0.53 };
 
 (async () => {
-  const b = await pw.chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
+  const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   const p = await b.newPage({ viewport: { width: 1100, height: 700 } });
   const errs = [];
   p.on('pageerror', e => errs.push(e.message));

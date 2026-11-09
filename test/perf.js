@@ -2,6 +2,7 @@
 // --slow to stand in for a low-end laptop (the CPU slowed 4x through DevTools, low quality). Prints the median and
 // worst frames, how many frames missed 30 and 20 fps, and where the main thread spent its time.
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
+const { launch } = require('./quiet');
 const slow = process.argv.includes('--slow'), hidpi = process.argv.includes('--hidpi');
 const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto' + (slow ? '&q=low' : '');
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
@@ -10,7 +11,7 @@ const TOUR = [[2.55, 1.2, 0, 0.15], [7.0, 10.2, -0.45, -2.0], [10.6, 11.6, 0, -2
   [14.6, 9.4, 0, 0.1], [11.6, 16.2, 0, Math.PI], [11.7, 13.4, 0, 0], [9.5, 2.0, 3.0, 2.0], [2.2, 3.6, 0, 2.6]];
 
 (async () => {
-  const b = await pw.chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
+  const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   const p = await b.newPage(hidpi ? { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 } : { viewport: { width: 1366, height: 768 } });
   const cdp = await p.context().newCDPSession(p);
   await p.goto(URL);
