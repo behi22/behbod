@@ -2,6 +2,13 @@
 import { injectStyles, h, button } from './ui.js';
 
 const GAMES = {
+  // The arcade cabinet's own menu: its two games side by side.
+  arcade: { title: 'ARCADE', menu: [['skills', 'Skills Shooter', 'The Claude game. Shoot the skills, dodge the bugs, catch Claude.'], ['striker', 'Striker 22', 'Five penalties to take, five to save, then sudden death.']] },
+  // The TV's menu: join the live match in either role, or put my videos on instead.
+  tv: { title: 'MATCH NIGHT', menu: [['match-striker', 'Join as striker', 'Ninety seconds up front for BEHI FC. Score what you can.'], ['match-keeper', 'Join as keeper', 'Ninety seconds in goal. The bots are coming.'], ['@videos', 'Watch my videos', 'Switch the TV over to my channel.']] },
+  'match-striker': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'striker') })) },
+  'match-keeper': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'keeper') })) },
+  skills: { title: 'SKILLS SHOOTER', load: () => import('./skills.js') },
   striker: { title: 'STRIKER 22', load: () => import('./striker.js') },
   holochess: { title: 'HOLOCHESS', load: () => import('./holochess.js') },
   backgammon: { title: 'BACKGAMMON', load: () => import('./backgammon.js') },
@@ -10,9 +17,9 @@ const GAMES = {
 let current = null;
 export const isGameOpen = () => !!(current && current.open);
 
-export function openGame(name, { onClose, onEvent } = {}) {
+export function openGame(name, { onClose, onEvent, actions = {} } = {}) {
   const def = GAMES[name];
-  if (!def) throw new Error(`Unknown game "${name}". Use striker, holochess or backgammon.`);
+  if (!def) throw new Error(`Unknown game "${name}". Use ${Object.keys(GAMES).join(', ')}.`);
   if (current) current.close();
   injectStyles();
 
@@ -68,6 +75,17 @@ export function openGame(name, { onClose, onEvent } = {}) {
   document.body.append(root);
   root.focus({ preventScroll: true });
   requestAnimationFrame(() => root.classList.add('g-on'));
+  if (def.menu) {
+    // A menu hands over to the game picked: that game opens in place of the menu, with the same hooks.
+    body.replaceChildren(h('div', { class: 'g-menu' }, def.menu.map(([id, title, line]) =>
+      h('div', { class: 'g-card g-pick' }, h('h2', { text: title }), h('p', { text: line }),
+        h('div', { class: 'g-row' }, button(id.startsWith('@') ? 'Go' : 'Play', () => {
+          // An entry starting with @ is not a game: it closes the menu and hands back to the room.
+          if (id.startsWith('@')) { handle.close(); actions[id.slice(1)]?.(); } else openGame(id, { onClose, onEvent, actions });
+        }, 'g-main'))))));
+    body.querySelector('.g-main')?.focus({ preventScroll: true });
+    return handle;
+  }
   def.load().then(m => {
     if (!open) return;
     body.replaceChildren();

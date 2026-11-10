@@ -20,6 +20,8 @@ import { makeLiveVideo } from './src/livevideo.js';
 import { makeFleet } from './src/fleet.js';
 import { makePrinter } from './src/printer.js';
 import { makeRubik } from './src/rubik.js';
+import { makeTvMatch } from './src/tvmatch.js';
+import { makePenalties } from './src/penalties.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -162,11 +164,20 @@ const fleet = makeFleet(scene, meta, { sound });
 const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 world.retireFighters();
+const tvMatch = meta.screens.tv ? makeTvMatch({ texture: screens.textures.tv, at: b2t(...meta.screens.tv.center).toArray(), normal: [1, 0, 0], fps: () => (tierName === 'low' ? 5 : 10) }) : null;
 function enterRange() {
   if (mode !== 'walk') return;
   mode = 'range'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
   range.enter();
+}
+// Penalties at the mini goal, BH-22 in goal.
+const pens = makePenalties(scene, meta, { creatures, sfx: audio.sfx, toast, onGoal: () => earn('goal'), onExit: () => { mode = 'walk'; me.root.visible = true; } });
+function enterPens() {
+  if (mode !== 'walk' || !pens) return;
+  mode = 'pens'; route = null; keys.clear();
+  me.root.visible = false; $('prompt').classList.remove('on');
+  pens.enter();
 }
 function enterScope() {
   if (mode !== 'walk') return;
@@ -338,18 +349,19 @@ const SAY = {
   mirror: 'Looking good.',
 };
 // The arcade, the mini goal and the console all play the shootout; the boards play their own games.
-const GAME_AT = { arcade: 'striker', penalties: 'striker', console: 'striker', holochess: 'holochess', backgammon: 'backgammon' };
+const GAME_AT = { arcade: 'arcade', console: 'striker', holochess: 'holochess', backgammon: 'backgammon' };
 const GAME_WIN = { striker: 'striker', holochess: 'chess', backgammon: 'backgammon' };
-function playGame(name) {
+function playGame(name, actions) {
   keys.clear(); route = null;
   openGame(name, {
+    actions,
     onEvent: (type, d) => {
-      if (type === 'win') earn(GAME_WIN[d.game]);
+      if (type === 'win' && GAME_WIN[d.game]) earn(GAME_WIN[d.game]);
       if (type === 'goal' && d.by === 'you') earn('goal');
     },
   });
 }
-let tvNext = 0;
+let tvNext = 0, petCrouch = 0;
 function act(it) {
   if (!it) return;
   if (it.id === 'desk') return useDesk();
@@ -363,7 +375,12 @@ function act(it) {
   }
   if (it.id === 'wardrobe') { world.openWardrobe(performance.now() / 1000); audio.sfx.door('wardrobe', at); return wardrobe.show(); }
   if (it.id === 'holiday') return toast(screens.holiday ? screens.holiday.text : 'No holiday today.');
-  if (it.id === 'bh22' || it.id === 'pishi' || it.id === 'jessi') return creatures.act(it.id, cctx);
+  if (it.id === 'bh22' || it.id === 'pishi' || it.id === 'jessi') {
+    // A pet or a treat: I crouch down to them for a moment.
+    if (creatures.act(it.id, cctx)?.crouch) petCrouch = performance.now() / 1000 + 2.4;
+    return;
+  }
+  if (it.id === 'penalties') return enterPens();
   if (GAME_AT[it.id]) return playGame(GAME_AT[it.id]);
   if (it.id === 'records') return playRecord();
   if (it.id === 'telescope') return enterScope();
@@ -373,8 +390,8 @@ function act(it) {
   if (it.id === 'about' || it.id === 'guestbook' || it.id === 'mailbox') return panels[it.id]();
   if (it.id === 'printer' && printer) return panels.printer(printer);
   if (it.id === 'secret_room' && progress.unlocked().includes('vault')) { earn('vault'); return toast('The secret room is yours. It opens in the next build.'); }
-  // The TV flips through every video in turn; the frames each keep their own.
-  if (it.id === 'tv') { const n = videos().length; playVideo(n ? tvNext++ % n : 0); return; }
+  // The TV shows the live match: join it as striker or keeper, or switch to my videos, which it flips through in turn.
+  if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); } });
   if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
   toast(SAY[it.id] || it.label);
 }
@@ -409,7 +426,15 @@ addEventListener('keydown', e => {
   if (mode === 'desk') { if (e.key.length === 1 || e.key === 'Enter') sound.key(); return screens.terminalKey(e, () => leaveDesk()); }
   // A held key repeats; the action keys only count the first press, or holding E would sit, stand, sit.
   if (e.repeat && (e.code === 'KeyE' || e.code === 'KeyO' || e.code === 'KeyH' || e.code === 'KeyG')) return;
-  if (mode === 'range') { if (e.code === 'Escape') range.exit(); return; }
+  if (mode === 'range') { if (e.code === 'Escape') range.exit(); else if (e.code === 'Space') { e.preventDefault(); range.fire(pointerNdc); } else range.key(e); return; }
+  if (mode === 'pens') {
+    if (e.code === 'Escape') pens.exit();
+    // One kick per press: a held Space must not fire the next kick, or start a new round.
+    else if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) pens.shoot(); }
+    else if (e.code === 'KeyE') pens.again();
+    else keys.add(e.code);
+    return;
+  }
   if (mode === 'scope') {
     if (e.code === 'Escape' || e.code === 'KeyE') scope.exit();
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') scope.zoom(-1);
@@ -447,9 +472,11 @@ const toNdc = e => new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY
 canvas.addEventListener('pointerdown', e => {
   dragging = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: 0 }; canvas.setPointerCapture(e.pointerId);
   if (mode === 'range') range.fire(toNdc(e));
+  if (mode === 'pens') { aim(e); pens.aimAt(ray.ray); pens.shoot(); }
 });
 canvas.addEventListener('pointermove', e => {
   pointerNdc.copy(toNdc(e));
+  if (mode === 'pens' && e.pointerType === 'mouse') { aim(e); pens.aimAt(ray.ray); }
   if (!dragging || e.pointerId !== dragging.id) return;
   const dx = e.clientX - dragging.x, dy = e.clientY - dragging.y;
   dragging.x = e.clientX; dragging.y = e.clientY; dragging.moved += Math.abs(dx) + Math.abs(dy);
@@ -519,7 +546,7 @@ function goTo(name) {
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
 $('cmd').addEventListener('keydown', e => { if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); } });
 $('use').addEventListener('click', () => {
-  if (mode === 'desk') leaveDesk(); else if (mode === 'sit') stand(); else if (mode === 'range') range.exit(); else if (mode === 'scope') scope.exit(); else if (near) act(near);
+  if (mode === 'desk') leaveDesk(); else if (mode === 'sit') stand(); else if (mode === 'range') range.exit(); else if (mode === 'scope') scope.exit(); else if (mode === 'pens') pens.exit(); else if (near) act(near);
 });
 $('hood').addEventListener('click', () => me.toggleHood());
 $('closet').addEventListener('click', () => wardrobe.toggle());
@@ -658,7 +685,9 @@ function step() {
   const hs = mode === 'walk' ? walk(dt, now) : 0;
   if (mode === 'sit' || mode === 'rising') tickSit(dt);
   me.placeBlob(col.groundAt);
-  me.animate(dt, hs, mode === 'walk' && crouchHeld);
+  // Petting crouches me down for a moment; walking off ends it.
+  if (hs > 0.3) petCrouch = 0;
+  me.animate(dt, hs, mode === 'walk' && (crouchHeld || petCrouch > performance.now() / 1000));
   me.lookAround(dt, idleT, facing, mode === 'walk', LOOKS);
   if (!desk.tick(dt, camLook, () => mode === 'desk')) {
     if (mode === 'walk' || mode === 'sit' || mode === 'rising') {
@@ -672,6 +701,13 @@ function step() {
       range.view(tmpP, tmpL, pointerNdc.x, pointerNdc.y);
       camera.position.lerp(tmpP, Math.min(1, 6 * dt));
       camLook.lerp(tmpL, Math.min(1, 6 * dt));
+    } else if (mode === 'pens') {
+      // Arrows or WASD nudge the aim across the goal and up and down.
+      const k = dt * 0.5;
+      pens.nudge((keys.has('ArrowLeft') || keys.has('KeyA') ? k : 0) - (keys.has('ArrowRight') || keys.has('KeyD') ? k : 0), (keys.has('ArrowUp') || keys.has('KeyW') ? k : 0) - (keys.has('ArrowDown') || keys.has('KeyS') ? k : 0));
+      pens.view(tmpP, tmpL);
+      camera.position.lerp(tmpP, Math.min(1, 5 * dt));
+      camLook.lerp(tmpL, Math.min(1, 5 * dt));
     } else if (mode === 'scope') {
       const k = dt * 0.5;
       scope.nudge((keys.has('ArrowRight') || keys.has('KeyD') ? k : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? k : 0), (keys.has('ArrowUp') || keys.has('KeyW') ? k : 0) - (keys.has('ArrowDown') || keys.has('KeyS') ? k : 0));
@@ -684,11 +720,15 @@ function step() {
   fleet.tick(dt, t, camera.position);
   printer?.tick(dt, camera.position);
   rubik?.tick(dt, camera.position);
+  tvMatch?.tick(dt, camera);
+  pens?.tick(dt);
   me.drawFace(now);
   me.tickMosaic(now, camera, engine.mosaicU);
   screens.tick(now, dt, mode === 'desk', camera.position.distanceTo(deskUse) < 10);
   world.tick(dt, t, mode === 'desk', camera.position, pos, creatures.positions);
   cctx.mode = mode; cctx.facing = facing; cctx.stand = seat ? seat.at : null;
+  // The page knows the mode, so the walking controls strip can step aside while a game or the desk has the screen.
+  if (document.body.dataset.mode !== mode) document.body.dataset.mode = mode;
   creatures.tick(dt, t, cctx);
   outside.tick(dt, t);
   if (out3d) {

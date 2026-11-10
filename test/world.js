@@ -50,7 +50,9 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   console.log('things you can use', items.length, missed.length ? 'NOT REACHABLE: ' + missed.join(', ') : 'all reachable PASS');
 
   // Videos: the big frame and the TV open YouTube's player from the start; the TV flips through all of them in order.
-  const src = async id => { await p.evaluate(i => __loft.act(i), id); await p.waitForTimeout(300); const u = await p.evaluate(() => document.querySelector('.video iframe')?.src || ''); await p.keyboard.press('Escape'); await p.waitForTimeout(200); return u.match(/embed\/([\w-]{11})/)?.[1] || null; };
+  // The TV opens its match menu first; its last entry switches it over to the videos.
+  const tvVideos = async () => { await p.waitForSelector('.g-menu'); await p.click('.g-menu button:text-is("Go")'); };
+  const src = async id => { await p.evaluate(i => __loft.act(i), id); if (id === 'tv') await tvVideos(); await p.waitForTimeout(300); const u = await p.evaluate(() => document.querySelector('.video iframe')?.src || ''); await p.keyboard.press('Escape'); await p.waitForTimeout(200); return u.match(/embed\/([\w-]{11})/)?.[1] || null; };
   const vids = await p.evaluate(() => fetch('media.json').then(r => r.json()).then(m => m.videos.map(v => v.id)));
   const frame = await src('video0');
   const tv = [await src('tv'), await src('tv'), await src('tv')];
@@ -122,6 +124,12 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const hood0 = await p.evaluate(() => [__loft.me.hoodUp, document.getElementById('hood').textContent]);
   await p.keyboard.press('KeyG'); await p.waitForTimeout(200);
   const hood1 = await p.evaluate(() => [__loft.me.hoodUp, document.getElementById('hood').textContent]);
+  // The hood head with its hood down is one black head on a black neck: the whole void head shows, the white socket
+  // does not; with the hood up it is the other way round.
+  const drawn = names => p.evaluate(ns => ns.map(n => { const o = __loft.scene.getObjectByName(n); if (!o) return null; let v = false; o.traverse(c => { if (!c.isMesh) return; let ok = true; for (let x = c; x; x = x.parent) ok = ok && x.visible; v = v || ok; }); return v; }), names);
+  const neck = await drawn(['V3_socket', 'V3_head_void_full', 'V3_head_void']);
+  const neckOk = hood1[0] ? neck.join() === 'true,false,true' : neck.join() === 'false,true,false';
+  console.log('hood head, hood', hood1[0] ? 'up' : 'down', ': socket, full head, face', neck.join(' '), neckOk ? 'PASS' : 'FAIL');
   await p.keyboard.press('KeyH'); await p.waitForTimeout(200);
   await p.keyboard.press('KeyG'); await p.waitForTimeout(200);
   const hood2 = await p.evaluate(() => [__loft.me.head, __loft.me.hoodUp]);
@@ -287,6 +295,7 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
 
   // Regression: a second video used to open on top of the first, both playing.
   await p.evaluate(() => { __loft.act('video0'); __loft.act('tv'); });
+  await tvVideos();
   await p.waitForTimeout(300);
   const players = await p.evaluate(() => document.querySelectorAll('.video').length);
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);

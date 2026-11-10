@@ -32,6 +32,8 @@ const CSS = `
 .g-card.g-bad h2 { color: ${BAD}; }
 .g-card p { margin: 0 0 16px; color: ${DIM}; }
 .g-card .g-row { justify-content: center; }
+.g-menu { flex: 1; display: flex; flex-wrap: wrap; gap: 18px; align-content: center; justify-content: center; padding: 20px 16px; }
+.g-menu .g-card.g-pick { animation: g-pop .28s cubic-bezier(.2,1.4,.4,1); }
 .g-stage { position: relative; flex: 1; min-height: 0; }
 .g-stage canvas { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
 @keyframes g-fade { from { opacity: 0; } }
