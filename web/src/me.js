@@ -76,9 +76,14 @@ export function makeMe(scene, gltf, opts) {
   function dress() {
     for (const n of Object.keys(parts)) if (n.startsWith('V3_head_') || n.startsWith('V3_acc_') || n.startsWith('V3_hood_')) show(n, false);
     for (const n of HEADS[look.head]) show(n, true);
-    const up = hoodUp(look);
-    show('V3_hood_up', up);
+    const up = hoodUp(look), tv = look.head === 'tv';
+    // The TV has its own roomier hood, and folds its antennas away under it.
+    show(tv ? 'V3_hood_up_tv' : 'V3_hood_up', up);
     show('V3_hood_down', !up);
+    if (tv) show('V3_head_tv_antennas', !up);
+    // The hood head with its hood down is a whole black head with the glowing eyes, not just the face inside the hood.
+    if (look.head === 'hood') { show('V3_head_void', up); show('V3_head_void_full', !up); }
+    show('V3_socket', !(look.head === 'hood' && !up));
     for (const [k, sfx] of Object.entries(FITS.hoodie)) { show('V3_hoodie' + sfx, look.fit.hoodie === k); show('V3_pocket' + sfx, look.fit.hoodie === k); }
     for (const [k, sfx] of Object.entries(FITS.pants)) for (const n of ['V3_pants', 'V3_cargo_l', 'V3_cargo_r', 'V3_flap_l', 'V3_flap_r']) show(n + sfx, look.fit.pants === k);
     for (const a of look.acc) show('V3_acc_' + a, true);
@@ -238,6 +243,12 @@ export function makeMe(scene, gltf, opts) {
     unlockMosaic() { mosaicUnlocked = true; },
     get weights() { return Object.fromEntries([...weight].filter(([, w]) => w > 0.01).map(([a, w]) => [a.getClip().name, +w.toFixed(2)])); },
     // Meshes of the current head that would actually draw (every ancestor visible).
-    get headMeshesShown() { let n = 0; for (const name of HEADS[look.head]) (parts[name] || []).forEach(o => o.traverse(c => { if (!c.isMesh) return; let v = true; for (let x = c; x; x = x.parent) v = v && x.visible; if (v) n++; })); return n; },
+    // The current head's own meshes actually drawn, its hood-down pieces included (the whole void head, the antennas).
+    get headMeshesShown() {
+      const names = [...HEADS[look.head], ...(look.head === 'hood' ? ['V3_head_void_full'] : look.head === 'tv' ? ['V3_head_tv_antennas'] : [])];
+      let n = 0;
+      for (const name of names) (parts[name] || []).forEach(o => o.traverse(c => { if (!c.isMesh) return; let v = true; for (let x = c; x; x = x.parent) v = v && x.visible; if (v) n++; }));
+      return n;
+    },
   };
 }

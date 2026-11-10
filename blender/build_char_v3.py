@@ -524,7 +524,7 @@ HOOD_C = HC + Vector((0, 0.025, 0.01))
 HOOD_R = (0.2, 0.215, 0.225)
 
 
-def build_hood_up():
+def build_hood_up(name='V3_hood_up', HOOD_C=HOOD_C, HOOD_R=HOOD_R):
     N, M = 48, 28
     top, z_bot = HOOD_C.z + HOOD_R[2], neck_z + 0.012
     b = bmesh.new()
@@ -555,7 +555,7 @@ def build_hood_up():
     if cap.link_faces[0].normal.z < 0:
         bmesh.ops.reverse_faces(b, faces=b.faces[:])
     cut(b, (0, HC.y - 0.1, HOOD_C.z), (0, -1, 0.25))
-    o = bpy.data.objects.new('V3_hood_up', bpy.data.meshes.new('V3_hood_up'))
+    o = bpy.data.objects.new(name, bpy.data.meshes.new(name))
     SC.objects.link(o)
     o.matrix_world = Matrix()
     b.to_mesh(o.data)
@@ -570,19 +570,108 @@ def build_hood_up():
 
 
 hood_up = build_hood_up()
+# The TV keeps its full size and gets its own roomier hood (his Room Lab pick), so no corner of it shows through.
+TV_HOOD = (HC + Vector((0, 0.005, 0.04)), (0.258, 0.268, 0.272))
+hood_up_tv = build_hood_up('V3_hood_up_tv', *TV_HOOD)
 
-# Hood down: a soft folded hood lying flat on the upper back, its top tucked into the collar.
-yb = ray_grid(HOOD_TREE, [Vector((0, 1.0, neck_z - 0.08))], Vector((0, -1, 0)), 0.0)[0].y
-hood_dn = ellipsoid('V3_hood_down', (0, yb + 0.018, neck_z - 0.05), (0.118, 0.034, 0.105), M_HOODIE)
-hood_dn.data.materials.append(M_RIB)
-lining = bmesh.new()
-lining.from_mesh(hood_dn.data)
-for f in lining.faces:
-    c = f.calc_center_median()
-    if c.y > yb + 0.035 and abs(c.x) < 0.08 and c.z > neck_z - 0.09:
-        f.material_index = 1
-lining.to_mesh(hood_dn.data)
-lining.free()
+# Hood down, his Room Lab pick: the hood hangs down the back with its tip pointing down (wide across the shoulder blades,
+# narrowing to the point, fuller down the middle), a seam down its centre, and its edge sewn into the neckline,
+# crossing over at the front in a small V.
+def tube_mesh(b, pts, r, seg=8, mi=0):
+    rings = []
+    for i, p in enumerate(pts):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        u = t.cross(Vector((0, 0, 1)) if abs(t.z) < 0.9 else Vector((1, 0, 0))).normalized()
+        v = t.cross(u)
+        rings.append([b.verts.new(p + (u * math.cos(2 * math.pi * k / seg) + v * math.sin(2 * math.pi * k / seg)) * r) for k in range(seg)])
+    for a, c in zip(rings, rings[1:]):
+        for k in range(seg):
+            b.faces.new((a[k], a[(k + 1) % seg], c[(k + 1) % seg], c[k])).material_index = mi
+    # The two end caps face opposite ways, each out of its own end.
+    for ring, end, flip in ((rings[0], pts[0], True), (rings[-1], pts[-1], False)):
+        cap = b.verts.new(end)
+        for k in range(seg):
+            q = (ring[(k + 1) % seg], ring[k], cap) if flip else (ring[k], ring[(k + 1) % seg], cap)
+            b.faces.new(q).material_index = mi
+
+
+def build_hood_down():
+    # The seam and the neckline are placed from the bones, in the room's axes; the hoodie's surface is in the body's.
+    assert all(abs(mw[i][j] - (1 if i == j else 0)) < 1e-6 for i in range(4) for j in range(4)), f'body transform {mw}'
+    z_top, z_tip, W0, NU, NT = COLLAR_TOP - 0.006, neck_z - 0.25, 0.122, 15, 16
+    # Back-surface points, shot from behind onto the hoodie, then lifted for the fabric's fullness.
+    rows = []
+    for j in range(NT + 1):
+        t = j / NT
+        w = W0 * max(0.0, 1 - t ** 2.1) ** 0.75
+        z = z_top + (z_tip - z_top) * t
+        row = []
+        for i in range(NU):
+            u = -1 + 2 * i / (NU - 1)
+            hit = HOOD_TREE.ray_cast(Vector((u * w, 1.0, z)), Vector((0, -1, 0)), 3.0)
+            if hit[0] is None:
+                row.append(None)
+                continue
+            lift = 0.006 + 0.024 * (1 - u * u) * math.sin(math.pi * min(1.0, t * 1.15)) ** 0.6
+            row.append(hit[0] + hit[1] * lift)
+        rows.append(row)
+    b = bmesh.new()
+    V = [[b.verts.new(p) if p is not None else None for p in row] for row in rows]
+    for j in range(NT):
+        for i in range(NU - 1):
+            q = (V[j][i], V[j][i + 1], V[j + 1][i + 1], V[j + 1][i])
+            if all(q):
+                b.faces.new(q)
+    bmesh.ops.remove_doubles(b, verts=b.verts[:], dist=0.0005)
+    b.normal_update()
+    bmesh.ops.reverse_faces(b, faces=[f for f in b.faces if f.normal.y < 0])
+    o = bpy.data.objects.new('V3_hood_down', bpy.data.meshes.new('V3_hood_down'))
+    SC.objects.link(o)
+    o.matrix_world = mw
+    finish(o, b, 0.009, 1)
+    o.data.materials.append(M_HOODIE)
+    o.data.materials.append(M_RIB)
+    # The drape's subdivision and thickness are applied before the seams join it, so the thin seam tubes keep their size.
+    bpy.ops.object.select_all(action='DESELECT')
+    o.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    for mod in list(o.modifiers):
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+    # The seam down the middle and the edge sewn into the neckline.
+    s = bmesh.new()
+    seam = [p for p in (row[NU // 2] for row in rows) if p is not None]
+    tube_mesh(s, [p + Vector((0, 0.004, 0)) for p in seam], 0.0028, 6, mi=1)
+    # Each side's edge runs from the back round to a V at the front, laid onto the hoodie: a ray from outside finds the
+    # fabric at that height and the tube sits on it, so the seam hugs the neckline instead of floating round it.
+    rx, ry, zc, TR = rx0 + 0.012, 0.082, COLLAR_TOP - 0.008, 0.0085
+    for side in (-1, 1):
+        pts = []
+        for k in range(25):
+            a = math.pi / 2 + side * math.pi * k / 24 * 1.07
+            dip = 0.03 * max(0.0, -math.sin(a)) ** 6
+            z = zc - dip + TILT * (math.sin(a) * ry)
+            d = Vector((math.cos(a), math.sin(a), 0))
+            hit = HOOD_TREE.ray_cast(Vector((0, NECK_Y, z)) + d * 0.5, -d, 0.6)
+            pts.append(hit[0] + hit[1].normalized() * TR * 0.7 if hit[0] is not None else Vector((d.x * rx, NECK_Y + d.y * ry, z)))
+        tube_mesh(s, pts, TR, 10, mi=0)
+    me = bpy.data.meshes.new('hood_seam')
+    s.to_mesh(me)
+    s.free()
+    extra = bpy.data.objects.new('hood_seam', me)
+    SC.objects.link(extra)
+    extra.data.materials.append(M_HOODIE)
+    extra.data.materials.append(M_RIB)
+    for p in extra.data.polygons:
+        p.use_smooth = True
+    bpy.ops.object.select_all(action='DESELECT')
+    for x in (o, extra):
+        x.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.join()
+    return o
+
+
+hood_dn = build_hood_down()
 
 # ---------- relaxed cargo pants from simple shapes: a hip block inside the hoodie and straight, slightly tapered legs ----------
 PANT_END = 0.18
@@ -935,13 +1024,35 @@ for po, _, parts_ in PANTS_VARIANTS:
         rig_to(o, po)
 for o in shoe_parts:
     rig_to(o, None)
-rig_to(hood_up, None)
-hood_up.vertex_groups.new(name='neck_01')
-hood_up.vertex_groups.new(name='Head')
-for v in hood_up.data.vertices:
-    wh = max(0.0, min(1.0, (v.co.z - COLLAR_TOP - 0.01) / 0.1))
-    hood_up.vertex_groups['Head'].add([v.index], wh, 'REPLACE')
-    hood_up.vertex_groups['neck_01'].add([v.index], 1 - wh, 'REPLACE')
+for hu in (hood_up, hood_up_tv):
+    rig_to(hu, None)
+    hu.vertex_groups.new(name='neck_01')
+    hu.vertex_groups.new(name='Head')
+    for v in hu.data.vertices:
+        wh = max(0.0, min(1.0, (v.co.z - COLLAR_TOP - 0.01) / 0.1))
+        hu.vertex_groups['Head'].add([v.index], wh, 'REPLACE')
+        hu.vertex_groups['neck_01'].add([v.index], 1 - wh, 'REPLACE')
+
+
+# Nothing pokes through a hood: every head's points, down to well below the hood's middle, must sit inside it (inside
+# the fabric, which thickens inward), apart from the face opening at the front. Prints how many do not, per head; the
+# build stops if any head breaks through.
+def through(head_names, C, R):
+    n = 0
+    for name in head_names:
+        o = bpy.data.objects[name]
+        for v in o.data.vertices:
+            p = o.matrix_world @ v.co
+            if p.z < C.z - 0.6 * R[2] or p.y < HC.y - 0.1 + 0.25 * (p.z - C.z):
+                continue
+            e = (p.x / R[0]) ** 2 + ((p.y - C.y) / R[1]) ** 2 + ((p.z - C.z) / R[2]) ** 2
+            if e > 0.84:
+                n += 1
+                if n <= 12:
+                    print('  through:', name, 'at', tuple(round(x, 3) for x in (p - C)), 'reach', round(e, 3))
+    return n
+
+
 bpy.data.objects.remove(full)
 
 
@@ -1057,6 +1168,16 @@ def build_tv(b):
     screen(b, 0.235, 0.18, c + Vector((-0.015, -0.151, 0)), 2)
     for k in range(2):
         cyl(b, 0.016, 0.016, 0.016, c + Vector((0.138, -0.138, 0.04 - k * 0.065)), axis='Y', mi=1)
+    for k in range(5):
+        rbox(b, (0.004, 0.15, 0.01), c + Vector((0.166, 0.03, -0.065 + k * 0.028)), mi=1)
+    cyl(b, 0.05, 0.06, 0.04, (PLUG[0], PLUG[1], PLUG[2] + 0.005), mi=1)
+
+
+tv = piece('V3_head_tv', build_tv, [M_TV, M_TV_TRIM, M_SCREEN_TV, M_RING], smooth=False)
+for p in tv.data.polygons:
+    p.use_smooth = p.material_index != 2
+def build_tv_antennas(b):
+    c = HC + Vector((0, -0.005, 0.03))
     for s in (-1, 1):
         before = set(b.faces)
         g = bmesh.ops.create_cone(b, cap_ends=True, segments=8, radius1=0.005, radius2=0.0025, depth=0.16)
@@ -1066,14 +1187,7 @@ def build_tv(b):
             if f not in before:
                 f.material_index = 1
         sphere(b, (0.013, 0.013, 0.013), c + Vector((s * 0.105, 0.02, 0.28)), mi=3, sub=2)
-    for k in range(5):
-        rbox(b, (0.004, 0.15, 0.01), c + Vector((0.166, 0.03, -0.065 + k * 0.028)), mi=1)
-    cyl(b, 0.05, 0.06, 0.04, (PLUG[0], PLUG[1], PLUG[2] + 0.005), mi=1)
-
-
-tv = piece('V3_head_tv', build_tv, [M_TV, M_TV_TRIM, M_SCREEN_TV, M_RING], smooth=False)
-for p in tv.data.polygons:
-    p.use_smooth = p.material_index != 2
+tv_antennas = piece('V3_head_tv_antennas', build_tv_antennas, [M_TV, M_TV_TRIM, M_SCREEN_TV, M_RING])
 
 
 def build_helmet(b):
@@ -1126,6 +1240,14 @@ def build_void(b):
 
 
 void = piece('V3_head_void', build_void, [M_VOID, M_EYES])
+def build_void_full(b):
+    sphere(b, (0.15, 0.163, 0.172), HC + Vector((0, 0.005, 0)), mi=0)
+    for s in (-1, 1):
+        sphere(b, (0.026, 0.009, 0.015), HC + Vector((s * 0.05, -0.153, 0.02)), mi=1, sub=2)
+    # With the hood down the neck is black too, from inside the hoodie up into the head; the white socket is hidden.
+    n0, n1 = neck_z - 0.075, socket_z + 0.07
+    cyl(b, 0.051, 0.05, n1 - n0, (0, neck_c.y + 0.004, (n0 + n1) / 2), seg=32, mi=0)
+void_full = piece('V3_head_void_full', build_void_full, [M_VOID, M_EYES])
 
 
 # The toy version of his head for the mosaic achievement: an egg head, sculpted curls and a beard shape.
@@ -1160,6 +1282,12 @@ def build_toyhead(b):
 
 
 toyhead = piece('V3_head_toy', build_toyhead, [M_TOY, M_CURL])
+HOOD_CHECK = {'hood': (['V3_head_void'], HOOD_C, HOOD_R), 'tv': (['V3_head_tv'], *TV_HOOD),
+              'visor': (['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], HOOD_C, HOOD_R),
+              'emoji': (['V3_head_emoji'], HOOD_C, HOOD_R), 'mosaic': (['V3_head_toy'], HOOD_C, HOOD_R)}
+bad = {k: through(*v) for k, v in HOOD_CHECK.items()}
+print('points through the hood, per head:', bad)
+assert not any(bad.values()), f'a head pokes through its hood: {bad}'
 
 # ---------- accessories, fitted to the default hood-up head ----------
 M_PHONES = mat('M_Headphones', (0.07, 0.075, 0.09), 0.4)
@@ -1385,7 +1513,31 @@ if 'DEBUG' in PREVIEW:
         o.evaluated_get(dg).to_mesh_clear()
     arm.data.pose_position = 'POSE'
 
-if PREVIEW:
+# `-- <prefix>HEADS`: every head with its hood up and with it down, from the front three-quarter and from behind.
+if PREVIEW and 'HEADS' in PREVIEW:
+    from preview_lib import render_views
+    SETS = {'hood': (['V3_head_void'], ['V3_head_void_full']), 'tv': (['V3_head_tv'], ['V3_head_tv', 'V3_head_tv_antennas']),
+            'visor': (['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'],) * 2, 'emoji': (['V3_head_emoji'],) * 2, 'mosaic': (['V3_head_toy'],) * 2}
+    every = {n for up, down in SETS.values() for n in up + down} | {'V3_hood_up', 'V3_hood_up_tv', 'V3_hood_down'} | {o.name for o in bpy.data.objects if o.name.startswith('V3_acc_')}
+    for o in bpy.data.objects:
+        if o.name.endswith(('_short', '_relaxed', '_tapered')):
+            o.hide_render = True
+    tr = arm.animation_data.nla_tracks['Idle_Loop']
+    arm.animation_data.action = tr.strips[0].action
+    if tr.strips[0].action.slots:
+        arm.animation_data.action_slot = tr.strips[0].action.slots[0]
+    bpy.context.scene.frame_set(10)
+    for key, (up_set, down_set) in SETS.items():
+        for up in (True, False):
+            show = set(up_set if up else down_set) | ({'V3_hood_up_tv' if key == 'tv' else 'V3_hood_up'} if up else {'V3_hood_down'})
+            for o in bpy.data.objects:
+                if o.name in every:
+                    o.hide_render = o.name not in show
+            render_views(f'{PREVIEW}-{key}-{"up" if up else "down"}', target=(0, 0, 1.5), dist=1.6, views=(('3q', 30), ('back', 160)), res=(420, 480), height=1.62)
+    for o in bpy.data.objects:
+        o.hide_render = False
+    arm.animation_data.action = None
+elif PREVIEW:
     from preview_lib import render_views
     HEADSET = {'hood': ['V3_hood_up', 'V3_head_void'], 'tv': ['V3_head_tv', 'V3_hood_down'],
                'visor': ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face', 'V3_hood_down'],
