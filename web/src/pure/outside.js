@@ -586,7 +586,16 @@ export function towerLayout(seed = 7) {
     put(dx, dn, 16 + rand() * 10, 14 + rand() * 10, 22 + rand() * 40, 0, rand() < 0.5 ? 1 : 0);
     made++;
   }
-  return out;
+  // Rooftops: the taller towers get a plant room, and now and then an antenna mast. They draw on their own random
+  // numbers, so adding them never moves a building.
+  const roof = rng(seed + 991), tops = [];
+  for (const t of out) {
+    if (t.own || t.style > 2 || t.h < 60) continue;
+    const top = t.base + t.h, r = roof();
+    if (r < 0.65) tops.push({ ...t, w: t.w * (0.3 + roof() * 0.15), d: t.d * (0.28 + roof() * 0.12), base: top, h: 3 + roof() * 3, style: 2, seed: roof() });
+    if (r < 0.16 && t.h > 100) tops.push({ ...t, w: 1.4, d: 1.4, base: top, h: 14 + roof() * 18, style: 2, seed: roof() });
+  }
+  return out.concat(tops);
 }
 
 // Every steady light point: [kind, dx, height above water, dn, r, g, b, size, phase].
@@ -638,9 +647,12 @@ export function lightLayout(seed = 11, count = 4000, towers = []) {
     const x = gx - 300 + (rand() - 0.5) * 260, n = gn - 900 + (rand() - 0.5) * 160;
     add(6, x, landHeight(x, n) + 8, n, [1.0, 0.8, 0.55], 5);
   }
+  // The red aviation light on each tall tower sits on its highest point, above any plant room or mast on the roof.
+  const peak = new Map();
+  for (const t of towers) { const k = `${t.x},${t.z}`; peak.set(k, Math.max(peak.get(k) ?? -Infinity, t.base + t.h)); }
   for (const t of towers) {
     if (t.h > 95 && t.style !== 3 && !t.own) {
-      add(3, t.x - EYE[0], t.base + t.h - WATER_Y + 2, EYE[2] - t.z, [1.0, 0.08, 0.04], 2.2, rand());
+      add(3, t.x - EYE[0], peak.get(`${t.x},${t.z}`) - WATER_Y + 2, EYE[2] - t.z, [1.0, 0.08, 0.04], 2.2, rand());
     }
   }
   const P = [0, 0];

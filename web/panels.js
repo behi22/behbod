@@ -4,8 +4,6 @@ import { drawGirih, drawPoster, drawProject, vanTime, seeded } from './room2.js'
 import { holidayAt } from './src/pure/calendar.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
-const NASTALIQ = "'Noto Nastaliq Urdu', serif";
-const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
 const PROJECTS = {
   'meet-bex': ['a voice AI host you just talk to', 'voice'],
   'profile-art': ['my GitHub profile, redrawn every hour', 'grid'],
@@ -27,6 +25,86 @@ function nextHoliday(now) {
   for (let d = 1; d < 120 && !best; d++) { const h = holidayAt(new Date(now.getTime() + d * DAYS)); if (h) best = { ...h, days: d }; }
   nextCache.day = day; nextCache.val = best;
   return best;
+}
+
+// A woven kilim, 1 px to a millimetre: a madder field with three stepped medallions, an indigo border of zigzags, an
+// ochre guard stripe, rows that shift a little in shade like hand-dyed wool, and a fringe along the bottom.
+function drawKilim(g, c) {
+  const W = c.width, H = c.height, F = 46, r = seeded(31);
+  const RED = [142, 43, 32], INDIGO = [35, 48, 79], IVORY = [233, 223, 201], OCHRE = [196, 138, 44], BROWN = [52, 30, 22], TEAL = [47, 107, 102];
+  const rgb = (k, v = 1) => `rgb(${k.map(x => Math.round(Math.min(255, x * v))).join(',')})`;
+  g.clearRect(0, 0, W, H);
+  const B = H - F;
+  // The field, a weft row at a time, each row a touch lighter or darker.
+  for (let y = 0; y < B; y += 5) { g.fillStyle = rgb(RED, 0.92 + r() * 0.14 + (Math.floor(y / 180) % 2) * 0.04); g.fillRect(0, y, W, 5); }
+  const box = (x, y, w, h, k, v = 1) => { g.fillStyle = rgb(k, v); g.fillRect(x, y, w, h); };
+  // Border: indigo with ivory zigzags, then an ochre stripe with small brown squares.
+  const BW = 70;
+  for (const [x, y, w, h] of [[0, 0, W, BW], [0, B - BW, W, BW], [0, 0, BW, B], [W - BW, 0, BW, B]]) box(x, y, w, h, INDIGO);
+  g.fillStyle = rgb(IVORY);
+  const zig = (x0, y0, len, horiz) => {
+    g.beginPath();
+    for (let t = 0; t <= len; t += 40) {
+      const a = (t / 40) % 2 ? 18 : -18;
+      if (horiz) g.lineTo(x0 + t, y0 + a); else g.lineTo(x0 + a, y0 + t);
+    }
+    g.lineWidth = 9; g.strokeStyle = rgb(IVORY); g.stroke();
+  };
+  zig(BW, BW / 2, W - 2 * BW, true); zig(BW, B - BW / 2, W - 2 * BW, true); zig(BW / 2, BW, B - 2 * BW, false); zig(W - BW / 2, BW, B - 2 * BW, false);
+  const GW = 18, gx = BW, gy = BW;
+  for (const [x, y, w, h] of [[gx, gy, W - 2 * gx, GW], [gx, B - gy - GW, W - 2 * gx, GW], [gx, gy, GW, B - 2 * gy], [W - gx - GW, gy, GW, B - 2 * gy]]) box(x, y, w, h, OCHRE);
+  for (let x = gx + 10; x < W - gx - 10; x += 34) { box(x, gy + 5, 8, 8, BROWN); box(x, B - gy - GW + 5, 8, 8, BROWN); }
+  for (let y = gy + 10; y < B - gy - 10; y += 34) { box(gx + 5, y, 8, 8, BROWN); box(W - gx - GW + 5, y, 8, 8, BROWN); }
+  // Three stepped medallions: diamonds inside diamonds, a weft row at a time, so the edges step like real weaving.
+  const cy = B / 2, step = 20, rings = [[300, INDIGO], [250, IVORY], [210, OCHRE], [165, INDIGO], [120, IVORY], [80, TEAL], [40, IVORY]];
+  for (const cx of [W * 0.25, W * 0.5, W * 0.75]) {
+    const scale = cx === W * 0.5 ? 1 : 0.86;
+    for (const [R0, col] of rings) {
+      const R = Math.round(R0 * scale / step) * step;
+      for (let y = -R; y < R; y += step) {
+        const hw = (R - Math.abs(y + step / 2)) * 0.72;
+        if (hw > 0) box(cx - hw, cy + y, hw * 2, step, col, 0.95 + r() * 0.1);
+      }
+    }
+    box(cx - 5, cy - 26, 10, 52, BROWN); box(cx - 26, cy - 5, 52, 10, BROWN);
+  }
+  // Small hooked motifs in the field between the medallions, top and bottom.
+  for (const fx of [W * 0.375, W * 0.625]) for (const fy of [B * 0.27, B * 0.73]) {
+    for (let k = -2; k <= 2; k++) box(fx - 6 + k * 22, fy - 6, 12, 12, k % 2 ? IVORY : OCHRE);
+    box(fx - 2, fy - 34, 4, 68, BROWN);
+  }
+  // Wool: fine speckle and the faint lines of the warp.
+  for (let i = 0; i < 9000; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '255,245,230' : '20,10,6'},${0.03 + r() * 0.05})`; g.fillRect(r() * W, r() * B, 2 + r() * 3, 1 + r() * 2); }
+  g.fillStyle = 'rgba(0,0,0,0.035)';
+  for (let x = 0; x < W; x += 6) g.fillRect(x, 0, 1, B);
+  // The fringe: knotted warp ends hanging below.
+  for (let x = 8; x < W - 6; x += 7) {
+    const len = F * (0.72 + r() * 0.26), w = (r() - 0.5) * 4;
+    g.strokeStyle = rgb(IVORY, 0.86 + r() * 0.12); g.lineWidth = 2.4;
+    g.beginPath(); g.moveTo(x, B - 2); g.quadraticCurveTo(x + w, B + len / 2, x + w * 1.6, B + len); g.stroke();
+  }
+  for (let x = 14; x < W - 10; x += 28) box(x - 6, B - 4, 12, 7, IVORY, 0.82);
+}
+
+// A small framed photo on the studio shelf: the North Shore mountains over the water at dusk, in a white mat.
+function drawShelfPhoto(g, c) {
+  const W = c.width, H = c.height, m = 26, r = seeded(9);
+  g.fillStyle = '#f1eee8'; g.fillRect(0, 0, W, H);
+  const x0 = m, y0 = m, w = W - 2 * m, h = H - 2 * m;
+  const sky = g.createLinearGradient(0, y0, 0, y0 + h * 0.62);
+  sky.addColorStop(0, '#3b3a66'); sky.addColorStop(0.55, '#c86a5a'); sky.addColorStop(1, '#f2b46a');
+  g.fillStyle = sky; g.fillRect(x0, y0, w, h * 0.62);
+  g.fillStyle = '#2c2f45';
+  g.beginPath(); g.moveTo(x0, y0 + h * 0.58);
+  for (let i = 0; i <= 12; i++) g.lineTo(x0 + (w * i) / 12, y0 + h * (0.44 + 0.12 * Math.abs(Math.sin(i * 1.3 + 0.4)) + r() * 0.03));
+  g.lineTo(x0 + w, y0 + h * 0.62); g.lineTo(x0, y0 + h * 0.62); g.fill();
+  const sea = g.createLinearGradient(0, y0 + h * 0.62, 0, y0 + h);
+  sea.addColorStop(0, '#d9946a'); sea.addColorStop(0.3, '#55607e'); sea.addColorStop(1, '#232a3e');
+  g.fillStyle = sea; g.fillRect(x0, y0 + h * 0.62, w, h * 0.38);
+  g.fillStyle = 'rgba(255,220,170,0.55)';
+  for (let i = 0; i < 14; i++) g.fillRect(x0 + w * 0.42 + (r() - 0.5) * 40, y0 + h * (0.64 + i * 0.02), 20 + r() * 30, 2);
+  g.fillStyle = '#1d2133';
+  g.beginPath(); g.moveTo(x0 + w * 0.7, y0 + h * 0.76); g.lineTo(x0 + w * 0.7, y0 + h * 0.66); g.lineTo(x0 + w * 0.76, y0 + h * 0.75); g.fill();
 }
 
 // A tribute poster to Claude: a hand-drawn spark over the house's own floor plan, as if it lit the idea up.
@@ -129,12 +207,14 @@ export function makePanels(surface, ctx) {
     text(g, 'build passed', 66, 175, 12, '#d8e0ee', 400, MONO, 'center');
   }, 1000);
 
-  // The arcade cabinet's attract screen.
+  // The arcade cabinet's attract screen, taking turns between its two games.
   add('arcade', 500, 400, (g, c, now) => {
     g.fillStyle = '#05030f'; g.fillRect(0, 0, c.width, c.height);
     for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(120,80,255,${0.2 + (i % 5) * 0.1})`; g.fillRect((i * 97 + now / 20) % 500, (i * 53) % 400, 3, 3); }
-    text(g, 'STRIKER 22', 250, 140, 48, '#3ee6c4', 700, MONO, 'center');
-    text(g, 'a penalty shootout', 250, 185, 20, '#b197fc', 400, MONO, 'center');
+    const skills = Math.floor(now / 6000) % 2 === 0;
+    text(g, skills ? 'SKILLS SHOOTER' : 'STRIKER 22', 250, 140, skills ? 38 : 48, skills ? '#d97757' : '#3ee6c4', 700, MONO, 'center');
+    text(g, skills ? 'the Claude game' : 'a penalty shootout', 250, 185, 20, '#b197fc', 400, MONO, 'center');
+    text(g, '2 GAMES', 250, 230, 16, '#8a93a6', 400, MONO, 'center');
     if (Math.floor(now / 600) % 2) text(g, 'INSERT COIN', 250, 300, 28, '#ffd34d', 700, MONO, 'center');
   }, 600);
 
@@ -170,19 +250,11 @@ export function makePanels(surface, ctx) {
   const play = (g, cx, cy, s) => { g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.arc(cx, cy, s, 0, 7); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(cx - s * 0.35, cy - s * 0.5); g.lineTo(cx - s * 0.35, cy + s * 0.5); g.lineTo(cx + s * 0.55, cy); g.fill(); };
 
   // The lounge TV: a channel of the videos, flipped one at a time with E.
+  // The TV: a title card until the live match (src/tvmatch.js) paints over it.
   add('tv', 1280, 720, (g, c) => {
-    g.fillStyle = '#05070b'; g.fillRect(0, 0, c.width, c.height);
-    text(g, 'the channel', 60, 100, 60, '#e8edf5', 700);
-    const vids = ctx.videos();
-    for (let i = 0; i < 3; i++) {
-      const v = vids[i], x = 60 + i * 400, img = v && thumb(v.id, () => draws.tv(Date.now()));
-      g.fillStyle = '#121826'; g.fillRect(x, 180, 360, 203);
-      if (img) drawThumb(g, img, x, 180, 360, 203);
-      play(g, x + 180, 281, 34);
-      text(g, v ? v.title : 'coming soon', x, 430, 22, '#d8e0ee');
-      if (v?.by) text(g, 'by ' + v.by, x, 462, 18, '#7f8aa0');
-    }
-    text(g, vids.length > 3 ? `and ${vids.length - 3} more · press E to watch` : 'press E to watch', 60, 640, 28, '#3ee6c4');
+    g.fillStyle = '#0a1120'; g.fillRect(0, 0, c.width, c.height);
+    text(g, 'MATCH NIGHT', 640, 330, 84, '#e8edf5', 800, MONO, 'center');
+    text(g, 'BEHI FC  v  BOTS  \u00b7  live', 640, 400, 30, '#3ee6c4', 600, MONO, 'center');
   });
 
   // The BEHI 22 keeper jersey in its frame (the black kit).
@@ -257,15 +329,9 @@ export function makePanels(surface, ctx) {
     for (let i = 0; i < 12; i++) { g.fillStyle = '#c8bca2'; g.fillRect(410, 60 + i * 34, i % 4 === 3 ? 180 : 300, 4); }
   });
 
-  // The nastaliq in light along the mezzanine's back wall: my tattoo.
-  add('nastaliq', 2200, 450, g => {
-    g.clearRect(0, 0, 2200, 450); g.fillStyle = '#000'; g.fillRect(0, 0, 2200, 450);
-    g.direction = 'rtl'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.shadowColor = '#ffb060'; g.shadowBlur = 40; g.fillStyle = '#ffd9a0';
-    g.font = `500 170px ${NASTALIQ}`; g.fillText(TATTOO.join(' '), 1100, 230);
-    g.shadowBlur = 0; g.direction = 'ltr';
-  });
-  document.fonts?.load(`500 130px 'Noto Nastaliq Urdu'`, TATTOO.join(' ')).then(() => redraw('nastaliq')).catch(() => {});
+  // The kilim behind the mezzanine's reading nook, and the photo on the studio's floating shelf.
+  add('kilim', 1500, 1040, drawKilim);
+  add('shelf_photo', 320, 440, drawShelfPhoto);
 
   add('sheet', 420, 280, g => {
     g.fillStyle = '#f4f1e8'; g.fillRect(0, 0, 420, 280);

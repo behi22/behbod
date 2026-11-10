@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { piece, mesh, glow, sph, cyl, box, rbox, PAINT } from './shapes.js';
 
-// The fleet over the lounge: the Supremacy as a display model hovering in the double-height space, and a dogfight of
+// The fleet over the lounge: an Imperial Star Destroyer as a display model hovering in the double-height space, and a dogfight of
 // small X-wings and TIE fighters looping round it, with laser bolts, hits and sparks. Every ship is a solid (the old
 // TIE's wings were single faces and vanished when seen from behind). Ships face +z, so lookAt points them along a path.
 
@@ -56,45 +56,112 @@ function tie() {
   return g;
 }
 
-// A small seeded random, so the Supremacy's surface detail is the same on every visit.
+// A small seeded random, so the Star Destroyer's surface detail is the same on every visit.
 function seeded(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
-function supremacy() {
+// A solid from corner points and triangles, each wound counter-clockwise seen from outside (the material is one-sided).
+function poly(v, faces) {
+  const pos = [];
+  for (const [a, b, c] of faces) pos.push(...v[a], ...v[b], ...v[c]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+// An Imperial Star Destroyer, nose forward (+z): the dagger hull with a stepped upper deck over a shallower keel, the
+// trench down the front of the spine, the stepped command tower with its T bridge and two shield domes, the engines.
+function starDestroyer() {
   const g = new THREE.Group();
-  // The flying wing: a broad chevron, nose forward (+z), trailing edge notched behind the spine.
-  const outline = [[0, 0.44], [1.3, -0.3], [1.25, -0.36], [0.28, -0.14], [0, -0.25], [-0.28, -0.14], [-1.25, -0.36], [-1.3, -0.3]];
-  const shape = new THREE.Shape(outline.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const wing = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 1 });
-  wing.rotateX(-Math.PI / 2);
-  const D = '#3a3e45', D2 = '#4a4f57', D3 = '#2c2f35';
-  const parts = [piece(wing, (x, y) => (y > 0.03 ? D2 : D3), [0, -0.02, 0])];
-  // The spine: a stepped ridge of blocks down the middle, tallest at the back.
-  for (let i = 0; i < 7; i++) {
-    const z = 0.3 - i * 0.085, w = 0.07 + i * 0.03, h = 0.02 + i * 0.012;
-    parts.push(piece(box(w, h, 0.09), i % 2 ? D2 : D, [0, 0.03 + h / 2, z]));
+  const L = 0.86, HW = 0.56, TOP = 0.15, KEEL = 0.1;
+  const LIGHT = '#c3c6cb', MID = '#a5a9af', DARK = '#6e737a', DEEP = '#3d4148';
+  // The main hull from five corners: the nose, the stern corners, the top of the stern on the spine, the keel's foot.
+  // The underside is its own darker piece, so seen from the lounge below the hull reads as a ship and not a pale sheet.
+  const V5 = [[0, 0, L], [-HW, 0, -L], [HW, 0, -L], [0, TOP, -L], [0, -KEEL, -L]];
+  const parts = [
+    piece(poly(V5, [[0, 3, 1], [0, 2, 3], [1, 3, 2]]), LIGHT, [0, 0, 0], [0, 0, 0], [1, 1, 1], 0.9),
+    piece(poly(V5, [[0, 1, 4], [0, 4, 2], [1, 2, 4]]), '#7d8188', [0, 0, 0], [0, 0, 0], [1, 1, 1], 0.6),
+  ];
+  // The underside's height at a point, and its slope across: the keel runs down the middle, highest at the edges.
+  const under = (x, z) => -KEEL * ((L - z) / (2 * L) - Math.abs(x) / HW);
+  const keelSlope = Math.atan2(KEEL, HW);
+  // Down the middle of the keel: the ridge, the main hangar's dark mouth with its lit inside, the reactor dome aft.
+  parts.push(piece(box(0.03, 0.022, 0.68), DARK, [0, under(0, -0.41) - 0.006, -0.41], [-Math.atan2(KEEL, 2 * L), 0, 0], [1, 1, 1], 0.6));
+  parts.push(piece(box(0.13, 0.012, 0.2), '#15181c', [0, under(0, 0.08) - 0.004, 0.08], [-Math.atan2(KEEL, 2 * L), 0, 0], [1, 1, 1], 0));
+  parts.push(piece(sph(0.095, 20, 12), MID, [0, under(0, -0.56) - 0.006, -0.56], [0, 0, 0], [1, 0.32, 1.15], 0.7));
+  // The upper deck steps up twice toward the spine, the terraces the class is known by.
+  const ridge = z => TOP * (L - z) / (2 * L);
+  const deckY = (x, z) => Math.max(0, ridge(z) - TOP * Math.abs(x) / HW);
+  const terraces = [[0.76, 0.28, 0.016, MID], [0.5, -0.22, 0.016, LIGHT]];
+  let base = 0;
+  for (const [w, zn, lift, col] of terraces) {
+    const hw = HW * w, rn = ridge(zn) + base, dl = deckY(hw, -L) + base;
+    const v = [[0, rn + lift, zn], [-hw, dl + lift, -L], [hw, dl + lift, -L], [0, TOP + base + lift, -L], [0, rn, zn], [-hw, dl, -L], [hw, dl, -L]];
+    parts.push(piece(poly(v, [[0, 3, 1], [0, 2, 3], [4, 0, 1], [4, 1, 5], [4, 2, 0], [4, 6, 2], [1, 3, 2], [5, 1, 2], [5, 2, 6]]), col, [0, 0, 0], [0, 0, 0], [1, 1, 1], 0.9));
+    base += lift;
   }
-  // Surface greebles on both wings, inside the outline.
-  // Whether a point (x, z) lies on the wing (inside the outline).
-  const inside = (x, z) => { let c = false; for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) { const [xi, zi] = outline[i], [xj, zj] = outline[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
-  const rnd = seeded(22);
-  for (let n = 0; n < 160; n++) {
-    const x = (rnd() * 2 - 1) * 1.2, z = rnd() * 0.75 - 0.33;
-    if (!inside(x, z)) continue;
-    parts.push(piece(box(0.02 + rnd() * 0.05, 0.004 + rnd() * 0.01, 0.015 + rnd() * 0.04), rnd() > 0.5 ? D2 : D, [x, 0.03, z]));
+  // The deck's height at a point, terraces included, so the detail sits on whichever step it lands on.
+  const surf = (x, z) => {
+    let y = deckY(x, z);
+    for (const [w, zn, lift] of terraces) if (z <= zn && Math.abs(x) <= HW * w * (zn - z) / (zn + L)) y += lift;
+    return y;
+  };
+  // The trench along the spine, ahead of the terraces.
+  parts.push(piece(box(0.026, 0.01, 0.4), DEEP, [0, ridge(0.5) - 0.002, 0.5], [Math.atan2(TOP, 2 * L), 0, 0]));
+  // The command tower: stacked blocks, then the neck, the T bridge with its window band, the two domes on stalks.
+  const tz = -0.66, ty = TOP + base;
+  for (const [w, h, d, y, c] of [[0.34, 0.05, 0.3, ty + 0.025, MID], [0.25, 0.05, 0.22, ty + 0.075, LIGHT], [0.16, 0.045, 0.15, ty + 0.122, MID]]) {
+    parts.push(piece(box(w, h, d), c, [0, y, tz]));
   }
+  parts.push(piece(box(0.05, 0.09, 0.05), MID, [0, ty + 0.19, tz - 0.02]));
+  parts.push(piece(box(0.26, 0.03, 0.065), LIGHT, [0, ty + 0.245, tz - 0.02]));
+  parts.push(piece(box(0.24, 0.008, 0.012), '#1b1e22', [0, ty + 0.242, tz + 0.014]));
+  for (const sx of [-1, 1]) {
+    parts.push(piece(cyl(0.006, 0.006, 0.03, 8), DARK, [sx * 0.07, ty + 0.275, tz - 0.02]));
+    parts.push(piece(sph(0.024, 16, 12), LIGHT, [sx * 0.07, ty + 0.3, tz - 0.02]));
+  }
+  // Detail on the decks: low blocks lying on the slope of the step they land on, clear of the tower and the trench.
+  const rnd = seeded(41), slope = Math.atan2(TOP, HW);
+  // A plate stays inside the hull's edge where the hull is narrowest under it (its nose end), and on one side of the
+  // spine, so it never hangs over the edge or bridges the centre line at the wrong tilt.
+  const onHull = (x, z, w, d) => Math.abs(x) + w / 2 <= HW * (L - z - d / 2) / (2 * L) * 0.96 && Math.abs(x) - w / 2 >= 0.004;
+  for (let n = 0; n < 220; n++) {
+    const z = -L + 0.06 + rnd() * 1.5, half = HW * (L - z) / (2 * L);
+    const x = (rnd() * 2 - 1) * half * 0.88;
+    if ((Math.abs(x) < 0.19 && z < -0.48) || (Math.abs(x) < 0.03 && z > 0.28)) continue;
+    const w = 0.01 + rnd() * 0.035, d = 0.01 + rnd() * 0.04, h = 0.003 + rnd() * 0.01;
+    if (!onHull(x, z, w, d)) continue;
+    parts.push(piece(box(w, h, d), rnd() > 0.55 ? DARK : MID, [x, surf(x, z) + h / 2 - 0.001, z], [0, 0, -Math.sign(x) * slope]));
+  }
+  // Plating detail on the underside too, lying on whichever half of the keel it lands on, clear of the hangar and the dome.
+  for (let n = 0; n < 110; n++) {
+    const z = -L + 0.06 + rnd() * 1.5, half = HW * (L - z) / (2 * L);
+    const x = (rnd() * 2 - 1) * half * 0.86;
+    if (Math.abs(x) < 0.09 && z > -0.66 && z < 0.2) continue;
+    const w = 0.012 + rnd() * 0.04, d = 0.012 + rnd() * 0.05, h = 0.003 + rnd() * 0.008;
+    if (!onHull(x, z, w, d)) continue;
+    parts.push(piece(box(w, h, d), rnd() > 0.5 ? DARK : DEEP, [x, under(x, z) - h / 2 + 0.001, z], [0, 0, Math.sign(x) * keelSlope], [1, 1, 1], 0.6));
+  }
+  // The stern: the three big engines, four small ones, and the dark band they sit in.
+  parts.push(piece(box(0.62, 0.13, 0.02), DEEP, [0, 0.025, -L - 0.005]));
+  const engines = [[0, 0.035, 0.05], [-0.16, 0.03, 0.045], [0.16, 0.03, 0.045], [-0.26, 0.02, 0.022], [0.26, 0.02, 0.022], [-0.08, -0.025, 0.022], [0.08, -0.025, 0.022]];
+  for (const [x, y, r] of engines) parts.push(piece(cyl(r, r * 0.85, 0.06, 18), DARK, [x, y, -L - 0.035], [Math.PI / 2, 0, 0]));
   g.add(mesh(parts, PAINT));
-  // City lights speckled over the top and along the leading edges, and the engine glow at the back of the spine.
-  const pts = [], rl = seeded(7);
-  for (let n = 0; n < 900 && pts.length < 1500; n++) {
-    const x = (rl() * 2 - 1) * 1.22, z = rl() * 0.76 - 0.34;
-    if (inside(x, z)) pts.push(x, 0.035 + rl() * 0.004, z);
+  // The hangar's inside, a warm working light seen from below.
+  const bay = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.17), glow(1.4, 1.05, 0.6));
+  bay.rotation.x = Math.PI / 2 - Math.atan2(KEEL, 2 * L); bay.position.set(0, under(0, 0.08) - 0.0105, 0.08); g.add(bay);
+  const fire = glow(1.1, 1.6, 3.2);
+  for (const [x, y, r] of engines) { const e = new THREE.Mesh(new THREE.CircleGeometry(r * 0.8, 18), fire); e.position.set(x, y, -L - 0.066); e.rotation.y = Math.PI; g.add(e); }
+  // Window lights in rows along the hull's edges and across the tower's front.
+  const pts = [];
+  for (let i = 0; i < 70; i++) {
+    const t = i / 70, z = L - 2 * L * t, hw = HW * t;
+    for (const sx of [-1, 1]) pts.push(sx * hw * 0.985, -0.006, z);
   }
-  for (let i = 0; i <= 80; i++) { const u = i / 80, s = u < 0.5 ? -1 : 1, k = Math.abs(u - 0.5) * 2; pts.push(s * 1.28 * k, 0.03, 0.43 - 0.73 * k); }
+  for (const [w, y] of [[0.3, ty + 0.01], [0.22, ty + 0.06], [0.14, ty + 0.105]]) for (let i = 0; i <= 10; i++) pts.push(-w / 2 + (w * i) / 10, y, tz + (w === 0.3 ? 0.152 : w === 0.22 ? 0.112 : 0.077));
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  g.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(1.6, 1.35, 0.95), size: 0.012, sizeAttenuation: true })));
-  const eng = glow(0.5, 1.4, 3.0);
-  for (let i = -3; i <= 3; i++) { const e = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.018), eng); e.position.set(i * 0.045, 0.06, -0.256); e.rotation.y = Math.PI; g.add(e); }
+  g.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(1.5, 1.4, 1.1), size: 0.008, sizeAttenuation: true })));
   return g;
 }
 
@@ -112,7 +179,7 @@ export function makeFleet(scene, meta, { sound } = {}) {
   const LAP = 30;
   const root = new THREE.Group();
   scene.add(root);
-  const big = supremacy();
+  const big = starDestroyer();
   big.position.copy(P(0, 0, 5.75));
   root.add(big);
   const ships = [];

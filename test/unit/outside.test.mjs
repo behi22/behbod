@@ -242,3 +242,15 @@ test('noise tiles seamlessly and spans 0 to 1; the hash stays in range', () => {
   assert.ok(seam < inner * 2.5, `${seam} vs ${inner}`);
   for (let i = 0; i < 2000; i++) { const h = P.hash13(i * 1.7, i * 0.3, 9 - i); assert.ok(h >= 0 && h < 1); }
 });
+
+test('every tall tower keeps its red aviation light above whatever stands on its roof', () => {
+  const towers = P.towerLayout(7), lights = P.lightLayout(11, 400, towers).filter(l => l[0] === 3);
+  const tall = towers.filter(t => t.h > 95 && t.style !== 3 && !t.own);
+  assert.ok(tall.length > 3 && lights.length === tall.length, `${tall.length} tall towers, ${lights.length} red lights`);
+  for (const t of tall) {
+    const peak = Math.max(...towers.filter(q => q.x === t.x && q.z === t.z).map(q => q.base + q.h));
+    const l = lights.find(q => Math.abs(q[1] - (t.x - P.EYE[0])) < 1e-6 && Math.abs(q[3] - (P.EYE[2] - t.z)) < 1e-6);
+    assert.ok(l, 'a light on the tower');
+    assert.ok(l[2] + P.WATER_Y > peak + 1, `light at ${(l[2] + P.WATER_Y).toFixed(1)} under the roof top ${peak.toFixed(1)}`);
+  }
+});

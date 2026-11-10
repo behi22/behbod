@@ -129,14 +129,36 @@ def build(M, E, G):
         plane('screen_jersey', 0.62, 0.77, (PX - 0.045, 2.25, 2.0), M['kit_white'], '-X')
         screen('jersey', (PX - 0.045, 2.25, 2.0), 0.62, 0.77)
         wallspot('jersey', 'partition', 1.9, 2.6, 1.57, 2.43)
-        for sy in (-1, 1):
-            tube(f'goal_post{sy}', [(PX - 0.45, 2.25 + sy * 0.45, 0), (PX - 0.45, 2.25 + sy * 0.45, 0.6)], 0.025, M['white'])
-            tube(f'goal_back{sy}', [(PX - 0.45, 2.25 + sy * 0.45, 0.6), (PX - 0.05, 2.25 + sy * 0.45, 0.02)], 0.015, M['white'])
-        tube('goal_bar', [(PX - 0.45, 1.8, 0.6), (PX - 0.45, 2.7, 0.6)], 0.025, M['white'])
-        box('goal_net', (0.02, 0.9, 0.62), (PX - 0.24, 2.25, 0.3), M['white'], tilt=(0, math.radians(25), 0))
+        # The mini goal faces the room: two posts and a crossbar, stays running back down to a bar on the floor by the
+        # partition, and a net of thin cords on the back and both sides.
+        GF, GB, GY0, GY1, GH = PX - 0.45, PX - 0.05, 1.8, 2.7, 0.6
+        for sy, y in ((-1, GY0), (1, GY1)):
+            tube(f'goal_post{sy}', [(GF, y, 0), (GF, y, GH)], 0.025, M['white'])
+            tube(f'goal_back{sy}', [(GF, y, GH), (GB, y, 0.02)], 0.015, M['white'])
+        tube('goal_bar', [(GF, GY0, GH), (GF, GY1, GH)], 0.025, M['white'])
+        tube('goal_floor', [(GB, GY0, 0.02), (GB, GY1, 0.02)], 0.015, M['white'])
+        stay_z = lambda x: GH + (0.02 - GH) * (x - GF) / (GB - GF)
+        for k in range(1, 9):
+            y = GY0 + (GY1 - GY0) * k / 9
+            tube(f'goal_net_v{k}', [(GF, y, GH), (GB, y, 0.02)], 0.004, M['white'], seg=4)
+        for k in range(1, 6):
+            t = k / 6
+            x, zz = GF + (GB - GF) * t, GH + (0.02 - GH) * t
+            tube(f'goal_net_h{k}', [(x, GY0, zz), (x, GY1, zz)], 0.004, M['white'], seg=4)
+        for sy, y in ((-1, GY0), (1, GY1)):
+            for k in range(1, 4):
+                x = GF + (GB - GF) * k / 4
+                tube(f'goal_side{sy}_v{k}', [(x, y, 0.0), (x, y, stay_z(x))], 0.004, M['white'], seg=4)
+            for k in range(1, 4):
+                zz = GH * k / 4
+                x1 = GF + (GB - GF) * (GH - zz) / (GH - 0.02)
+                tube(f'goal_side{sy}_h{k}', [(GF, y, zz), (x1, y, zz)], 0.004, M['white'], seg=4)
         collider('goal', (PX - 0.5, 1.78, -1), (PX - 0.01, 2.72, 0.62))
         point('goal', (PX - 0.3, 2.25, 0.3))
-        point('ball', (PX - 1.5, 2.25, 0.11))
+        # Penalties with BH-22 in goal: the spot, the middle of the goal line, the mouth inside the posts and under the bar.
+        point('pen_spot', (PX - 2.8, 2.25, 0.0))
+        point('pen_line', (GF, 2.25, 0.0))
+        META['penalty'] = {'width': round(GY1 - GY0 - 0.05, 3), 'height': round(GH - 0.025, 3)}
         interact('penalties', 'Take a penalty', (PX - 2.2, 2.25, 0), r=0.6)
 
         # BH-22's dock under the high end of the stairs (the robot itself is built by the page so it can roam).

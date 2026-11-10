@@ -432,6 +432,38 @@ def build(M, E, G):
         plane('screen_poster', 0.56, 0.8, (16.0, 0.027, Z0 + 1.55), M['paper'], '+Y')
         screen('poster', (16.0, 0.027, Z0 + 1.55), 0.56, 0.8, normal='+Y')
         wallspot('poster', 's', 15.69, 16.31, Z0 + 1.12, Z0 + 1.98)
+        # A floating walnut shelf on the bare stretch of east wall past the rack: books against a bookend, a trailing
+        # plant, a framed photo and a ceramic jar, with clear space between them.
+        FX, FZ = W - 0.12, Z0 + 1.55
+        box('float_shelf', (0.24, 1.8, 0.035), (FX, 4.5, FZ), M['walnut'], bevel=0.006)
+        collider('float_shelf', (W - 0.24, 3.6, FZ - 0.02), (W, 5.4, FZ + 0.4))
+        wallspot('float_shelf', 'e', 3.6, 5.4, FZ - 0.02, FZ + 0.42)
+        top = FZ + 0.0175
+        box('float_bookend', (0.14, 0.012, 0.16), (FX, 3.72, top + 0.08), M['black'])
+        y = 3.735
+        for i, (h, t) in enumerate(((0.22, 0.035), (0.2, 0.028), (0.24, 0.04), (0.19, 0.03), (0.21, 0.034))):
+            box(f'float_book{i}', (0.15, t, h), (FX, y + t / 2, top + h / 2), M[f'book{i % 4 + 1}'], bevel=0.003)
+            y += t + 0.003
+        cyl('float_pot', 0.06, 0.1, (FX, 4.32, top + 0.05), M['pot_white'], seg=20, r2=0.07)
+        # A trailing pothos: vines over the shelf's front edge, heart-ish leaves every few centimetres along them.
+        for k in range(7):
+            a = -0.45 + k * 0.15
+            drop = 0.16 + (k % 3) * 0.08
+            pts = [(FX - 0.03, 4.32 + a * 0.1, top + 0.1), (FX - 0.12, 4.32 + a * 0.2, top + 0.02), (FX - 0.14, 4.32 + a * 0.25, top - drop * 0.5), (FX - 0.13, 4.32 + a * 0.28, top - drop)]
+            tube(f'float_vine{k}', pts, 0.003, M['leaf2'], seg=4)
+            for j in range(1, 7):
+                t = j / 6
+                q = min(2, int(t * 3))
+                (x0, y0, z0), (x1, y1, z1) = pts[q], pts[q + 1]
+                f = t * 3 - q
+                sphere(f'float_leaf{k}_{j}', 0.021, (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f + (0.012 if j % 2 else -0.012), z0 + (z1 - z0) * f), M['leaf' if (k + j) % 2 else 'leaf2'], sub=1, scale=(0.4, 1.1, 0.9))
+        sphere('float_leaves', 0.085, (FX, 4.32, top + 0.13), M['leaf'], sub=2, scale=(1, 1.1, 0.55))
+        box('float_frame', (0.02, 0.2, 0.26), (W - 0.06, 4.75, top + 0.13), M['frame'], bevel=0.003)
+        plane('screen_shelf_photo', 0.16, 0.22, (W - 0.072, 4.75, top + 0.132), M['paper'], '-X')
+        screen('shelf_photo', (W - 0.072, 4.75, top + 0.132), 0.16, 0.22, normal='-X')
+        cyl('float_jar', 0.05, 0.15, (FX, 5.15, top + 0.075), M['pot'], seg=20, r2=0.04)
+        cyl('float_jar_lid', 0.035, 0.012, (FX, 5.15, top + 0.156), M['walnut'], seg=16)
+
         # The Claude poster: a tribute to the AI that helped bring this place to life.
         box('frame_claude', (0.66, 0.025, 0.92), (17.95, 0.013, Z0 + 1.58), M['frame'], bevel=0.004)
         plane('screen_claude', 0.6, 0.86, (17.95, 0.027, Z0 + 1.58), M['paper'], '+Y')
@@ -466,7 +498,7 @@ def build(M, E, G):
         plane('screen_arcade', 0.5, 0.4, (AX + 0.33, AY, Z0 + 1.3), E['screen'], '+X', yaw=0)
         screen('arcade', (AX + 0.33, AY, Z0 + 1.3), 0.5, 0.4, normal='+X')
         collider('arcade', (AX - 0.32, AY - 0.36, Z0 - 1), (AX + 0.58, AY + 0.36, Z0 + 1.75))
-        interact('arcade', 'Play Striker 22', (AX + 1.1, AY, Z0), r=0.8)
+        interact('arcade', 'Play the arcade', (AX + 1.1, AY, Z0), r=0.8)
         potted('studio_plant', (11.85, 0.5, Z0), M, r=0.2, h=0.5, mat='pot_white', leaves=11, size=0.2)
         potted('studio_plant2', (17.0, 0.45, Z0), M, r=0.22, h=0.55, mat='pot', leaves=12, size=0.22)
         lamp('L_arcade', 25, (AX + 0.5, AY, Z0 + 1.4), (0.4, 0.9, 0.85))

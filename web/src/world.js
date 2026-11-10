@@ -96,12 +96,12 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
         mirrorMesh = o;
       } else if (isScreen(name)) {
         const key = screenKey(name);
-        const k = name === 'postit' ? 0.95 : name === 'backdrop' ? 1 : name === 'desk_mat' ? 0.62 : name === 'neon' ? 1.7 : DIM.has(m.name) ? 0.8 : 1.25;
+        const k = name === 'postit' ? 0.95 : name === 'backdrop' ? 1 : name === 'desk_mat' || name === 'screen_kilim' ? 0.62 : name === 'neon' ? 1.7 : DIM.has(m.name) ? 0.8 : 1.25;
         o.material = new THREE.MeshBasicMaterial({ map: screens.textures[key] || null, color: new THREE.Color(k, k, k), fog: name !== 'backdrop' });
         if (!screens.textures[key]) console.warn('[loft] no canvas for screen', key);
         if (name === 'onair') o.material.color.setScalar(2.2);
-        // The nastaliq is light on the wall itself: only the glowing letters show.
-        if (key === 'nastaliq') Object.assign(o.material, { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+        // The kilim's fringe hangs below its weave: the gaps between the threads show the wall, not black.
+        if (name === 'screen_kilim') o.material.alphaTest = 0.5;
       } else if (m.name?.startsWith('G_')) {
         const water = name === 'aqua_water';
         o.material = new THREE.MeshBasicMaterial({ color: water ? 0x1f7fa8 : 0x9fb6d8, transparent: true, opacity: name === 'window_glass' ? 0.05 : water ? 0.3 : 0.12, depthWrite: false, fog: true, side: THREE.DoubleSide });

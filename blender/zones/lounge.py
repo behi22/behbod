@@ -1,4 +1,4 @@
-"""The sunken lounge and the ground floor around it: the U couch facing the TV over the fireplace, holochess, the bean
+"""The sunken lounge and the ground floor around it: a sofa and two armchairs facing the TV over the fireplace, holochess, the bean
 bag, the aquarium wall, the Vader cube, the window seat, the egg chair, the cat tree and Pishi's cat walk, Jessi's
 bed, and the X-wing and TIE over the void."""
 import math
@@ -34,6 +34,18 @@ def couch_run(name, M, a, b, back, depth, z, mat):
     collider(name, lo, hi)
 
 
+def armchair(name, M, c, back, mat):
+    # An armchair facing away from `back` ('n' or 's'): base, seat cushion, back and two arms, seat top 0.5 m up.
+    x, y, z = c
+    sb = 1 if back == 'n' else -1
+    box(f'{name}_base', (0.9, 0.85, 0.36), (x, y, z + 0.18), M[mat], bevel=0.05, seg=3)
+    box(f'{name}_seat', (0.62, 0.62, 0.14), (x, y - sb * 0.05, z + 0.43), M['cushion'], bevel=0.05, seg=3)
+    box(f'{name}_back', (0.86, 0.2, 0.46), (x, y + sb * 0.33, z + 0.68), M['cushion'], bevel=0.07, seg=3)
+    for sx in (-1, 1):
+        box(f'{name}_arm{sx}', (0.14, 0.85, 0.24), (x + sx * 0.38, y, z + 0.48), M[mat], bevel=0.05, seg=3)
+    collider(name, (x - 0.45, y - 0.425, z - 1), (x + 0.45, y + 0.425, z + 0.6))
+
+
 def ship_xwing(M, c):
     x, y, z = c
     box('ship_xwing_body', (0.9, 0.12, 0.12), (x, y, z), M['white'], bevel=0.02, kind='emit')
@@ -65,35 +77,62 @@ def build(M, E, G):
         z = PIT_Z
         px0, py0, px1, py1 = PIT
         CY = 10.2
-        rug('rug_lounge', (6.0, CY, z), M['rug_blue'], r=2.6)
-        # The U couch opens west toward the TV, with a walkway behind it from the steps.
-        couch_run('couch_n', M, (4.4, 12.6), (8.3, 12.6), 'n', 0.85, z, 'sofa')
-        couch_run('couch_s', M, (4.4, 7.8), (8.3, 7.8), 's', 0.85, z, 'sofa')
-        couch_run('couch_e', M, (8.3, 8.65), (8.3, 11.75), 'e', 0.85, z, 'sofa')
-        for i, (bx, by, m, tilt) in enumerate(((4.8, 12.05, 'cushion_teal', 0.25), (5.7, 12.05, 'cushion_rust', 0.25), (4.8, 8.35, 'cushion_rust', -0.25), (7.85, 9.3, 'cushion_teal', 0))):
-            box(f'pillow{i}', (0.36, 0.14, 0.32), (bx, by, z + 0.62), M[m], bevel=0.06, seg=3, tilt=(tilt, 0, 0), rot=math.pi / 2 if i == 3 else 0)
-        seat('couch_north', 'Sit on the couch', (6.4, 11.3, z), (6.4, 12.25, z + 0.50), 270, 'sofa')
-        seat('couch_south', 'Sit on the couch', (6.4, 9.1, z), (6.4, 8.15, z + 0.50), 90, 'sofa')
-        seat('couch_east', 'Sit on the couch', (7.0, CY, z), (7.95, CY, z + 0.50), 180, 'sofa')
-        # Holochess: a round table whose top is a glowing board.
-        cyl('holo_table_base', 0.2, 0.42, (6.1, CY, z + 0.21), M['black'], seg=32)
-        cyl('holo_table_top', 0.45, 0.04, (6.1, CY, z + 0.44), M['black'], seg=48)
-        cyl('holo_board', 0.38, 0.004, (6.1, CY, z + 0.462), E['holo'], seg=48, kind='emit')
-        collider('holo_table', (5.65, CY - 0.45, z - 1), (6.55, CY + 0.45, z + 0.46))
-        point('holochess', (6.1, CY, z + 0.47))
-        interact('holochess', 'Play holochess', (5.15, CY, z), r=0.55)
-        # The bean bag in front of the TV.
-        sphere('beanbag', 0.42, (3.4, CY, z + 0.2), M['beanbag'], sub=3, scale=(1, 1.05, 0.5))
-        sphere('beanbag_dent', 0.28, (3.45, CY, z + 0.36), M['beanbag'], sub=3, scale=(1, 1, 0.35))
-        collider('beanbag', (2.98, CY - 0.44, z - 1), (3.82, CY + 0.44, z + 0.4))
-        seat('beanbag', 'Sit on the bean bag', (4.35, CY - 0.75, z), (3.55, CY, z + 0.28), 180, 'low')
-        interact('tv', 'Watch my videos', (4.35, CY + 0.75, z), r=0.5)
-        # A floor lamp in the pit's north-east corner, clear of the steps.
-        cyl('lounge_lamp_pole', 0.014, 1.5, (9.35, 13.2, z + 0.75), M['metal'])
-        cyl('lounge_lamp_base', 0.14, 0.025, (9.35, 13.2, z + 0.012), M['metal'])
-        cyl('lounge_lamp_shade', 0.2, 0.28, (9.35, 13.2, z + 1.57), M['lampshade'], r2=0.14, cap=False)
-        sphere('lounge_lamp_bulb', 0.05, (9.35, 13.2, z + 1.53), E['warm'], sub=2, kind='emit')
-        collider('lounge_lamp', (9.17, 13.02, z - 1), (9.53, 13.38, z + 1.7))
+        # A sitting group sized to the room and turned to the TV: a three-seat sofa, two armchairs facing each other over
+        # a low coffee table, the bean bag up front for games. Holochess gets its own corner by the steps, and the walkway
+        # from the steps runs behind the sofa past a console table.
+        GX, GY = 4.6, 10.5
+        rug('rug_lounge', (GX + 0.15, GY, z), M['rug_blue'], r=2.3)
+        couch_run('couch_e', M, (GX + 1.9, GY - 1.3), (GX + 1.9, GY + 1.3), 'e', 0.95, z, 'sofa')
+        for i, sy in enumerate((-1, 1)):
+            box(f'couch_e_arm{i}', (0.95, 0.18, 0.6), (GX + 1.425, GY + sy * 1.39, z + 0.3), M['sofa'], bevel=0.05, seg=3)
+            collider(f'couch_e_arm{i}', (GX + 0.95, GY + sy * 1.39 - 0.09, z - 1), (GX + 1.9, GY + sy * 1.39 + 0.09, z + 0.6))
+        for i, (by, m) in enumerate(((GY + 1.05, 'cushion_teal'), (GY - 1.05, 'cushion_rust'))):
+            box(f'pillow{i}', (0.14, 0.36, 0.32), (GX + 1.6, by, z + 0.62), M[m], bevel=0.06, seg=3, tilt=(0, -0.25, 0))
+        seat('couch_east', 'Sit on the couch', (GX + 0.6, GY, z), (GX + 1.55, GY, z + 0.50), 180, 'sofa')
+        for i, (name, sy, face) in enumerate((('couch_north', 1, 270), ('couch_south', -1, 90))):
+            cy = GY + sy * 1.75
+            armchair(f'armchair{i}', M, (GX, cy, z), 'n' if sy > 0 else 's', 'sofa')
+            seat(name, 'Sit in the armchair', (GX, cy - sy * 0.85, z), (GX, cy + sy * 0.08, z + 0.50), face, 'sofa')
+        # The coffee table: a walnut top on black legs, long side to the sofa.
+        TX = GX - 0.1
+        box('coffee_top', (0.6, 1.1, 0.04), (TX, GY, z + 0.4), M['walnut'], bevel=0.008)
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                box(f'coffee_leg{sx}{sy}', (0.035, 0.035, 0.38), (TX + sx * 0.25, GY + sy * 0.5, z + 0.19), M['black'])
+        collider('coffee_table', (TX - 0.3, GY - 0.55, z - 1), (TX + 0.3, GY + 0.55, z + 0.42))
+        # The bean bag between the table and the TV.
+        BX = 3.05
+        sphere('beanbag', 0.42, (BX, GY, z + 0.2), M['beanbag'], sub=3, scale=(1, 1.05, 0.5))
+        sphere('beanbag_dent', 0.28, (BX + 0.05, GY, z + 0.36), M['beanbag'], sub=3, scale=(1, 1, 0.35))
+        collider('beanbag', (BX - 0.42, GY - 0.44, z - 1), (BX + 0.42, GY + 0.44, z + 0.4))
+        seat('beanbag', 'Sit on the bean bag', (BX, GY - 0.9, z), (BX + 0.15, GY, z + 0.28), 180, 'low')
+        interact('tv', 'Watch the match', (BX, GY + 0.9, z), r=0.5)
+        # Holochess in the pit's north-east corner, with a pouf either side.
+        HX, HY = 8.1, 12.65
+        cyl('holo_table_base', 0.2, 0.42, (HX, HY, z + 0.21), M['black'], seg=32)
+        cyl('holo_table_top', 0.45, 0.04, (HX, HY, z + 0.44), M['black'], seg=48)
+        cyl('holo_board', 0.38, 0.004, (HX, HY, z + 0.462), E['holo'], seg=48, kind='emit')
+        collider('holo_table', (HX - 0.45, HY - 0.45, z - 1), (HX + 0.45, HY + 0.45, z + 0.46))
+        point('holochess', (HX, HY, z + 0.47))
+        interact('holochess', 'Play holochess', (HX, HY - 0.85, z), r=0.55)
+        for i, sx in enumerate((-1, 1)):
+            cyl(f'pouf{i}', 0.27, 0.36, (HX + sx * 0.78, HY, z + 0.18), M['cushion_teal' if i else 'cushion_rust'], seg=28)
+            collider(f'pouf{i}', (HX + sx * 0.78 - 0.27, HY - 0.27, z - 1), (HX + sx * 0.78 + 0.27, HY + 0.27, z + 0.36))
+        # Behind the sofa, a console table with a lamp, so the sofa's back reads finished from the steps.
+        box('console_table', (0.32, 2.0, 0.04), (GX + 2.25, GY, z + 0.72), M['walnut'], bevel=0.006)
+        for sy in (-1, 1):
+            box(f'console_table_leg{sy}', (0.3, 0.04, 0.7), (GX + 2.25, GY + sy * 0.97, z + 0.35), M['black'])
+        collider('console_table', (GX + 2.09, GY - 1.0, z - 1), (GX + 2.41, GY + 1.0, z + 0.74))
+        cyl('console_lamp_base', 0.07, 0.3, (GX + 2.25, GY + 0.6, z + 0.89), M['brass'], seg=20)
+        cyl('console_lamp_shade', 0.15, 0.2, (GX + 2.25, GY + 0.6, z + 1.12), M['lampshade'], r2=0.11, cap=False)
+        sphere('console_lamp_bulb', 0.035, (GX + 2.25, GY + 0.6, z + 1.08), E['warm'], sub=1, kind='emit')
+        # A floor lamp by the sofa's south end for reading.
+        LX, LY = GX + 1.5, GY - 1.9
+        cyl('lounge_lamp_pole', 0.014, 1.5, (LX, LY, z + 0.75), M['metal'])
+        cyl('lounge_lamp_base', 0.14, 0.025, (LX, LY, z + 0.012), M['metal'])
+        cyl('lounge_lamp_shade', 0.2, 0.28, (LX, LY, z + 1.57), M['lampshade'], r2=0.14, cap=False)
+        sphere('lounge_lamp_bulb', 0.05, (LX, LY, z + 1.53), E['warm'], sub=2, kind='emit')
+        collider('lounge_lamp', (LX - 0.18, LY - 0.18, z - 1), (LX + 0.18, LY + 0.18, z + 1.7))
 
         # The fireplace sits north of the lounge's middle so the foot of the stairs has room in front of it.
         TVY = 10.6
@@ -107,10 +146,10 @@ def build(M, E, G):
         box('hearth', (0.7, 2.2, 0.08), (0.8, TVY, 0.04), M['stone'])
         collider('hearth', (0.45, TVY - 1.1, -1), (1.15, TVY + 1.1, 0.08), structure=True)
         floor(0.45, TVY - 1.1, 1.15, TVY + 1.1, 0.08)
-        box('tv_back', (0.05, 1.7, 0.98), (0.475, TVY, 1.75), M['black'], bevel=0.01)
-        plane('screen_tv', 1.64, 0.92, (0.502, TVY, 1.75), E['screen'], '+X')
-        screen('tv', (0.502, TVY, 1.75), 1.64, 0.92, normal='+X')
-        wallspot('tv', 'chimney', TVY - 0.85, TVY + 0.85, 1.26, 2.24)
+        box('tv_back', (0.05, 2.06, 1.185), (0.475, TVY, 1.8), M['black'], bevel=0.01)
+        plane('screen_tv', 2.0, 1.125, (0.502, TVY, 1.8), E['screen'], '+X')
+        screen('tv', (0.502, TVY, 1.8), 2.0, 1.125, normal='+X')
+        wallspot('tv', 'chimney', TVY - 1.03, TVY + 1.03, 1.2, 2.4)
         # Tall speakers stand on the ends of the hearth, either side of the fire.
         for i, sy in enumerate((TVY - 0.95, TVY + 0.95)):
             box(f'tower_speaker{i}', (0.24, 0.24, 1.05), (0.62, sy, 0.08 + 0.525), M['speaker'], bevel=0.01)
@@ -226,10 +265,11 @@ def build(M, E, G):
 
         # Bake light: the fire, the TV, the floor lamp, warm downlights over the couch.
         lamp('L_fire', 160, (0.65, TVY, 0.5), (1.0, 0.5, 0.2), soft=0.4)
-        area('L_tv', 40, (1.6, 0.9), (0.55, TVY, 1.75), (0, math.radians(-90), 0), (0.55, 0.65, 1.0))
-        lamp('L_lounge_lamp', 160, (9.35, 13.2, z + 1.5), (1.0, 0.72, 0.45))
-        area('L_lounge_down', 200, (4.0, 3.0), (6.0, CY, 4.2), (0, 0, 0), (1.0, 0.8, 0.6))
+        area('L_tv', 48, (1.95, 1.1), (0.55, TVY, 1.8), (0, math.radians(-90), 0), (0.55, 0.65, 1.0))
+        lamp('L_lounge_lamp', 160, (LX, LY, z + 1.5), (1.0, 0.72, 0.45))
+        lamp('L_console_lamp', 50, (GX + 2.25, GY + 0.6, z + 1.08), (1.0, 0.72, 0.45))
+        area('L_lounge_down', 200, (3.0, 3.6), (GX, GY, 4.2), (0, 0, 0), (1.0, 0.8, 0.6))
         char_light('point', '#ffa25e', 2.6, (1.0, TVY, 0.6), 5)
         char_light('point', '#9db2ff', 1.6, (1.3, TVY, 1.7), 4)
         char_light('point', '#ffc890', 1.6, (6.0, CY, 2.6), 5)
-        META['looks'] += [[0.5, TVY, 1.75], [VX, VY, 1.36], [(AX0 + AX1) / 2, AY, 1.16]]
+        META['looks'] += [[0.5, TVY, 1.8], [VX, VY, 1.36], [(AX0 + AX1) / 2, AY, 1.16]]

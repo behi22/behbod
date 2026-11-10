@@ -25,6 +25,15 @@ def use_gpu(scn):
         print('gpu probe failed', e)
 
 
+# The rug pattern is drawn in the zone's texture space, which would otherwise follow whatever sits at the zone's edge;
+# pinned at the extent the rugs had when he approved them, so a new piece at an edge never moves their rings.
+RUG_SPACE = {
+    'studio': ((16.69965171813965, 2.5508761405944824, 2.424999713897705), (5.300347805023193, 2.599123954772949, 1.9749997854232788)),
+    'lounge': ((7.100000381469727, 9.630000114440918, 3.0199999809265137), (7.100000381469727, 5.319999694824219, 3.4800000190734863)),
+    'mezz': ((6.315000534057617, 2.399366617202759, 3.9993741512298584), (4.585000038146973, 2.399366617202759, 1.400625467300415)),
+}
+
+
 def join(zid):
     objs = GROUPS[zid]['baked']
     for o in objs:
@@ -37,6 +46,9 @@ def join(zid):
     bpy.ops.object.join()
     o = bpy.context.view_layer.objects.active
     o.name = f'{zid}_baked'
+    if zid in RUG_SPACE:
+        o.data.use_auto_texspace = False
+        o.data.texspace_location, o.data.texspace_size = RUG_SPACE[zid]
     for uvl in list(o.data.uv_layers):
         o.data.uv_layers.remove(uvl)
     lm = o.data.uv_layers.new(name='Lightmap')

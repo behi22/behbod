@@ -6,9 +6,14 @@ import { WATER_Y, EYE, rng } from '../pure/outside.js';
 // Parts, x forward and z to starboard: centre x, base y, centre z, length, height, beam, style, yaw.
 const SHIP = [
   [-6, -7, 0, 268, 20, 32, 6], [128, -7, 0, 22.6, 20, 22.6, 6, Math.PI / 4], [-12, 13, 0, 236, 24, 30, 4],
-  [-28, 37, 0, 170, 10, 26, 4], [40, 47, 0, 30, 5, 30, 5], [-75, 47, 0, 22, 13, 11, 6],
+  [-28, 37, 0, 170, 10, 26, 4], [-36, 47, 0, 140, 7, 23, 4], [40, 47, 0, 30, 5, 30, 5], [-75, 54, 0, 22, 15, 11, 6],
+  [-75, 69, 0, 18, 2, 12, 5], [104, 13, 0, 30, 12, 24, 4, Math.PI / 4],
+  ...[-1, 1].flatMap(s => [-70, -40, -10, 20, 50].map(x => [x, 30, s * 15.6, 12, 3.2, 3, 5])),
 ];
-const FERRY = [[0, -2, 0, 34, 4, 12, 5], [0, 2, 0, 30, 3.6, 11.4, 4], [0, 5.6, 0, 10, 2.2, 6, 5]];
+const FERRY = [
+  [0, -2.4, -4.2, 33, 3.4, 3.4, 5], [0, -2.4, 4.2, 33, 3.4, 3.4, 5], [0, 0.6, 0, 31, 3.8, 12.4, 4],
+  [0, 4.4, 0, 27, 0.8, 11, 5], [15.5, 0.8, 0, 2.4, 3.2, 10.4, 5], [-15.5, 0.8, 0, 2.4, 3.2, 10.4, 5],
+];
 const PLANE = [
   [0.5, 1.9, 0, 10.5, 1.8, 1.6, 7], [1.5, 3.6, 0, 2.2, 0.25, 15, 7], [-4.6, 3.6, 0, 1.6, 1.6, 0.2, 7],
   [-4.6, 3.6, 0, 1.4, 0.15, 4.6, 7], [0.8, 0, -1.4, 7.6, 0.7, 0.7, 5], [0.8, 0, 1.4, 7.6, 0.7, 0.7, 5],
@@ -71,14 +76,18 @@ export function makeVessels(U, q, mat) {
 export function makeGulls(U, q) {
   const count = q === 'low' ? 4 : 8, rand = rng(41);
   // Half a gull in metres (x forward, z to the right), mirrored for the left wing.
-  const P = { nose: [0.27, 0, 0], tail: [-0.3, 0, 0], rf: [0.09, 0, 0.03], rb: [-0.09, 0, 0.03], ef: [0.07, 0.01, 0.31], eb: [-0.07, 0.01, 0.31], tip: [-0.08, 0.02, 0.66], tl: [-0.36, 0, 0.07] };
+  // Body, tail, and each wing in three panels (inner, outer, the pointed tip), swept back from the wrist.
+  const P = { nose: [0.3, 0.01, 0], tail: [-0.3, 0, 0], rf: [0.1, 0.01, 0.035], rb: [-0.1, 0, 0.035], wf: [0.09, 0.01, 0.3], wb: [-0.06, 0.01, 0.3],
+    of: [0.02, 0.0, 0.56], ob: [-0.12, 0.0, 0.52], tip: [-0.2, 0, 0.78], tl: [-0.38, 0, 0.08] };
   const side = (p, k) => [p[0], p[1], p[2] * k];
   const tris = [];
   for (const k of [1, -1]) {
     const q3 = n => side(P[n], k);
-    tris.push(q3('nose'), q3('rf'), [0.09, 0, 0], q3('rf'), q3('rb'), [0.09, 0, 0], q3('rb'), [-0.09, 0, 0], [0.09, 0, 0]);
-    tris.push(q3('rb'), q3('tail'), [-0.09, 0, 0], q3('rb'), q3('tl'), q3('tail'));
-    tris.push(q3('rf'), q3('ef'), q3('rb'), q3('rb'), q3('ef'), q3('eb'), q3('ef'), q3('tip'), q3('eb'));
+    tris.push(q3('nose'), q3('rf'), [0.1, 0.012, 0], q3('rf'), q3('rb'), [0.1, 0.012, 0], q3('rb'), [-0.1, 0, 0], [0.1, 0.012, 0]);
+    tris.push(q3('rb'), q3('tail'), [-0.1, 0, 0], q3('rb'), q3('tl'), q3('tail'));
+    tris.push(q3('rf'), q3('wf'), q3('rb'), q3('rb'), q3('wf'), q3('wb'));
+    tris.push(q3('wf'), q3('of'), q3('wb'), q3('wb'), q3('of'), q3('ob'));
+    tris.push(q3('of'), q3('tip'), q3('ob'));
   }
   const base = new THREE.BufferGeometry();
   base.setAttribute('position', new THREE.Float32BufferAttribute(tris.flat().map(x => x * 1.4), 3));
@@ -94,7 +103,7 @@ export function makeGulls(U, q) {
   geo.instanceCount = count;
   const mesh = new THREE.Mesh(geo, material(U, {
     low: q === 'low', side: THREE.DoubleSide,
-    vertex: `attribute vec3 aCentre; attribute vec4 aParam; varying vec3 vWp, vN;
+    vertex: `attribute vec3 aCentre; attribute vec4 aParam; varying vec3 vWp, vN; varying float vSpan;
       void main() {
         float R = aParam.x, w = aParam.y, A = aParam.w, th = uTime * w * 30.0 / R + aParam.z;
         vec3 c = aCentre + vec3(R * cos(th), A * sin(th * 0.5 + aParam.z), R * 0.6 * sin(th));
@@ -104,17 +113,23 @@ export function makeGulls(U, q) {
         vec3 up = normalize(vec3(0.0, cos(bank), 0.0) + right * sin(bank));
         right = normalize(cross(fwd, up));
         float flap = smoothstep(0.55, 0.9, sin(uTime * 0.37 + aParam.z * 3.0));
-        float ang = 0.14 + sin(uTime * 11.0 + aParam.z) * 0.6 * flap;
+        // Gliding, the inner wing lifts and the outer wing drops a little (the gull's M); flapping, the wrist follows
+        // the shoulder a beat behind.
+        float beat = uTime * 11.0 + aParam.z, k = abs(position.z) / 1.4;
+        float shoulder = 0.16 + sin(beat) * 0.55 * flap, wrist = -0.22 + sin(beat - 0.9) * 0.45 * flap;
         vec3 p = position;
-        p.y += abs(p.z) * ang;
+        p.y += min(k, 0.38) * 1.4 * shoulder + max(0.0, k - 0.38) * 1.4 * (shoulder + wrist);
+        vSpan = k;
         vec3 wp = c + fwd * p.x + up * p.y + right * p.z;
         vWp = wp; vN = up;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
       }`,
-    fragment: `varying vec3 vWp, vN;
+    fragment: `varying vec3 vWp, vN; varying float vSpan;
       void main() {
         vec3 n = normalize(vN);
-        vec3 alb = dot(n, cameraPosition - vWp) < 0.0 ? vec3(0.62) : vec3(0.4, 0.42, 0.44);
+        // White underneath, grey on top, black wingtips.
+        vec3 alb = dot(n, cameraPosition - vWp) < 0.0 ? vec3(0.66) : vec3(0.42, 0.44, 0.46);
+        alb = mix(alb, vec3(0.05), smoothstep(0.62, 0.7, vSpan));
         vec3 col = alb * (uSunCol * (0.4 + 0.6 * abs(dot(n, uSunDir))) + uAmbient * 1.1);
         gl_FragColor = vec4(applyHaze(col, vWp), 1.0);
         ${OUT}

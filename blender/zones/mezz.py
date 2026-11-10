@@ -1,7 +1,7 @@
 """The mezzanine at 3 m: the reading loft by the top of the stairs with the story book on its lectern, the trophy
 shelf, the Shahnameh and the khatam box, bean bags and an arc lamp; the dressing area with the wardrobe, the live
 mirror and the unlocks on their stands; the collection cabinet and a cushion nook at the east end; hanging plants on
-the glass rail; the nastaliq in light on the back wall."""
+the glass rail; a kilim on the west wall over the reading nook."""
 import math
 from lib.core import zone, box, cyl, sphere, plane, tube, collider, point, screen, interact, seat, rug, wallspot, char_light, area, lamp, potted, tilt_obj, META
 from zones.layout import MEZZ_Z, MEZZ
@@ -112,13 +112,21 @@ def build(M, E, G):
             for k in range(6):
                 a = k * 1.05
                 tube(f'rail_vine{i}_{k}', [(x + math.cos(a) * 0.1, 4.62 + math.sin(a) * 0.1, z + 0.86), (x + math.cos(a) * 0.16, 4.64 + math.sin(a) * 0.14, z + 0.5), (x + math.cos(a) * 0.12, 4.7 + math.sin(a) * 0.1, z + 0.1 - (k % 3) * 0.25)], 0.012, M['leaf2' if k % 2 else 'leaf'])
-        # The nastaliq in light along the back wall, above the shelves and the wardrobe.
-        plane('screen_nastaliq', 4.4, 0.9, (5.6, 0.02, z + 2.9), E['warm_soft'], '+Y')
-        screen('nastaliq', (5.6, 0.02, z + 2.9), 4.4, 0.9, normal='+Y')
-        wallspot('nastaliq', 's_mezz', 3.4, 7.8, z + 2.45, z + 3.35)
+        # A woven kilim behind the reading nook, on a walnut rod, with a small brass picture light over it.
+        KY, KZ, KW, KH = 2.3, z + 1.66, 1.9, 1.3
+        plane('screen_kilim', KW, KH, (0.024, KY, KZ), M['paper'], '+X')
+        screen('kilim', (0.024, KY, KZ), KW, KH, normal='+X')
+        wallspot('kilim', 'w_mezz', KY - KW / 2 - 0.1, KY + KW / 2 + 0.1, KZ - KH / 2, KZ + KH / 2 + 0.3)
+        cyl('kilim_rod', 0.014, KW + 0.14, (0.05, KY, KZ + KH / 2 + 0.02), M['walnut'], axis='Y', seg=12)
+        for sy in (-1, 1):
+            sphere(f'kilim_rod_end{sy}', 0.022, (0.05, KY + sy * (KW / 2 + 0.08), KZ + KH / 2 + 0.02), M['brass'], sub=1)
+            box(f'kilim_bracket{sy}', (0.05, 0.012, 0.03), (0.025, KY + sy * (KW / 2 + 0.03), KZ + KH / 2 + 0.02), M['brass'])
+        box('kilim_light_arm', (0.16, 0.012, 0.012), (0.08, KY, KZ + KH / 2 + 0.2), M['brass'])
+        box('kilim_light', (0.05, 0.7, 0.03), (0.16, KY, KZ + KH / 2 + 0.19), M['brass'], bevel=0.006)
+        box('kilim_light_glow', (0.03, 0.66, 0.004), (0.16, KY, KZ + KH / 2 + 0.173), E['warm_soft'], kind='emit')
 
         lamp('L_arc', 120, (2.95, 1.65, z + 1.8), (1.0, 0.75, 0.45))
-        area('L_nastaliq', 80, (4.2, 0.6), (5.6, 0.12, z + 2.9), (math.radians(-90), 0, 0), (1.0, 0.75, 0.45))
+        area('L_kilim', 55, (0.65, 0.06), (0.22, 2.3, z + 2.5), (0, math.radians(35), 0), (1.0, 0.8, 0.55))
         lamp('L_dressing', 70, (6.8, 1.8, z + 2.7), (1.0, 0.85, 0.7))
         lamp('L_collection', 50, (10.1, 0.8, z + 2.2), (1.0, 0.85, 0.7))
         char_light('point', '#ffc08a', 2.0, (3.2, 2.0, z + 2.0), 4.5)

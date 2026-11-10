@@ -192,12 +192,46 @@ export function makeBridge(U, q) {
     const mid = s + 8, y = WATER_Y + deckHeight(mid), main = Math.abs(mid) <= BRIDGE.anchor;
     box(mid, 0, y - (main ? 4.5 : 2.5), 16.4, 18, main ? 4.5 : 2.5, main ? green : deck);
   }
+  // A brace across a tower, in the plane of its two legs: from one leg at height y0 to the other at y1 (a centred box,
+  // so it turns about its middle).
+  const brace = (s, y0, y1, colour) => {
+    bridgePoint(s, 0, P);
+    const dz = 19, dy = y1 - y0, L = Math.hypot(dz, dy);
+    const g = new THREE.BoxGeometry(1, 1, 1).scale(2.2, L, 1.6).rotateX(-Math.atan2(dz, dy)).translate(0, (y0 + y1) / 2, 0).rotateY(rot).translate(wx(P[0]), WATER_Y, wz(P[1]));
+    const c = new Float32Array(g.attributes.position.count * 3);
+    for (let i = 0; i < c.length; i += 3) c.set(colour, i);
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    parts.push(g);
+  };
+  // The two towers: tapering legs on concrete feet, three struts, X bracing in the two panels between them, and a cap on
+  // each leg, the Lions Gate's own outline.
   for (const s of [-BRIDGE.main, BRIDGE.main]) {
     for (const side of [-9.5, 9.5]) {
-      box(s, side, WATER_Y - 2, 6, 5, BRIDGE.top + 2, green);
+      box(s, side, WATER_Y - 2, 6.4, 5.4, 60, green);
+      box(s, side, WATER_Y + 58, 5.4, 4.6, BRIDGE.top - 56, green);
+      box(s, side, WATER_Y + BRIDGE.top + 2, 6.6, 6, 2.2, green);
       box(s, side, WATER_Y - 2, 13, 11, 9, concrete);
     }
-    for (const y of [deckHeight(s) - 7, 86, BRIDGE.top - 4]) box(s, 0, WATER_Y + y, 4, 19, 3.5, green);
+    const struts = [deckHeight(s) - 7, 86, BRIDGE.top - 4];
+    for (const y of struts) box(s, 0, WATER_Y + y, 4, 19, 3.5, green);
+    for (let k = 0; k < 2; k++) {
+      const y0 = struts[k] + 3.5, y1 = struts[k + 1];
+      brace(s, y0, y1, green);
+      brace(s, y1, y0, green);
+    }
+  }
+  // The stiffening truss along both sides of the main span: a zigzag of diagonals under the deck's edge.
+  for (let s = -BRIDGE.anchor; s < BRIDGE.anchor; s += 16) {
+    for (const side of [-9.2, 9.2]) {
+      const a = WATER_Y + deckHeight(s) - 4.4, b = WATER_Y + deckHeight(s + 16) - 0.3, up = Math.round(s / 16) % 2 === 0;
+      bridgePoint(s + 8, side, P);
+      const L = Math.hypot(16, b - a);
+      const g = new THREE.BoxGeometry(1, 1, 1).scale(L, 0.9, 0.7).rotateZ((up ? 1 : -1) * Math.atan2(b - a, 16)).translate(0, (a + b) / 2 - WATER_Y, 0).rotateY(rot).translate(wx(P[0]), WATER_Y, wz(P[1]));
+      const c = new Float32Array(g.attributes.position.count * 3);
+      for (let i = 0; i < c.length; i += 3) c.set(green, i);
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      parts.push(g);
+    }
   }
   for (const s of [-BRIDGE.anchor, BRIDGE.anchor]) {
     bridgePoint(s, 0, P);
@@ -268,6 +302,17 @@ export function bridgeExtras(q) {
       bridgePoint(s, side, P);
       out.push([4, P[0], deckHeight(s) + 7, P[1], 1.0, 0.7, 0.4, 1.4, 0]);
     }
+  }
+  // The necklace: a row of lights along each main cable, the bridge's own night look.
+  for (let s = -BRIDGE.anchor + 10; s < BRIDGE.anchor; s += 20) {
+    for (const side of [-8.5, 8.5]) {
+      bridgePoint(s, side, P);
+      out.push([4, P[0], cableHeight(s) + 0.6, P[1], 0.95, 0.9, 0.75, 1.2, 0]);
+    }
+  }
+  for (const s of [-BRIDGE.main, BRIDGE.main]) for (const side of [-9.5, 9.5]) {
+    bridgePoint(s, side, P);
+    out.push([4, P[0], BRIDGE.top + 4.6, P[1], 1.0, 0.12, 0.08, 2.2, 0]);
   }
   const span = BRIDGE.north - BRIDGE.south, cars = q === 'low' ? 26 : 46;
   for (let i = 0; i < cars; i++) {
