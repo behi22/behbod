@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { drawWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
 import { makePanels } from './panels.js';
+import { W as DW, H as DH, BAR, DOCK, TITLE, PAD, STYLE, appById, newDesktop, dock as dockIcons, rows as appRows, layout, wrap, termShown, open as openApp, keepOpen, clockText } from './src/pure/desktop.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -16,6 +17,21 @@ function surface(w, h) {
   return { c, g: c.getContext('2d'), t };
 }
 
+const NOTES_KEY = 'home.notes', NOTES = 'fix the telescope.\nwater the succulent.\nship.';
+function loadNotes() {
+  try { return localStorage.getItem(NOTES_KEY) ?? NOTES; } catch { return NOTES; }
+}
+function saveNotes(v) {
+  try { localStorage.setItem(NOTES_KEY, v); } catch { /* private window: the note lasts this visit only */ }
+}
+
+// Rounded rectangles: the canvas call where the browser has it (Safari before 16 does not), arcs where it does not.
+function rrect(g, x, y, w, h, r) {
+  if (g.roundRect) { g.roundRect(x, y, w, h, r); return; }
+  r = Math.min(r, w / 2, h / 2);
+  g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+
 function seeded(seed) {
   let s = seed >>> 0;
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -25,10 +41,13 @@ export function makeCanvases(meta, opts = {}) {
   const S = {};
   const T = {};
 
-  // Main ultrawide: a terminal you can type into.
-  S.main = surface(1536, 646);
+  // Main ultrawide: the computer's desktop, with a terminal you can type into. The seated view (src/desktop.js) lays
+  // the same desktop out in HTML over this screen, from the same model.
+  S.main = surface(DW, DH);
   const term = { lines: [], input: '', focus: false, blink: 0 };
-  const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); drawTerm(); };
+  const desk = { st: newDesktop(), ctx: {}, notes: loadNotes(), dirty: true, drawn: -1, listeners: [] };
+  const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
+  const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
   const CMDS = {
     help: () => say('commands: whoami  projects  postit  ls  contact  clear  exit', '  ' + Object.keys(EXTRA).join('  ')),
@@ -42,23 +61,84 @@ export function makeCanvases(meta, opts = {}) {
     'hello friend': () => say('hello, friend.'),
     'hello, friend': () => say('hello, friend.'),
     sudo: () => say('behbod is not in the sudoers file. This incident will be reported.'),
-    clear: () => { term.lines = []; drawTerm(); },
+    clear: () => { term.lines = []; changed(); },
   };
-  function drawTerm() {
+  const col = k => STYLE[k] || k;
+  const icon = {};
+  function drawIcon(g, a, x, y, size, on) {
+    g.save();
+    g.fillStyle = on ? '#16302f' : '#121a26'; g.beginPath(); rrect(g, x, y, size, size, 12); g.fill();
+    g.strokeStyle = on ? STYLE.accent : 'rgba(127,138,160,.35)'; g.lineWidth = 1; g.stroke();
+    const k = size * 0.56 / 24;
+    g.translate(x + (size - 24 * k) / 2, y + (size - 24 * k) / 2); g.scale(k, k);
+    g.strokeStyle = on ? STYLE.accent : STYLE.ink; g.lineWidth = 1.8; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.stroke(icon[a.id] ||= new Path2D(a.icon));
+    g.restore();
+  }
+  function drawWindow(g, w, focused) {
+    const a = appById(w.app);
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 26; g.shadowOffsetY = 8;
+    g.fillStyle = STYLE.window; g.beginPath(); rrect(g, w.x, w.y, w.w, w.h, 10); g.fill();
+    g.restore();
+    g.save();
+    g.beginPath(); rrect(g, w.x, w.y, w.w, w.h, 10); g.clip();
+    g.fillStyle = STYLE.title; g.fillRect(w.x, w.y, w.w, TITLE);
+    for (const [i, c] of ['#ff5f57', '#febc2e', '#28c840'].entries()) { g.fillStyle = c; g.beginPath(); g.arc(w.x + 20 + i * 22, w.y + TITLE / 2, 6.5, 0, 7); g.fill(); }
+    g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = focused ? STYLE.ink : STYLE.dim; g.textAlign = 'left';
+    g.fillText(a.id === 'terminal' ? 'behbod@home: ~' : a.title, w.x + 92, w.y + TITLE / 2 + 5);
+    if (w.app === 'terminal') {
+      const { lines, top } = termShown(term.lines, w.h);
+      g.font = `400 ${STYLE.term}px ${STYLE.font}`;
+      lines.forEach((l, i) => { g.fillStyle = l.startsWith('$') ? STYLE.accent : STYLE.ink; g.fillText(l, w.x + PAD, w.y + top + i * STYLE.termLine); });
+      g.fillStyle = STYLE.accent;
+      g.fillText('$ ' + term.input + (term.focus && term.blink % 2 ? '█' : ''), w.x + PAD, w.y + top + lines.length * STYLE.termLine);
+    } else if (w.app === 'notes') {
+      g.font = `400 ${STYLE.text}px ${STYLE.font}`; g.fillStyle = '#e9dfb8';
+      const cols = Math.floor((w.w - 2 * PAD) / (STYLE.text * 0.6));
+      wrap(desk.notes, cols).slice(0, Math.floor((w.h - TITLE - 20) / 28)).forEach((l, i) => g.fillText(l, w.x + PAD, w.y + TITLE + 32 + i * 28));
+    } else {
+      const L = layout(w, appRows(w.app, desk.ctx));
+      for (const t of L.texts) { g.font = `${t.b} ${t.px}px ${STYLE.font}`; g.fillStyle = col(t.c); g.fillText(t.s, t.x, t.y); }
+      for (const p of L.pills) {
+        g.fillStyle = p.on ? 'rgba(62,230,196,.16)' : 'rgba(255,255,255,.04)'; g.beginPath(); rrect(g, p.x, p.y, p.w, p.h, p.h / 2); g.fill();
+        g.strokeStyle = p.on ? STYLE.accent : 'rgba(127,138,160,.4)'; g.lineWidth = 1; g.stroke();
+        g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = p.on ? STYLE.accent : STYLE.ink; g.fillText(p.label, p.x + 12, p.y + p.h / 2 + 5);
+      }
+    }
+    g.restore();
+    g.strokeStyle = focused ? 'rgba(62,230,196,.55)' : STYLE.edge; g.lineWidth = focused ? 1.5 : 1;
+    g.beginPath(); rrect(g, w.x + 0.5, w.y + 0.5, w.w - 1, w.h - 1, 10); g.stroke();
+  }
+  function drawDesktop() {
     const { g, c, t } = S.main;
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
     g.fillStyle = '#070b11'; g.fillRect(0, 0, c.width, c.height);
-    const grd = g.createLinearGradient(0, 0, 0, c.height);
-    grd.addColorStop(0, 'rgba(62,230,196,.06)'); grd.addColorStop(1, 'rgba(120,80,255,.05)');
+    const grd = g.createLinearGradient(0, 0, c.width, c.height);
+    grd.addColorStop(0, 'rgba(62,230,196,.09)'); grd.addColorStop(0.55, 'rgba(40,60,120,.05)'); grd.addColorStop(1, 'rgba(120,80,255,.10)');
     g.fillStyle = grd; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = '#0d1520'; g.fillRect(0, 0, c.width, 46);
-    for (const [i, col] of ['#ff5f57', '#febc2e', '#28c840'].entries()) { g.fillStyle = col; g.beginPath(); g.arc(30 + i * 26, 23, 8, 0, 7); g.fill(); }
-    g.fillStyle = '#7f8aa0'; g.font = `22px ${MONO}`; g.fillText('behbod@home: ~', 120, 31);
-    g.font = `30px ${MONO}`;
-    let y = 96;
-    for (const l of term.lines) { g.fillStyle = l.startsWith('$') ? '#3ee6c4' : '#d8e0ee'; g.fillText(l, 36, y); y += 36; }
-    g.fillStyle = '#3ee6c4'; g.fillText('$ ' + term.input + (term.focus && term.blink % 2 ? '█' : ''), 36, y);
-    if (!term.focus) { g.fillStyle = '#5b6478'; g.font = `24px ${MONO}`; g.fillText('press E at the desk to type', 36, c.height - 30); }
+    g.fillStyle = 'rgba(255,255,255,.035)';
+    for (let x = 24; x < c.width; x += 48) for (let y = BAR + 24; y < c.height - DOCK; y += 48) g.fillRect(x, y, 2, 2);
+    g.fillStyle = STYLE.bar; g.fillRect(0, 0, c.width, BAR);
+    g.font = `700 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = STYLE.ink; g.fillText('home', 18, 22);
+    g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = STYLE.dim;
+    g.fillText(desk.st.focus ? appById(desk.st.focus).title : '', 84, 22);
+    if (!term.focus) { g.textAlign = 'center'; g.fillStyle = STYLE.faint; g.fillText('sit at the desk to use this computer', c.width / 2, 22); }
+    g.textAlign = 'right'; g.fillStyle = STYLE.ink; g.fillText(desk.ctx.clock || '', c.width - 18, 22);
+    g.textAlign = 'left';
+    const top = desk.st.wins.at(-1)?.app;
+    for (const w of desk.st.wins) drawWindow(g, w, w.app === top && w.app === desk.st.focus);
+    const icons = dockIcons();
+    const first = icons[0], last = icons.at(-1);
+    g.fillStyle = 'rgba(12,18,28,.82)'; g.beginPath(); rrect(g, first.x - 14, first.y - 7, last.x + last.size - first.x + 28, first.size + 14, 18); g.fill();
+    g.strokeStyle = 'rgba(127,138,160,.18)'; g.lineWidth = 1; g.stroke();
+    for (const d of icons) {
+      const isOpen = desk.st.wins.some(w => w.app === d.app);
+      drawIcon(g, appById(d.app), d.x, d.y, d.size, d.app === desk.st.focus);
+      if (isOpen) { g.fillStyle = d.app === desk.st.focus ? STYLE.accent : STYLE.dim; g.beginPath(); g.arc(d.x + d.size / 2, d.y + d.size + 4, 2.2, 0, 7); g.fill(); }
+    }
     t.needsUpdate = true;
+    desk.dirty = false;
   }
   say('Welcome home.', "type 'help' to look around.");
 
@@ -169,7 +249,7 @@ export function makeCanvases(meta, opts = {}) {
   }
   drawPostit();
   document.fonts.load(`500 130px 'Noto Nastaliq Urdu'`, TATTOO.join(' ')).then(drawPostit).catch(() => {});
-  document.fonts.ready.then(() => { drawPostit(); drawTerm(); });
+  document.fonts.ready.then(() => { drawPostit(); drawDesktop(); });
 
   S.onair = surface(256, 70);
   (() => {
@@ -197,15 +277,37 @@ export function makeCanvases(meta, opts = {}) {
       if (backdrop) outside.tick(now);
       panels.tick(Date.now());
       if (near && acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); drawPishi(now); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
-      if (focused) { const b = Math.floor(now / 500); if (b !== term.blink) { term.blink = b; drawTerm(); } }
+      // The caret blinks on the monitor only while it shows; under the seated view the page draws its own.
+      if (focused && !desk.covered) { const b = Math.floor(now / 500); if (b !== term.blink) { term.blink = b; desk.dirty = true; } }
+      if (Math.floor(now / 1000) !== desk.clockSec) {
+        desk.clockSec = Math.floor(now / 1000);
+        const clock = clockText(new Date());
+        if (clock !== desk.ctx.clock) { desk.ctx.clock = clock; changed(); }
+      }
+      // A repaint is an upload, so it waits until the screen is in sight, and runs at most a few times a second; while
+      // the seated view covers the screen, once every half second is plenty.
+      if (near && desk.dirty && now - desk.drawn > (desk.covered ? 500 : 70)) { desk.drawn = now; drawDesktop(); }
     },
-    focusTerminal(on) { term.focus = on; drawTerm(); },
+    focusTerminal(on) { term.focus = on; changed(); },
+    // The desktop's model, shared with the seated view.
+    desktop: {
+      get st() { return desk.st; },
+      get term() { return term; },
+      get notes() { return desk.notes; },
+      set notes(v) { desk.notes = v; saveNotes(v); changed(); },
+      setCtx(patch) { Object.assign(desk.ctx, patch); changed(); },
+      get ctx() { return desk.ctx; },
+      set covered(on) { desk.covered = on; if (!on) desk.dirty = true; },
+      changed,
+      listen(fn) { desk.listeners.push(fn); },
+    },
     // Letters typed by something other than me (Pishi on the keyboard), on their own line so mine stay intact.
-    type(text) { say('$ ' + text.slice(0, 40), `command not found: ${text.slice(0, 40)}  (that was Pishi)`); },
+    type(text) { keepOpen(desk.st, 'terminal'); say('$ ' + text.slice(0, 40), `command not found: ${text.slice(0, 40)}  (that was Pishi)`); },
     // Commands the rest of the loft adds: fn(say, argument).
     command(name, fn) { EXTRA[name] = fn; },
     run(text, exit) {
       const cmd = text.trim().toLowerCase().replace(/\s+/g, ' ');
+      openApp(desk.st, 'terminal');
       say('$ ' + text.slice(0, 60));
       term.input = '';
       if (cmd === 'exit') { exit(); return; }
@@ -214,16 +316,21 @@ export function makeCanvases(meta, opts = {}) {
       else if (Object.hasOwn(EXTRA, word)) EXTRA[word](say, rest.join(' '));
       else if (cmd) say(`command not found: ${cmd}. try 'help'`);
       if (cmd) dispatchEvent(new CustomEvent('loft:cmd', { detail: { cmd, say } }));
-      drawTerm();
+      changed();
     },
     terminalKey(e, exit) {
       if (e.key === 'Escape') { exit(); return; }
+      // Typing at the desk goes to the terminal, bringing it to the front first if something else is.
+      if (desk.st.focus !== 'terminal') {
+        if (e.key.length !== 1 && e.key !== 'Enter' && e.key !== 'Tab') return;
+        openApp(desk.st, 'terminal'); changed();
+      }
       if (e.key === 'Tab') {
         const names = [...Object.keys(CMDS), ...Object.keys(EXTRA), 'exit'].filter(n => term.input && n.startsWith(term.input.toLowerCase()));
-        if (names.length === 1) { term.input = names[0]; drawTerm(); } else if (names.length > 1) say(names.join('  '));
+        if (names.length === 1) { term.input = names[0]; changed(); } else if (names.length > 1) say(names.join('  '));
       } else if (e.key === 'Enter') { this.run(term.input, exit); }
-      else if (e.key === 'Backspace') { term.input = term.input.slice(0, -1); drawTerm(); }
-      else if (e.key.length === 1 && term.input.length < 60) { term.input += e.key; drawTerm(); }
+      else if (e.key === 'Backspace') { term.input = term.input.slice(0, -1); changed(); }
+      else if (e.key.length === 1 && term.input.length < 60) { term.input += e.key; changed(); }
       e.preventDefault();
     },
   };

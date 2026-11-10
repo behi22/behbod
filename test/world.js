@@ -167,8 +167,45 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const hoodBefore = await p.evaluate(() => __loft.me.hoodUp);
   await p.keyboard.type('hood'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
   const hoodAfter = await p.evaluate(() => __loft.me.hoodUp);
-  await p.keyboard.press('Escape'); await p.waitForTimeout(2500);
   console.log('terminal hood command', hoodBefore, '->', hoodAfter, hoodBefore !== hoodAfter ? 'PASS' : 'FAIL');
+
+  // The desktop laid over the monitor: on the screen's corners, its apps open from the dock, its buttons work, a
+  // window drags, the notes take typing, and keys typed elsewhere go back to the terminal.
+  const fit = await p.evaluate(() => {
+    const el = document.querySelector('.dt.on'); if (!el) return null;
+    const s = __loft.meta.screens.main, half = s.w / 2 / s.r;
+    const chord = s.r * Math.sin(half), sag = s.r * (1 - Math.cos(half)), c = __loft.screenCentre();
+    const pts = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => { const v = c.clone(); v.x -= sag; v.y += y * s.h / 2; v.z += z * chord; v.project(__loft.camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
+    // Each corner of the desktop, through its own transform, against the same corner of the screen (so a flipped or
+    // mirrored layer fails, not just a wrong size).
+    const m = new DOMMatrix(getComputedStyle(el).transform), w = el.offsetWidth, h = el.offsetHeight;
+    const mine = [[0, 0], [w, 0], [w, h], [0, h]].map(([x, y]) => { const q = m.transformPoint(new DOMPoint(x, y)); return [q.x / q.w, q.y / q.w]; });
+    return Math.max(...mine.map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1])));
+  });
+  console.log('desktop sits on the screen: off by', fit == null ? 'not shown' : fit.toFixed(1) + ' px', fit != null && fit < 3 ? 'PASS' : 'FAIL');
+  await p.click('.dt-icon[aria-label="Open Settings"]'); await p.waitForTimeout(250);
+  const setOpen = await p.evaluate(() => !!document.querySelector('.dt-win.focus[data-app="settings"]'));
+  const wantDown = await p.evaluate(() => __loft.me.hoodUp);
+  await p.click(`.dt-win[data-app="settings"] .dt-pill:text-is("${wantDown ? 'down' : 'up'}")`); await p.waitForTimeout(250);
+  const hoodPill = await p.evaluate(() => __loft.me.hoodUp);
+  console.log('settings opens from the dock and its hood button works:', setOpen, wantDown, '->', hoodPill, setOpen && hoodPill !== wantDown ? 'PASS' : 'FAIL');
+  const t0 = await p.evaluate(() => __loft.screens.desktop.st.wins.find(w => w.app === 'terminal').x);
+  const tb = await p.locator('.dt-win[data-app="terminal"] .dt-title span').boundingBox();
+  await p.mouse.move(tb.x + tb.width + 60, tb.y + tb.height / 2); await p.mouse.down();
+  await p.mouse.move(tb.x + tb.width + 160, tb.y + tb.height / 2, { steps: 5 }); await p.mouse.up(); await p.waitForTimeout(250);
+  const t1 = await p.evaluate(() => __loft.screens.desktop.st.wins.find(w => w.app === 'terminal').x);
+  console.log('the terminal drags by its title bar:', Math.round(t1 - t0), 'desktop px', t1 - t0 > 40 ? 'PASS' : 'FAIL');
+  await p.click('.dt-icon[aria-label="Open Notes"]'); await p.waitForTimeout(250);
+  await p.click('.dt-notes'); await p.keyboard.press('End'); await p.keyboard.type(' remember the milk'); await p.waitForTimeout(150);
+  const noted = await p.evaluate(() => __loft.screens.desktop.notes.endsWith(' remember the milk'));
+  await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+  const stillDesk = await p.evaluate(() => __loft.mode);
+  await p.keyboard.type('whoami'); await p.keyboard.press('Enter'); await p.waitForTimeout(250);
+  const ran = await p.evaluate(() => [__loft.screens.desktop.st.focus, __loft.screens.desktop.term.lines.includes('$ whoami')]);
+  console.log('notes take typing, Escape only leaves the notes, typing goes back to the terminal:', noted, stillDesk, ran.join(' '), noted && stillDesk === 'desk' && ran[0] === 'terminal' && ran[1] ? 'PASS' : 'FAIL');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(2500);
+  const gone = await p.evaluate(() => !document.querySelector('.dt.on') && getComputedStyle(document.querySelector('.dt')).display === 'none');
+  console.log('the desktop goes when I stand up:', gone ? 'PASS' : 'FAIL');
 
   // The holo range: start a round, click real targets on screen, and the round ends on time with the score kept.
   const spot = async it => { const q = await p.evaluate(id => __loft.meta.interact.find(i => i.id === id).at, it); await p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, b2t(...q)); await p.waitForTimeout(400); };
@@ -301,6 +338,16 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   const playersAfter = await p.evaluate(() => document.querySelectorAll('.video').length);
   console.log('one video at a time:', players, 'then', playersAfter, 'after Esc', players === 1 && playersAfter === 0 ? 'PASS' : 'FAIL');
+
+  // On a phone the monitor does not fit the view, so the desktop fills the view instead and stays inside it.
+  const pp = await b.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  pp.on('pageerror', e => errs.push('phone: ' + e.message));
+  await pp.goto(URL);
+  await pp.waitForFunction(() => !!window.__loft, null, { timeout: 120000 });
+  await pp.evaluate(() => __loft.useDesk()); await pp.waitForTimeout(3000);
+  const ph = await pp.evaluate(() => { const el = document.querySelector('.dt.on.narrow'); if (!el) return null; const r = el.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom, innerWidth, innerHeight, document.querySelectorAll('.dt-win').length]; });
+  await pp.close();
+  console.log('phone desktop fills the view:', ph ? ph.map(n => Math.round(n)).join(' ') : 'not shown', ph && ph[0] >= 0 && ph[2] <= ph[4] && ph[1] >= 0 && ph[3] <= ph[5] && ph[6] === 1 ? 'PASS' : 'FAIL');
 
   // Regression: an unknown quality in the address used to stop the page loading.
   const p2 = await b.newPage({ viewport: { width: 800, height: 600 } });

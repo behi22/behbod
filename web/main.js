@@ -7,6 +7,7 @@ import { makePhysics } from './src/physics.js';
 import { makeMe, HEAD_NAMES } from './src/me.js';
 import { makeFollowCam } from './src/camera.js';
 import { makeDesk } from './src/desk.js';
+import { makeDesktopView } from './src/desktop.js';
 import { makeWardrobe } from './src/wardrobe.js';
 import { makeCreatures } from './src/creatures.js';
 import { openGame } from './src/games/index.js';
@@ -249,6 +250,28 @@ phys?.place(pos);
 const followPose = makeFollowCam(col, meta.regions);
 const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
 const desk = makeDesk({ camera, me, meta, coarse, follow });
+// The computer's desktop, laid over the monitor while I sit at it.
+const deskView = makeDesktopView({ camera, meta, screens, act: deskAct, coarse, tapTerminal: () => { if (coarse) $('cmd').focus(); } });
+const deskCtx = () => ({ records: audio.music.records, playing: audio.music.current, sound: sound.on, quality: autoTier ? 'auto' : tierName, hood: me.hoodUp,
+  scenes: world.scenes, scene: world.sceneName, coolant: world.coolantName, projects: meta.projects });
+let deskCtxKey = '', deskCtxAt = 0;
+function refreshDeskCtx() {
+  const c = deskCtx(), k = JSON.stringify({ ...c, records: c.records.length });
+  if (k !== deskCtxKey) { deskCtxKey = k; screens.desktop.setCtx(c); }
+}
+function deskAct({ kind, arg }) {
+  if (kind === 'link' && /^https:\/\//.test(arg)) open(arg, '_blank', 'noopener,noreferrer');
+  else if (kind === 'music') {
+    if (arg === 'off') { audio.music.stop(); world.setRecord(false); }
+    else if (!sound.on) toast('Turn the sound on to play a record.');
+    else if (audio.music.play(arg)) { world.setRecord(true); earn('record'); }
+  } else if (kind === 'sound') $('snd').click();
+  else if (kind === 'quality') setQuality(arg);
+  else if (kind === 'hood') { if (me.hoodUp !== (arg === 'up')) me.toggleHood(); }
+  else if (kind === 'scene') world.scene(arg);
+  else if (kind === 'coolant') world.coolant(arg);
+  refreshDeskCtx();
+}
 
 function useDesk() {
   if (mode !== 'walk') return;
@@ -422,7 +445,7 @@ function playVideo(i) {
 
 // ---------- input ----------
 addEventListener('keydown', e => {
-  if (e.target && (e.target.id === 'cmd' || e.target.tagName === 'INPUT')) return;
+  if (e.target && (e.target.id === 'cmd' || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
   if (mode === 'desk') { if (e.key.length === 1 || e.key === 'Enter') sound.key(); return screens.terminalKey(e, () => leaveDesk()); }
   // A held key repeats; the action keys only count the first press, or holding E would sit, stand, sit.
   if (e.repeat && (e.code === 'KeyE' || e.code === 'KeyO' || e.code === 'KeyH' || e.code === 'KeyG')) return;
@@ -724,7 +747,10 @@ function step() {
   pens?.tick(dt);
   me.drawFace(now);
   me.tickMosaic(now, camera, engine.mosaicU);
-  screens.tick(now, dt, mode === 'desk', camera.position.distanceTo(deskUse) < 10);
+  const nearDesk = camera.position.distanceTo(deskUse) < 10;
+  if (nearDesk && now - deskCtxAt > 1000) { deskCtxAt = now; refreshDeskCtx(); }
+  screens.tick(now, dt, mode === 'desk', nearDesk);
+  deskView.tick(mode === 'desk' && !desk.gliding);
   world.tick(dt, t, mode === 'desk', camera.position, pos, creatures.positions);
   cctx.mode = mode; cctx.facing = facing; cctx.stand = seat ? seat.at : null;
   // The page knows the mode, so the walking controls strip can step aside while a game or the desk has the screen.
@@ -755,13 +781,16 @@ function step() {
   requestAnimationFrame(step);
 }
 
-$('q').addEventListener('click', () => {
-  const order = ['auto', 'low', 'medium', 'high', 'ultra'];
-  const next = order[(order.indexOf(autoTier ? 'auto' : tierName) + 1) % order.length];
+function setQuality(next) {
+  if (next !== 'auto' && !Object.hasOwn(TIERS, next)) return;
   autoTier = next === 'auto';
   tierName = autoTier ? startTier() : next;
   tierState = { top: tierName };
   engine.setTier(tierName);
+}
+$('q').addEventListener('click', () => {
+  const order = ['auto', 'low', 'medium', 'high', 'ultra'];
+  setQuality(order[(order.indexOf(autoTier ? 'auto' : tierName) + 1) % order.length]);
 });
 $('who').addEventListener('click', () => { if (mode === 'walk') me.nextHead(); });
 $('snd').addEventListener('click', () => { const on = sound.toggle(); $('snd').textContent = on ? 'Sound on' : 'Sound off'; $('snd').classList.toggle('on', on); });
@@ -790,5 +819,5 @@ window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), 
   get near() { return near?.id ?? null; }, get facing() { return facing; },
   get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, get physics() { return physName; },
   get weights() { return me.weights; }, get headVisible() { return me.root.visible; }, get headMeshesShown() { return me.headMeshesShown; },
-  set yaw(v) { yaw = v; lastLook = performance.now(); } };
+  set yaw(v) { yaw = v; lastLook = performance.now(); }, screens, deskView, screenCentre: () => b2t(...meta.screens.main.center) };
 requestAnimationFrame(step);

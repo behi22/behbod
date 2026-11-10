@@ -146,7 +146,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
-  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0;
+  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, coolantName = 'teal';
   function paintRGB(a, b) {
     for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
     for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
@@ -375,9 +375,12 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     openWardrobe(t) { wardrobeOpen = t + 6; },
     showUnlocks,
     scenes: Object.keys(SCENES),
+    get sceneName() { return sceneName; },
+    get coolantName() { return coolantName; },
     scene(name) { if (!Object.hasOwn(SCENES, name)) return false; sceneName = name; applyScene(); return true; },
     coolant(name) {
       if (!Object.hasOwn(COOLANT, name)) return false;
+      coolantName = name;
       for (const g of pcGlow) if (g[2] === 'c') g[1].copy(rgb(COOLANT[name])).multiplyScalar(3.2);
       return true;
     },
