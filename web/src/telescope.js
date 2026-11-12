@@ -11,6 +11,9 @@ const CSS = `
 .ts-ui button { pointer-events: auto; font: inherit; color: #e8edf5; background: rgba(8,10,16,.8); border: 1px solid rgba(255,255,255,.2); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
 `;
 const FOV = 16;
+// The view starts at the front lens (the telescope point is the mount), and nothing nearer than this is drawn while
+// looking through it: a real telescope cannot show its own tube, the railing or the string lights beside it.
+const LENS = new THREE.Vector3(0.08, 0.4, -0.6), NEAR = 2.5;
 
 // `facing` is the way to the viewer: the dish sits in the upper half on that side.
 function deathStar(facing) {
@@ -36,7 +39,7 @@ function deathStar(facing) {
 // loft's own scene, so it shows through the eyepiece even when clouds cover the real sky.
 export function makeTelescope(scene, camera, meta, { sky, onSpot, onExit }) {
   const scope = b2t(...meta.points.telescope);
-  const eye = scope.clone().add(new THREE.Vector3(0, 0.35, 0.45));
+  const eye = scope.clone().add(LENS);
   // North of the balcony and well up the sky, a little east of straight ahead.
   const dir = sky || new THREE.Vector3(Math.sin(0.5) * Math.cos(0.42), Math.sin(0.42), -Math.cos(0.5) * Math.cos(0.42));
   const star = deathStar(dir.clone().negate());
@@ -47,13 +50,13 @@ export function makeTelescope(scene, camera, meta, { sky, onSpot, onExit }) {
   let fov = FOV;
   if (!document.getElementById('ts-css')) { const s = document.createElement('style'); s.id = 'ts-css'; s.textContent = CSS; document.head.append(s); }
 
-  let active = false, yaw = 0, pitch = 0.15, onIt = 0, spotted = false, veil = null, ui = null, fov0 = 55;
+  let active = false, yaw = 0, pitch = 0.15, onIt = 0, spotted = false, veil = null, ui = null, fov0 = 55, near0 = 0.05;
   const fwd = new THREE.Vector3();
   const api = {
     get active() { return active; },
     enter() {
       active = true; star.visible = true; yaw = 0; pitch = 0.15; onIt = 0;
-      fov0 = camera.fov; fov = FOV; camera.fov = fov; camera.updateProjectionMatrix();
+      fov0 = camera.fov; near0 = camera.near; fov = FOV; camera.fov = fov; camera.near = NEAR; camera.updateProjectionMatrix();
       veil = document.createElement('div'); veil.className = 'ts-veil';
       ui = document.createElement('div'); ui.className = 'ts-ui';
       const hint = document.createElement('span'); hint.textContent = 'Drag or arrow keys to look, scroll to zoom';
@@ -64,7 +67,7 @@ export function makeTelescope(scene, camera, meta, { sky, onSpot, onExit }) {
     exit() {
       if (!active) return;
       active = false; star.visible = false;
-      camera.fov = fov0; camera.updateProjectionMatrix();
+      camera.fov = fov0; camera.near = near0; camera.updateProjectionMatrix();
       veil?.remove(); ui?.remove(); veil = ui = null;
       onExit();
     },

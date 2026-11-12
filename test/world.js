@@ -255,6 +255,29 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   // The telescope: aim at the Death Star, zoom in, hold it, and it is spotted.
   await spot('telescope');
   await p.evaluate(() => __loft.act('telescope')); await p.waitForTimeout(600);
+  // Nothing of the balcony shows through the eyepiece: with the house drawn alone on a marker colour, the view is
+  // all marker when level and low, to either side and looking up (the telescope's own tube used to fill it). The
+  // last view looks up on the side away from the Death Star, which is drawn in the house's scene too.
+  const own = [];
+  const away = await p.evaluate(() => (__loft.out3d && __loft.out3d.deathStar && __loft.out3d.deathStar.x > 0 ? -1 : 1));
+  for (const [dx, dy] of [[0, -1], [0.35, 0], [-0.7, 0], [0.35 + away * 0.6, 0.35]]) {
+    await p.evaluate(([x, y]) => __loft.scope.nudge(x, y), [dx, dy]); await p.waitForTimeout(250);
+    own.push(await p.evaluate(async () => {
+      const THREE = await import('three');
+      const L = __loft, r = L.renderer, gl = r.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+      const clear = r.getClearColor(new THREE.Color()), alpha = r.getClearAlpha();
+      r.setClearColor(0xff00ff, 1); r.render(L.scene, L.camera);
+      const px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      r.setClearColor(clear, alpha);
+      let n = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i] < 250 || px[i + 1] > 5 || px[i + 2] < 250) n++;
+      return +(n / (w * h) * 100).toFixed(2);
+    }));
+  }
+  const nearBack = await p.evaluate(() => __loft.camera.near);
+  // Back to where the eyepiece starts (level, pitch 0.15), which the aiming below counts from.
+  await p.evaluate(a => __loft.scope.nudge(-a * 0.6, -0.15), away);
+  console.log('telescope sees none of the balcony (% of the view):', own.join(' '), '| near plane', nearBack, own.every(v => v < 0.2) && nearBack >= 2 ? 'PASS' : 'FAIL');
   const aimed = await p.evaluate(() => {
     const d = __loft.out3d ? __loft.out3d.deathStar : null;
     if (!d) return null;
@@ -266,8 +289,8 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   await p.screenshot({ path: `${OUT}/w-telescope.png` });
   const spotted = await p.evaluate(() => __loft.progress.has('telescope'));
   await p.keyboard.press('Escape'); await p.waitForTimeout(400);
-  const fovBack = await p.evaluate(() => [__loft.mode, __loft.camera.fov]);
-  console.log('telescope aimed at', JSON.stringify(aimed), 'spotted', spotted, '| back to', fovBack.join(' fov '), spotted && fovBack[0] === 'walk' && fovBack[1] > 40 ? 'PASS' : 'FAIL');
+  const fovBack = await p.evaluate(() => [__loft.mode, __loft.camera.fov, __loft.camera.near]);
+  console.log('telescope aimed at', JSON.stringify(aimed), 'spotted', spotted, '| back to', fovBack.slice(0, 2).join(' fov '), 'near', fovBack[2], spotted && fovBack[0] === 'walk' && fovBack[1] > 40 && fovBack[2] < 0.1 ? 'PASS' : 'FAIL');
 
   // The piano: sitting down opens the keys, A plays and lights one, Esc stands up.
   await spot('piano');
