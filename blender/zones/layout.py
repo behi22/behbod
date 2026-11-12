@@ -15,6 +15,8 @@ ENTRY = (0.0, 0.0, 5.0, 4.5)
 ENTRY_WALL_X, ENTRY_WALL_Y1 = 5.0, 3.2
 LIBRARY = (5.15, 0.0, 11.2, 4.5)
 FRONT_DOOR = (2.0, 3.1)
+# The front door sits this deep in its wall, inside a frame whose casing is this wide on the wall's face.
+DOOR_RECESS, DOOR_CASING = 0.09, 0.07
 SECRET_DOOR = (7.6, 8.6)
 PARTITION_X = 11.2
 # The sunken lounge and its steps (cut into its east edge).

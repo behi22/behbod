@@ -6,7 +6,46 @@ import bpy
 from mathutils import Vector, Matrix
 from lib.core import (zone, box, cyl, sphere, plane, tube, collider, point, screen, interact, seat, wallspot, char_light,
                       lamp, potted, tilt_obj, META)
-from zones.layout import MEZZ_UNDER, SECRET_DOOR, FRONT_DOOR, ENTRY_WALL_X, PARTITION_X, STAIRS
+from zones.layout import MEZZ_UNDER, SECRET_DOOR, FRONT_DOOR, DOOR_RECESS, DOOR_CASING, ENTRY_WALL_X, PARTITION_X, STAIRS, WALL
+
+
+def front_door(M, fa, fb, top=2.2):
+    """The front door, set into its wall: a black steel frame lining the opening with a casing on the wall's face, a
+    walnut leaf closed against the frame's stops, and its hardware. Nothing shows through: the stops stand behind the
+    leaf's edges all round, and the wall is solid behind the leaf (zones/shell.py)."""
+    jamb, reveal, leaf_t = 0.045, 0.003, 0.045
+    y_face = -0.02                      # the leaf's room side, a little behind the wall's face
+    y_back = y_face - leaf_t
+    for name, x0, x1 in (('w', fa - DOOR_CASING, fa + jamb), ('e', fb - jamb, fb + DOOR_CASING)):
+        box(f'door_casing_{name}', (x1 - x0, 0.02, top + DOOR_CASING), ((x0 + x1) / 2, 0.008, (top + DOOR_CASING) / 2), M['black'], bevel=0.003)
+    # The head casing fits between the two side casings, so no two of their faces lie in the same plane.
+    box('door_casing_head', (fb - fa - 2 * jamb, 0.02, jamb + DOOR_CASING), ((fa + fb) / 2, 0.008, top + (DOOR_CASING - jamb) / 2), M['black'], bevel=0.003)
+    for name, x in (('w', fa + jamb / 2), ('e', fb - jamb / 2)):
+        box(f'door_jamb_{name}', (jamb, DOOR_RECESS, top), (x, -DOOR_RECESS / 2, top / 2), M['black'])
+    box('door_jamb_head', (fb - fa, DOOR_RECESS, jamb), ((fa + fb) / 2, -DOOR_RECESS / 2, top - jamb / 2), M['black'])
+    # The stops the leaf closes against, behind its edges all round.
+    sd = DOOR_RECESS + y_back
+    for name, x in (('w', fa + jamb + 0.01), ('e', fb - jamb - 0.01)):
+        box(f'door_stop_{name}', (0.02, sd, top - jamb), (x, y_back - sd / 2, (top - jamb) / 2), M['black'])
+    box('door_stop_head', (fb - fa - 2 * jamb, sd, 0.02), ((fa + fb) / 2, y_back - sd / 2, top - jamb - 0.01), M['black'])
+    box('door_sill', (fb - fa - 2 * jamb, DOOR_RECESS, 0.012), ((fa + fb) / 2, -DOOR_RECESS / 2, 0.006), M['steel'])
+    x0, x1, z0, z1 = fa + jamb + reveal, fb - jamb - reveal, 0.012 + reveal, top - jamb - reveal
+    box('front_door', (x1 - x0, leaf_t, z1 - z0), ((x0 + x1) / 2, (y_face + y_back) / 2, (z0 + z1) / 2), M['walnut'], bevel=0.004)
+    # Three shadow lines across the leaf and a steel kick plate along its foot.
+    for i, z in enumerate((0.62, 1.1, 1.58)):
+        box(f'front_door_line{i}', (x1 - x0 - 0.012, 0.004, 0.01), ((x0 + x1) / 2, y_face + 0.0005, z), M['black'])
+    box('front_door_kick', (x1 - x0 - 0.06, 0.004, 0.2), ((x0 + x1) / 2, y_face + 0.002, z0 + 0.13), M['steel'], bevel=0.001)
+    # Hinges on the west edge; the lever, its rose, the lock's turn and the spyhole on the east side.
+    for i, z in enumerate((0.25, 1.1, 1.95)):
+        cyl(f'front_door_hinge{i}', 0.009, 0.1, (x0 - reveal / 2, y_face + 0.006, z), M['steel'], seg=10)
+    hx = x1 - 0.085
+    cyl('front_door_rose', 0.027, 0.008, (hx, y_face + 0.004, 1.02), M['brass'], seg=24, axis='Y')
+    cyl('front_door_neck', 0.011, 0.045, (hx, y_face + 0.026, 1.02), M['brass'], seg=14, axis='Y')
+    box('front_door_lever', (0.135, 0.016, 0.02), (hx - 0.055, y_face + 0.05, 1.02), M['brass'], bevel=0.006, seg=3)
+    cyl('front_door_lock', 0.022, 0.008, (hx, y_face + 0.004, 1.2), M['brass'], seg=20, axis='Y')
+    box('front_door_turn', (0.012, 0.02, 0.04), (hx, y_face + 0.018, 1.2), M['brass'], bevel=0.004, seg=2)
+    cyl('front_door_spy', 0.012, 0.006, ((x0 + x1) / 2, y_face + 0.003, 1.55), M['brass'], seg=16, axis='Y')
+    cyl('front_door_spy_glass', 0.006, 0.007, ((x0 + x1) / 2, y_face + 0.003, 1.55), M['black'], seg=12, axis='Y')
 
 
 def build(M, E, G):
@@ -14,6 +53,7 @@ def build(M, E, G):
         h = MEZZ_UNDER
         fa, fb = FRONT_DOOR
         dc = (fa + fb) / 2
+        front_door(M, fa, fb)
         # The welcome mat inside the door (its line is drawn at runtime).
         box('doormat_edge', (1.04, 0.62, 0.012), (dc, 0.42, 0.006), M['black'])
         plane('screen_doormat', 0.96, 0.54, (dc, 0.42, 0.014), M['felt'], '+Z')
@@ -105,6 +145,11 @@ def build(M, E, G):
                 box(f'secret_book{r_}_{k}', (0.05, 0.22, 0.28 - (k % 3) * 0.03), (sa + 0.08 + k * 0.064, 0.26, 0.12 + r_ * 0.41 + 0.15), M['red'] if red else M[f'book{(k + r_) % 4 + 1}'], kind='emit')
         META['doors'] = META.get('doors', []) + [{'id': 'secret', 'collider': 'secret_door', 'pivot': [sa + 0.01, 0.38, 0], 'swing': -100, 'parts': 'secret_'}]
         collider('secret_door', (sa, 0.0, -1), (sb, 0.4, 2.1), structure=True)
+        # A dark frame lines the opening behind the bookcase, wider than the gaps round it, so no slit of the room
+        # behind shows while the door is shut.
+        for name, x in (('w', sa + 0.015), ('e', sb - 0.015)):
+            box(f'hidden_jamb_{name}', (0.03, WALL, 2.1), (x, -WALL / 2, 1.05), M['black'])
+        box('hidden_head', (sb - sa, WALL, 0.06), ((sa + sb) / 2, -WALL / 2, 2.07), M['black'])
         interact('secret', 'Pull the red book', ((sa + sb) / 2, 0.95, 0), r=0.55)
         # A leather reading chair with a side table and a lamp.
         RCX, RCY = 6.2, 3.2

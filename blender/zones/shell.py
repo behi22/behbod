@@ -76,8 +76,12 @@ def build(M, E, G):
         box('wall_s_secret_head', (sb - sa, WALL, H - 2.1), ((sa + sb) / 2, -WALL / 2, 2.1 + (H - 2.1) / 2), M['wall'])
         box('wall_w', (WALL, D, H), (-WALL / 2, D / 2, H / 2), M['wall'])
         box('wall_e', (WALL, D, H), (W + WALL / 2, D / 2, H / 2), M['brick'])
-        box('front_door', (fb - fa - 0.04, 0.06, 2.16), ((fa + fb) / 2, 0.02, 1.08), M['walnut'], bevel=0.01)
-        cyl('front_door_handle', 0.018, 0.14, (fb - 0.12, 0.07, 1.05), M['brass'], seg=12)
+        # The front door's opening is solid behind the door (the frame and the leaf are in the entry zone), so no
+        # view through the wall can ever reach the outside.
+        box('wall_s_door_back', (fb - fa, WALL - DOOR_RECESS, 2.2), ((fa + fb) / 2, -(WALL + DOOR_RECESS) / 2, 1.1), M['black'])
+        # The door's own collider stands a little into the room, clear of its handle. It is also what stops the camera's
+        # arm when you stand with your back to the door: the camera ignores the tall walls' colliders, so without
+        # this one the first view on arriving swings up over your head.
         collider('front_door', (fa, -0.3, -1), (fb, 0.06, 2.3), structure=True)
         # The south wall is only as thick as it is: the holo range is right behind it.
         collider('wall_s', (-1, -WALL, -1), (sa, 0.0, H), structure=True)
@@ -85,7 +89,9 @@ def build(M, E, G):
         collider('wall_s_secret_head', (sa, -WALL, 2.1), (sb, 0.0, H), structure=True)
         collider('wall_w', (-1, -1, -1), (0.0, D + 1, H), structure=True)
         collider('wall_e', (W, -1, -1), (W + 1, D + 1, H), structure=True)
-        box('plinth_s', (W, 0.02, 0.08), (W / 2, 0.01, 0.04), M['plinth'])
+        # The skirting stops at the front door's frame.
+        for name, (u0, u1) in {'s_w': (0.0, fa - DOOR_CASING), 's_e': (fb + DOOR_CASING, W)}.items():
+            box(f'plinth_{name}', (u1 - u0, 0.02, 0.08), ((u0 + u1) / 2, 0.01, 0.04), M['plinth'])
         box('plinth_w', (0.02, D, 0.08), (0.01, D / 2, 0.04), M['plinth'])
         # Partitions under the mezzanine: between the entry and the library (open at its north end), and between the
         # library and the studio.

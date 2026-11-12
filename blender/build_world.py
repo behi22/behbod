@@ -7,6 +7,7 @@ blender -b --factory-startup -P blender/build_world.py -- reuse only=shell   (fi
 blender -b --factory-startup -P blender/build_world.py -- only=gallery,shell   (bake just these zones; the rest stay as they are)
 blender -b --factory-startup -P blender/build_world.py -- meta  (only write web/assets/world.json, for the layout checks)
 blender -b --factory-startup -P blender/build_world.py -- only=studio cpu=8   (bake on 8 processor cores instead of the graphics chip)
+blender -b --factory-startup -P blender/build_world.py -- sealed  (check that no ray gets through the walls, ceiling or floor; no bake)
 """
 import bpy, os, sys, random
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')
@@ -34,5 +35,9 @@ if 'meta' in ARGS:
         json.dump(META, f, indent=1)
     print('world.json written (layout only)')
     sys.exit(0)
+if 'sealed' in ARGS:
+    from lib import sealed
+    from zones.layout import W, D, H, WALL
+    sys.exit(0 if sealed.report(sealed.leaks(W, D, H, WALL)) else 1)
 CPU = next((int(a[4:]) for a in ARGS if a.startswith('cpu=')), 0)
 bake.build_all(ROOT, draft='draft' in ARGS, exposure=EXPOSURE, reuse='reuse' in ARGS, only=ONLY, cpu=CPU)

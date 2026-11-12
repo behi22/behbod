@@ -229,6 +229,29 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const afterRange = await p.evaluate(() => __loft.mode);
   console.log('holo range', shots, 'shots scored', hitScore, '| best kept', best, '| back to', afterRange, hitScore > 0 && best >= hitScore && afterRange === 'walk' ? 'PASS' : 'FAIL');
 
+  // Nothing shows through round the front door: looking straight at each edge of it from inside, with the house
+  // drawn alone on a marker colour, no marker shows (there used to be a slit down each side and one over the top).
+  const slits = await p.evaluate(async () => {
+    const THREE = await import('three');
+    const L = __loft, r = L.renderer, gl = r.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    const clear = r.getClearColor(new THREE.Color()), alpha = r.getClearAlpha(), vis = L.me.root.visible;
+    const c = L.camera.clone(); c.fov = 14; c.near = 0.05; c.updateProjectionMatrix();
+    const px = new Uint8Array(w * h * 4), out = [];
+    r.setClearColor(0xff00ff, 1); L.me.root.visible = false;
+    // Room coordinates (x east, y north, z up): the west edge, the east edge and the top of the opening.
+    for (const [x, z] of [[2.01, 1.2], [3.09, 1.2], [2.55, 2.18], [2.03, 0.4], [3.07, 1.9]]) {
+      c.position.set(x, z, -1.0); c.lookAt(x, z, 1.0);
+      r.render(L.scene, c);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      let n = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i] > 250 && px[i + 1] < 5 && px[i + 2] > 250) n++;
+      out.push(n);
+    }
+    r.setClearColor(clear, alpha); L.me.root.visible = vis;
+    return out;
+  });
+  console.log('nothing shows through round the front door (marker pixels at 5 edges):', slits.join(' '), slits.every(n => n === 0) ? 'PASS' : 'FAIL');
+
   // The telescope: aim at the Death Star, zoom in, hold it, and it is spotted.
   await spot('telescope');
   await p.evaluate(() => __loft.act('telescope')); await p.waitForTimeout(600);
