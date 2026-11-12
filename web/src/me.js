@@ -72,6 +72,8 @@ export function makeMe(scene, gltf, opts) {
   // A head with several materials loads as a group whose parts carry their own names, so switch the whole subtree.
   const show = (n, on) => (parts[n] || []).forEach(o => o.traverse(c => { c.visible = on; }));
   const tint = (names, hex, k = 1) => names.forEach(n => (mats[n] || []).forEach(m => { m.color.set(hex).multiplyScalar(k); if (m.sheen > 0) { m.sheen = 0.25; m.sheenRoughness = 0.85; m.sheenColor.copy(m.color); } }));
+  // The socks keep their own colour but take the same soft sheen as the cloth that is tinted (the file's is full white).
+  for (const m of mats.M_Sock || []) if (m.sheen > 0) { m.sheen = 0.25; m.sheenRoughness = 0.85; m.sheenColor.copy(m.color); }
   const visorBase = (mats.M_Visor || [])[0]?.color.clone(), visorGlow = (mats.M_Visor || [])[0]?.emissive?.clone();
   function dress() {
     for (const n of Object.keys(parts)) if (n.startsWith('V3_head_') || n.startsWith('V3_acc_') || n.startsWith('V3_hood_')) show(n, false);

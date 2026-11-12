@@ -143,6 +143,7 @@ M_SHOE = mat('M_Shoe', (0.86, 0.86, 0.84), 0.55)
 M_SOLE = mat('M_Sole', (0.93, 0.92, 0.88), 0.7)
 M_ACCENT = mat('M_Shoe_Accent', (0.12, 0.13, 0.16), 0.5)
 M_LACE = mat('M_Lace', (0.95, 0.95, 0.94), 0.8)
+M_SOCK = fabric('M_Sock', (0.05, 0.052, 0.06), 0.95, RIB, 2, 0.2, 0.4)
 for slot in body.material_slots:
     slot.material = M_TOY
 
@@ -283,6 +284,60 @@ def band(bm, verts, c, d, length, squeeze, steps=2):
 
 def cen(l):
     return sum((v.co for v in l), Vector()) / len(l)
+
+
+def face_out(bm, name=''):
+    # A garment is an open shell, and Blender's own guess at which side is the outside can come out backwards (it did
+    # for the trousers once their hems changed). Pockets and seams are laid on a garment a little way out along its
+    # normals, so on an inside-out one they end up inside it. From a sample of faces a ray goes out along each normal:
+    # on the outside it meets nothing, on the inside it meets the far wall. If most meet a wall, the shell is turned.
+    bm.normal_update()
+    tree = BVHTree.FromBMesh(bm)
+    faces = bm.faces[:][::7] or bm.faces[:]
+    inward = sum(1 for f in faces if tree.ray_cast(f.calc_center_median() + f.normal * 1e-4, f.normal, 1.0)[0] is not None)
+    if inward * 2 > len(faces):
+        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+        bm.normal_update()
+        print(name, 'was inside out', f'({inward} of {len(faces)} sampled faces looked inward): turned')
+    return bm
+
+
+def lining(bm, loop, normal, inset, grow=1.0):
+    # Closes an opening from the inside with a shallow cup: a wall from the opening's edge `inset` back into the
+    # garment, facing inward, and a floor across it, facing out of the opening. Garments are single surfaces with
+    # nothing inside, so without this a look up a sleeve or a trouser leg shows a hollow tube all the way up.
+    c, n = cen(loop), Vector(normal).normalized()
+    u = n.cross(Vector((0, 0, 1)) if abs(n.z) < 0.9 else Vector((1, 0, 0))).normalized()
+    w = n.cross(u)
+    ring = sorted(loop, key=lambda v: math.atan2((v.co - c).dot(w), (v.co - c).dot(u)))
+    # The wall starts on the opening's own edge, so it moves with the cloth, and narrows going in, so the cup stays
+    # inside the garment however the cloth folds.
+    vs = [bm.verts.new(c + (v.co - c) * grow - n * inset) for v in ring]
+    mid = bm.verts.new(c - n * inset)
+    k = len(vs)
+    for i in range(k):
+        j = (i + 1) % k
+        bm.faces.new((mid, vs[i], vs[j]))
+        bm.faces.new((ring[i], ring[j], vs[j], vs[i]))
+    # Each point of the cup with the point of the edge it hangs from, to be weighted exactly like it later.
+    return list(zip(vs, ring)) + [(mid, ring[0])]
+
+
+LINING_SRC = {}
+
+
+def keep_linings(name, bm, pairs):
+    bm.verts.index_update()
+    LINING_SRC[name] = [(a.index, b.index) for a, b in pairs]
+
+
+def settle_linings(o):
+    # A lining moves as one with the edge it closes: every point takes the bone weights of the edge point it hangs from.
+    for vi, si in LINING_SRC.get(o.name, []):
+        for g in o.vertex_groups:
+            g.remove([vi])
+        for g in o.data.vertices[si].groups:
+            o.vertex_groups[g.group].add([vi], g.weight, 'REPLACE')
 
 
 def finish(o, bm, thickness=0.0, sub=1, rim_only=False):
@@ -474,7 +529,13 @@ def build_hoodie(name, tw, td, hem_bottom, sr=(0.066, 0.058, 0.05), suffix=''):
         ring = [g for g in res['geom'] if isinstance(g, bmesh.types.BMVert)]
         oval(ring, neck_z + dz, rx, ry, r0x, r0y)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    face_out(bm, name)
     tree = BVHTree.FromBMesh(bm)
+    # Linings inside the hem and the cuffs (after the tree, so nothing is projected onto them).
+    pairs = lining(bm, min(mid, key=lambda l: cen(l).z), (0, 0, -1), 0.025, 0.94)
+    for loop, s in ((cuff_l, 'l'), (cuff_r, 'r')):
+        pairs += lining(bm, loop, FORE[s], 0.015, 0.92)
+    keep_linings(name, bm, pairs)
     finish(o, bm, 0.01, 0, True)
     for p in o.data.polygons:
         c = mw @ p.center
@@ -674,7 +735,11 @@ def build_hood_down():
 hood_dn = build_hood_down()
 
 # ---------- relaxed cargo pants from simple shapes: a hip block inside the hoodie and straight, slightly tapered legs ----------
-PANT_END = 0.18
+# The trouser hem ends just above the sneaker's collar, with the sock between them. It must not come down over the
+# collar: the hem follows the calf and the shoe the foot, so a bending ankle would push the collar through the cloth.
+PANT_END = 0.2
+# The sneaker's collar, and the sock that runs from inside the shoe up into the trouser leg.
+COLLAR_Z, SOCK_Z0, SOCK_UP = 0.16, 0.07, 0.25
 LEG = {s: (bone_seg('thigh_' + s)[0], bone_seg('calf_' + s)[0], bone_seg('calf_' + s)[1]) for s in 'lr'}
 PW, PD = TW * 0.86, TD * 0.84
 
@@ -697,10 +762,12 @@ def build_pants(name, radii=(0.092, 0.082, 0.074), end=PANT_END, squeeze=0.88, s
     cut(bm, (0, 0, end + 0.03), (0, 0, -1))
     drop_islands(bm, 300)
     L = sorted(loops_of(bm), key=lambda l: -cen(l).z)
-    top = L[0]
+    # The waistband goes on the waist itself: the biggest of the openings at the top, not a stray small one.
+    top = max((l for l in L if cen(l).z > cen(L[0]).z - 0.02), key=len)
     band(bm, top, cen(top), Vector((0, 0, 1)), 0.02, 0.98)
-    for loop in L[1:3]:
-        band(bm, loop, cen(loop), Vector((0, 0, -1)), 0.03, squeeze, 2)
+    # The two legs' hems are the two lowest openings (a stray one higher up must not be taken for a hem).
+    print(name, 'openings', [(len(l), tuple(round(c, 3) for c in cen(l))) for l in L])
+    hems = [band(bm, loop, cen(loop), Vector((0, 0, -1)), 0.03, squeeze, 2) for loop in L[-2:]]
     # Everything the hoodie covers stays well inside it, so the legs never show through the hem.
     for v in bm.verts:
         p = v.co
@@ -714,7 +781,9 @@ def build_pants(name, radii=(0.092, 0.082, 0.074), end=PANT_END, squeeze=0.88, s
     for _ in range(3):
         bmesh.ops.smooth_vert(bm, verts=[v for v in bm.verts if not v.is_boundary and v.co.z > HEM_BOTTOM - 0.06], factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    face_out(bm, name)
     tree = BVHTree.FromBMesh(bm)
+    keep_linings(name, bm, [q for hem in hems for q in lining(bm, hem, (0, 0, -1), 0.025, 0.9)])
     finish(o, bm, 0.008, 0, True)
     o.data.materials.append(M_PANTS)
     # Cargo pockets with a flap, on the outside of each thigh, projected onto the leg.
@@ -733,7 +802,7 @@ def build_pants(name, radii=(0.092, 0.082, 0.074), end=PANT_END, squeeze=0.88, s
 
 pants, PANTS_TREE, cargo_parts = build_pants('V3_pants')
 # A variation to try on: tapered cargos with a gathered cuff that shows the whole high-top.
-PANTS_VARIANTS = [build_pants('V3_pants_tapered', (0.088, 0.072, 0.056), 0.2, 0.82, '_tapered')]
+PANTS_VARIANTS = [build_pants('V3_pants_tapered', (0.088, 0.072, 0.056), PANT_END, 0.82, '_tapered')]
 
 
 # ---------- high-top sneakers, lofted from rounded cross-sections: round toe box, padded collar, a parody swoosh ----------
@@ -762,7 +831,7 @@ def sneaker(side):
 
     def upper_prof(t):
         w = (0.046 + 0.014 * math.sin(math.pi * min(1.0, t * 1.15))) * ends(t)
-        top = ease(0.168, 0.108, (t - 0.28) / 0.3) if t < 0.58 else ease(0.108, 0.078, (t - 0.58) / 0.22)
+        top = ease(0.168, 0.108, (t - 0.4) / 0.24) if t < 0.64 else ease(0.108, 0.078, (t - 0.64) / 0.16)
         if t > 0.78:
             top = 0.03 + (top - 0.03) * (0.45 + 0.55 * math.sqrt(max(0.0, 1 - ((t - 0.78) / 0.22) ** 2)))
         return w, 0.026, top
@@ -822,17 +891,27 @@ def sneaker(side):
         return hit[0] + hit[1] * lift if hit[0] is not None else None
 
     b = bmesh.new()
-    # Laces: six bars across the instep, sitting on a tongue.
+    # Laces: crossed between six pairs of eyelets, every point laid on the instep so none floats, with a bar across
+    # the top and the bottom pair.
+    def eyelet(k, sd):
+        t = 0.47 + k * 0.042
+        return heel + fwd * (t * length) + right * (sd * upper_prof(t)[0] * 0.5)
+
+    def lace(a, c, n=9):
+        pts = [onto(a.lerp(c, i / n) + Vector((0, 0, 0.3)), Vector((0, 0, -1)), 0.0032) for i in range(n + 1)]
+        if None not in pts:
+            tube_mesh(b, pts, 0.0027, 6)
+
     for k in range(6):
-        t = 0.33 + k * 0.055
-        c = onto(heel + fwd * (t * length) + Vector((0, 0, 0.3)), Vector((0, 0, -1)), 0.0045)
-        if c is None:
-            continue
-        w = upper_prof(t)[0]
-        g = bmesh.ops.create_cube(b, size=1.0)
-        bmesh.ops.scale(b, vec=Vector((0.009, w * 1.05, 0.005)), verts=g['verts'])
-        bmesh.ops.rotate(b, cent=Vector(), matrix=Matrix.Rotation(math.atan2(fwd.y, fwd.x), 3, 'Z'), verts=g['verts'])
-        bmesh.ops.translate(b, vec=c, verts=g['verts'])
+        for sd in (1, -1):
+            q = onto(eyelet(k, sd) + Vector((0, 0, 0.3)), Vector((0, 0, -1)), 0.002)
+            if q is not None:
+                g = bmesh.ops.create_icosphere(b, subdivisions=1, radius=0.0042)
+                bmesh.ops.translate(b, vec=q, verts=g['verts'])
+            if k < 5:
+                lace(eyelet(k, sd), eyelet(k + 1, -sd))
+    lace(eyelet(0, 1), eyelet(0, -1))
+    lace(eyelet(5, 1), eyelet(5, -1))
     laces = bpy.data.objects.new('V3_laces_' + side, bpy.data.meshes.new('V3_laces_' + side))
     SC.objects.link(laces)
     b.to_mesh(laces.data)
@@ -869,7 +948,38 @@ def sneaker(side):
     logo.data.materials.append(M_ACCENT)
     for p in logo.data.polygons:
         p.use_smooth = True
-    parts = (upper, sole_o, stripe, laces, logo)
+    for p in laces.data.polygons:
+        p.use_smooth = True
+    # A padded collar round the leg and a tongue standing in front of it.
+    ank = Vector((foot.x, foot.y, 0.0))
+    b = bmesh.new()
+    cc = ank - fwd * 0.004 + Vector((0, 0, COLLAR_Z))
+    R1, R2, rt = 0.043, 0.04, 0.0105
+    rings = []
+    for i in range(28):
+        a = 2 * math.pi * i / 28
+        c = cc + fwd * (math.cos(a) * R1) + right * (math.sin(a) * R2) + Vector((0, 0, -0.006 * math.cos(a)))
+        out = (fwd * math.cos(a) * R2 + right * math.sin(a) * R1).normalized()
+        rings.append([b.verts.new(c + out * (math.cos(q) * rt) + Vector((0, 0, math.sin(q) * rt * 1.25))) for q in (2 * math.pi * j / 10 for j in range(10))])
+    for i in range(28):
+        for j in range(10):
+            b.faces.new((rings[i][j], rings[(i + 1) % 28][j], rings[(i + 1) % 28][(j + 1) % 10], rings[i][(j + 1) % 10]))
+    g = bmesh.ops.create_cube(b, size=1.0)
+    bmesh.ops.scale(b, vec=Vector((0.013, 0.05, 0.062)), verts=g['verts'])
+    bmesh.ops.bevel(b, geom=[e for e in b.edges if all(v in g['verts'] for v in e.verts)], offset=0.005, segments=3, profile=0.5, affect='EDGES')
+    tv = [v for v in b.verts if not any(v in r for r in rings)]
+    bmesh.ops.rotate(b, cent=Vector(), matrix=Matrix.Rotation(math.radians(-16), 3, 'Y'), verts=tv)
+    bmesh.ops.rotate(b, cent=Vector(), matrix=Matrix.Rotation(math.atan2(fwd.y, fwd.x), 3, 'Z'), verts=tv)
+    bmesh.ops.translate(b, vec=cc + fwd * (R1 + 0.004) + Vector((0, 0, 0.004)), verts=tv)
+    bmesh.ops.recalc_face_normals(b, faces=b.faces[:])
+    collar = bpy.data.objects.new('V3_collar_' + side, bpy.data.meshes.new('V3_collar_' + side))
+    SC.objects.link(collar)
+    b.to_mesh(collar.data)
+    b.free()
+    collar.data.materials.append(M_SHOE)
+    for p in collar.data.polygons:
+        p.use_smooth = True
+    parts = (upper, sole_o, stripe, laces, logo, collar)
     for o in parts:
         o.vertex_groups.new(name='foot_' + side)
         o.vertex_groups.new(name='ball_' + side)
@@ -882,7 +992,54 @@ def sneaker(side):
     return parts
 
 
-shoe_parts = sneaker('l') + sneaker('r')
+def sock(side):
+    # A ribbed sock from inside the shoe up the leg into the trousers, bending at the ankle: whatever the pose, what
+    # shows between the collar and the hem is the sock, never the room behind.
+    knee, ankle = bone_seg('calf_' + side)
+    up = (knee - ankle).normalized()
+    x = Vector((1, 0, 0))
+    x = (x - up * x.dot(up)).normalized()
+    y = up.cross(x)
+    low = Vector((ankle.x, ankle.y, SOCK_Z0))
+    stations = [(low, 0.034), (low.lerp(ankle, 0.5), 0.036), (ankle, 0.037)] + [(ankle + up * d, r) for d, r in ((0.035, 0.038), (0.08, 0.041), (0.13, 0.045), (0.18, 0.048), (SOCK_UP, 0.049))]
+    b = bmesh.new()
+    uv = b.loops.layers.uv.new('UVMap')
+    N = 20
+    rings, vs = [], []
+    run = 0.0
+    for i, (c, r) in enumerate(stations):
+        if i:
+            run += (c - stations[i - 1][0]).length
+        rings.append([b.verts.new(c + (x * math.cos(a) + y * math.sin(a)) * r) for a in (2 * math.pi * j / N for j in range(N))])
+        vs.append(run)
+    for i in range(len(rings) - 1):
+        for j in range(N):
+            f = b.faces.new((rings[i][j], rings[i][(j + 1) % N], rings[i + 1][(j + 1) % N], rings[i + 1][j]))
+            for lp, (u, v) in zip(f.loops, ((j / N, vs[i]), ((j + 1) / N, vs[i]), ((j + 1) / N, vs[i + 1]), (j / N, vs[i + 1]))):
+                lp[uv].uv = (u * 4, v * 4)
+    for ring, c in ((rings[0], stations[0][0]), (rings[-1], stations[-1][0])):
+        m = b.verts.new(c)
+        for j in range(N):
+            b.faces.new((ring[j], ring[(j + 1) % N], m))
+    bmesh.ops.recalc_face_normals(b, faces=b.faces[:])
+    o = bpy.data.objects.new('V3_sock_' + side, bpy.data.meshes.new('V3_sock_' + side))
+    SC.objects.link(o)
+    b.to_mesh(o.data)
+    b.free()
+    o.data.materials.append(M_SOCK)
+    for p in o.data.polygons:
+        p.use_smooth = True
+    for n in ('foot_', 'calf_'):
+        o.vertex_groups.new(name=n + side)
+    for v in o.data.vertices:
+        k = max(0.0, min(1.0, ((v.co - ankle).dot(up) + 0.012) / 0.06))
+        k = k * k * (3 - 2 * k)
+        o.vertex_groups['calf_' + side].add([v.index], k, 'REPLACE')
+        o.vertex_groups['foot_' + side].add([v.index], 1 - k, 'REPLACE')
+    return o
+
+
+shoe_parts = sneaker('l') + sneaker('r') + (sock('l'), sock('r'))
 
 # ---------- the toy body: only the hands show (four chunky fingers); clothes and the neck socket cover the rest ----------
 W = group_weights(body)
@@ -907,6 +1064,8 @@ drop_islands(bm, 20)
 for l in loops_of(bm):
     s = set(l)
     bmesh.ops.holes_fill(bm, edges=[e for e in bm.edges if e.is_boundary and e.verts[0] in s and e.verts[1] in s], sides=0)
+# The filled ends (the wrist, where the little finger was) must face outward like the rest, or they draw as holes.
+bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
 bm.normal_update()
 for v in bm.verts:
     v.co += v.normal * 0.003
@@ -967,7 +1126,10 @@ def smooth_weights(o, iters=25):
     for v in o.data.vertices:
         for g in v.groups:
             Wt[v.index, g.group] = g.weight
-    e = np.array([ed.vertices[:] for ed in o.data.edges], dtype=np.int64)
+    # Linings are left out: a lining's floor joins every point round an opening to one middle point, and smoothing
+    # across it would bleed the left side's weights into the right (they take their edge's weights afterwards).
+    lined = {vi for vi, _ in LINING_SRC.get(o.name, [])}
+    e = np.array([ed.vertices[:] for ed in o.data.edges if ed.vertices[0] not in lined and ed.vertices[1] not in lined], dtype=np.int64)
     deg = np.bincount(e.ravel(), minlength=nv).astype(np.float64)[:, None]
     for _ in range(iters):
         S = np.zeros_like(Wt)
@@ -1032,6 +1194,10 @@ for hu in (hood_up, hood_up_tv):
         wh = max(0.0, min(1.0, (v.co.z - COLLAR_TOP - 0.01) / 0.1))
         hu.vertex_groups['Head'].add([v.index], wh, 'REPLACE')
         hu.vertex_groups['neck_01'].add([v.index], 1 - wh, 'REPLACE')
+
+
+for o in [hood_o, pants] + [V['o'] for V in HOODIE_VARIANTS] + [po for po, _, _ in PANTS_VARIANTS]:
+    settle_linings(o)
 
 
 # Nothing pokes through a hood: every head's points, down to well below the hood's middle, must sit inside it (inside
@@ -1477,6 +1643,97 @@ for act in [a for a in bpy.data.actions if a not in before_a]:
 from lib import sitposes
 sitposes.add_sitting(arm, ROOT + '/web/assets/sitposes.json')
 
+
+# ---------- no gaps at the joints ----------
+# Through the middle of every joint (ankles, wrists, hips, neck), from all round and from below as well as above, a ray
+# must meet a surface: in every move, every sitting pose, every fit of hoodie and trousers and under every head. One
+# that gets clean through is a place where you would see the room through the body, like the space there used to be
+# between each trouser hem and its shoe. Any face stops a ray, as the page draws both sides of the character's cloth.
+def along(bone, t0, t1, n):
+    return [(bone, t0 + (t1 - t0) * i / (n - 1)) for i in range(n)]
+
+
+JOINTS = {
+    'ankle_l': along('calf_l', 0.55, 1.0, 10) + along('foot_l', 0.15, 0.45, 3),
+    'ankle_r': along('calf_r', 0.55, 1.0, 10) + along('foot_r', 0.15, 0.45, 3),
+    'wrist_l': along('lowerarm_l', 0.7, 1.0, 7) + along('hand_l', 0.2, 0.6, 3),
+    'wrist_r': along('lowerarm_r', 0.7, 1.0, 7) + along('hand_r', 0.2, 0.6, 3),
+    'hip_l': along('thigh_l', 0.0, 0.4, 6),
+    'hip_r': along('thigh_r', 0.0, 0.4, 6),
+    'neck': [('spine_03', 0.85)] + along('neck_01', 0.0, 1.0, 7),
+}
+GAP_DIRS = [Vector((math.cos(e) * math.sin(a), -math.cos(e) * math.cos(a), -math.sin(e)))
+            for e in (math.radians(v) for v in (-30, -15, 0, 20, 45, 70)) for a in (2 * math.pi * k / 12 for k in range(12))]
+WORN = ['V3_body'] + [o.name for o in shoe_parts]
+HOODIE = lambda sfx: ['V3_hoodie' + sfx, 'V3_pocket' + sfx]
+PANTS = lambda sfx: [n + sfx for n in ('V3_pants', 'V3_cargo_l', 'V3_cargo_r', 'V3_flap_l', 'V3_flap_r')]
+HOOD_HEAD = ['V3_socket', 'V3_hood_up', 'V3_head_void']
+# What is worn together, and which joints that look is checked at (the page hides the neck socket under the hood
+# head with its hood down, and gives the TV its own hood).
+LOOKS = {
+    'boxy hoodie, straight trousers': (WORN + HOODIE('') + PANTS('') + HOOD_HEAD, list(JOINTS)),
+    'short hoodie, tapered trousers': (WORN + HOODIE('_short') + PANTS('_tapered') + HOOD_HEAD, list(JOINTS)),
+    'relaxed hoodie, tapered trousers': (WORN + HOODIE('_relaxed') + PANTS('_tapered') + HOOD_HEAD, list(JOINTS)),
+    'hood head, hood down': (WORN + HOODIE('') + ['V3_hood_down', 'V3_head_void_full'], ['neck']),
+    'tv, hood up': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_up_tv', 'V3_head_tv'], ['neck']),
+    'tv, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_tv', 'V3_head_tv_antennas'], ['neck']),
+    'visor, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], ['neck']),
+    'emoji, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_emoji'], ['neck']),
+    'toy head, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_toy'], ['neck']),
+    'visor, hood up': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_up', 'V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], ['neck']),
+    'emoji, hood up': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_up', 'V3_head_emoji'], ['neck']),
+    'toy head, hood up': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_up', 'V3_head_toy'], ['neck']),
+}
+
+
+def joint_gaps(looks, skip=None, frames=4, reach=1.2):
+    found = {}
+    used = sorted({n for names, _ in looks.values() for n in names if not (skip and n.startswith(skip))})
+    for tr in [t for t in arm.animation_data.nla_tracks if t.strips]:
+        act = tr.strips[0].action
+        arm.animation_data.action = act
+        if act.slots:
+            arm.animation_data.action_slot = act.slots[0]
+        f0, f1 = act.frame_range
+        # The sitting clip holds one pose per frame, so every frame of it is checked; the moves are sampled.
+        at = range(int(f0), int(f1) + 1) if tr.name == 'SitPoses' else [int(round(f0 + (f1 - f0) * (k + 0.5) / frames)) for k in range(frames)]
+        for frame in at:
+            bpy.context.scene.frame_set(frame)
+            dg = bpy.context.evaluated_depsgraph_get()
+            trees = {}
+            for n in used:
+                o = bpy.data.objects[n]
+                inv = o.matrix_world.inverted()
+                trees[n] = (BVHTree.FromObject(o, dg), inv, inv.to_3x3())
+            mids = {j: [(arm.matrix_world @ arm.pose.bones[b].head).lerp(arm.matrix_world @ arm.pose.bones[b].tail, t) for b, t in pts] for j, pts in JOINTS.items()}
+            for look, (names, joints) in looks.items():
+                mine = [trees[n] for n in names if n in trees]
+                for joint in joints:
+                    n = 0
+                    for mid in mids[joint]:
+                        for d in GAP_DIRS:
+                            o0 = mid - d * reach
+                            for tree, inv, rot in mine:
+                                ld = rot @ d
+                                if tree.ray_cast(inv @ o0, ld.normalized(), 2 * reach * ld.length)[0] is not None:
+                                    break
+                            else:
+                                n += 1
+                    if n:
+                        key = f'{joint} ({look})'
+                        worst = found.get(key, (0, 0, ''))
+                        found[key] = (worst[0] + n, max(worst[1], n), f'{tr.name} frame {frame}' if n > worst[1] else worst[2])
+    arm.animation_data.action = None
+    return found
+
+
+# `NOSOCK` in the preview name leaves the socks out of the check, to see it fail.
+GAPS = joint_gaps(LOOKS, skip='V3_sock_' if 'NOSOCK' in PREVIEW else None)
+for key, (total, most, where) in sorted(GAPS.items()):
+    print(f'  GAP {key}: {total} rays through in all, {most} at worst ({where})')
+print('joints: no gaps' if not GAPS else f'joints: GAPS at {len(GAPS)}: {sorted(GAPS)}')
+assert not GAPS, f'the body shows through at a joint: {sorted(GAPS)}'
+
 for m in bpy.data.materials:
     for n in list(m.node_tree.nodes if m.node_tree else []):
         if n.type == 'TEX_IMAGE' and (not n.image or len(n.image.pixels) == 0):
@@ -1534,6 +1791,27 @@ if PREVIEW and 'HEADS' in PREVIEW:
                 if o.name in every:
                     o.hide_render = o.name not in show
             render_views(f'{PREVIEW}-{key}-{"up" if up else "down"}', target=(0, 0, 1.5), dist=1.6, views=(('3q', 30), ('back', 160)), res=(420, 480), height=1.62)
+    for o in bpy.data.objects:
+        o.hide_render = False
+    arm.animation_data.action = None
+elif PREVIEW and 'FEET' in PREVIEW:
+    # `-- <prefix>FEET`: the ankles up close, standing and mid-stride, and one hand.
+    from preview_lib import render_views
+    keep = set(LOOKS['boxy hoodie, straight trousers'][0])
+    for o in bpy.data.objects:
+        if o.type == 'MESH':
+            o.hide_render = o.name not in keep
+    for clip, frame in (('Idle_Loop', 10), ('Walk_Loop', 8), ('Sprint_Loop', 6), ('Crouch_Idle_Loop', 10)):
+        tr = arm.animation_data.nla_tracks[clip]
+        arm.animation_data.action = tr.strips[0].action
+        if tr.strips[0].action.slots:
+            arm.animation_data.action_slot = tr.strips[0].action.slots[0]
+        bpy.context.scene.frame_set(frame)
+        render_views(f'{PREVIEW}-{clip}', target=(0, 0, 0.14), dist=1.0, views=(('front', 20), ('side', 90), ('back', 200)), res=(640, 520), height=0.3)
+        render_views(f'{PREVIEW}-{clip}-top', target=(0, 0, 0.14), dist=0.75, views=(('3q', 40),), res=(640, 520), height=0.75)
+        if clip == 'Idle_Loop':
+            hand = arm.matrix_world @ arm.pose.bones['hand_l'].tail
+            render_views(f'{PREVIEW}-hand', target=tuple(hand), dist=0.55, views=(('front', 0), ('out', 90), ('back', 180), ('in', 270)), res=(520, 520), height=hand.z + 0.08)
     for o in bpy.data.objects:
         o.hide_render = False
     arm.animation_data.action = None
