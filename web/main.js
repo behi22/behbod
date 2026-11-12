@@ -28,7 +28,7 @@ import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
 import { hoodUp } from './src/pure/look.js';
-import { tierStep, ease } from './src/pure/tier.js';
+import { tierStep, ease, makeQualityNotice } from './src/pure/tier.js';
 import { makeCanvases } from './screens.js';
 import { Sound } from './sound.js';
 
@@ -43,7 +43,7 @@ const engine = makeEngine(canvas, coarse);
 const { renderer, scene, camera } = engine;
 // An unknown ?q= falls back to auto rather than stopping the page.
 let tierName = Object.hasOwn(TIERS, params.get('q') || '') ? params.get('q') : 'auto', autoTier = tierName === 'auto';
-engine.onTier(name => { world?.setGloss(name === 'high' || name === 'ultra'); world?.setMirror(name !== 'low'); $('q').textContent = 'Quality: ' + (autoTier ? 'auto, ' : '') + name; });
+engine.onTier(name => { world?.setGloss(name === 'high' || name === 'ultra'); world?.setMirror(name !== 'low'); });
 
 // ---------- loading ----------
 const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
@@ -702,6 +702,16 @@ const tmpP = new THREE.Vector3(), tmpL = new THREE.Vector3();
 const FOG_NIGHT = new THREE.Color(0x0a0f1c), FOG_DAY = new THREE.Color(0x6f8197);
 const clock = new THREE.Clock();
 let frameTimes = [], tierChecked = 0, tierState = {}, lastFrame = performance.now();
+// The quality note has a line of its own under the toast, so no other message (the welcome achievement comes up a
+// moment after the page opens) can replace it before it is read.
+function notice(text) {
+  const n = $('notice'); if (!n) return;
+  n.textContent = text; n.classList.add('on');
+  clearTimeout(notice.h); notice.h = setTimeout(() => n.classList.remove('on'), 9000);
+}
+const qualityNotice = makeQualityNotice({ seen: () => !!store.get('home.qnote'), remember: () => store.set('home.qnote', '1'), show: notice });
+// The automatic quality moves to another level (the judge in the frame loop calls this).
+function autoTierTo(next) { qualityNotice.stepped(tierName, next); tierName = next; engine.setTier(next); }
 function step() {
   const dt = Math.min(clock.getDelta(), 1 / 20), now = performance.now(), t = now / 1000;
   renderer.info.reset();
@@ -774,7 +784,7 @@ function step() {
   if (autoTier && frameTimes.length > 40 && now - tierChecked > 2500) {
     tierChecked = now;
     tierState = tierStep(tierName, frameTimes, now, tierState);
-    if (tierState.tier !== tierName) { tierName = tierState.tier; engine.setTier(tierName); }
+    if (tierState.tier !== tierName) autoTierTo(tierState.tier);
     frameTimes = [];
   }
   if (showStats) $('stats').textContent = `${(1 / Math.max(dt, 1e-3)).toFixed(0)} fps · ${renderer.info.render.calls} calls · ${(renderer.info.render.triangles / 1000).toFixed(0)}k tris · ${physName} · ${outside.weather}${screens.holiday ? ' · ' + screens.holiday.id : ''}`;
@@ -788,10 +798,6 @@ function setQuality(next) {
   tierState = { top: tierName };
   engine.setTier(tierName);
 }
-$('q').addEventListener('click', () => {
-  const order = ['auto', 'low', 'medium', 'high', 'ultra'];
-  setQuality(order[(order.indexOf(autoTier ? 'auto' : tierName) + 1) % order.length]);
-});
 $('who').addEventListener('click', () => { if (mode === 'walk') me.nextHead(); });
 $('snd').addEventListener('click', () => { const on = sound.toggle(); $('snd').textContent = on ? 'Sound on' : 'Sound off'; $('snd').classList.toggle('on', on); });
 if (showStats) $('stats').style.display = 'block';
@@ -812,12 +818,12 @@ $('note').textContent = 'Getting the room ready';
 await engine.warmUp();
 $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
 $('enter').classList.add('ready');
-$('enter').addEventListener('click', () => { $('gate').classList.add('gone'); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); });
-if (params.has('auto')) $('gate').classList.add('gone');
+$('enter').addEventListener('click', () => { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); });
+if (params.has('auto')) { $('gate').classList.add('gone'); qualityNotice.opened(); }
 window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, printer, rubik, act: id => act(things.items.find(i => i.id === id)), stand,
   walkTo: (x, y, z) => walkTo(b2t(x, y, z)), goTo, chair, get route() { return route ? route.points.length : 0; }, wardrobe,
   get near() { return near?.id ?? null; }, get facing() { return facing; },
-  get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, get physics() { return physName; },
+  get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, autoTierTo, get physics() { return physName; },
   get weights() { return me.weights; }, get headVisible() { return me.root.visible; }, get headMeshesShown() { return me.headMeshesShown; },
   set yaw(v) { yaw = v; lastLook = performance.now(); }, screens, deskView, screenCentre: () => b2t(...meta.screens.main.center) };
 requestAnimationFrame(step);

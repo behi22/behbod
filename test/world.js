@@ -189,6 +189,37 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   await p.click(`.dt-win[data-app="settings"] .dt-pill:text-is("${wantDown ? 'down' : 'up'}")`); await p.waitForTimeout(250);
   const hoodPill = await p.evaluate(() => __loft.me.hoodUp);
   console.log('settings opens from the dock and its hood button works:', setOpen, wantDown, '->', hoodPill, setOpen && hoodPill !== wantDown ? 'PASS' : 'FAIL');
+  // Picture quality has one control, here in Settings; the corner of the page has none.
+  await p.click('.dt-win[data-app="settings"] .dt-pill:text-is("medium")'); await p.waitForTimeout(400);
+  const qMedium = await p.evaluate(() => [__loft.tier, !!document.getElementById('q'), [...document.querySelectorAll('.corner .chip')].some(c => /quality/i.test(c.textContent))]);
+  await p.click('.dt-win[data-app="settings"] .dt-pill:text-is("auto")'); await p.waitForTimeout(400);
+  const qAuto = await p.evaluate(() => [...document.querySelectorAll('.dt-win[data-app="settings"] .dt-pill.on')].map(b => b.textContent));
+  console.log('quality is set in Settings only:', qMedium[0], '-> back to', qAuto[0], '| corner button', qMedium[1] || qMedium[2], qMedium[0] === 'medium' && qAuto.includes('auto') && !qAuto.includes('medium') && !qMedium[1] && !qMedium[2] ? 'PASS' : 'FAIL');
+  // The first time the quality lowers itself, a note says so and where its control is, on a line of its own that the
+  // toast cannot replace; the second time, nothing. (If this run's own frame rate already lowered it, the visitor has
+  // been told and only the second half applies; on the lowest level there is nothing lower to step to.)
+  const told = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), order = ['low', 'medium', 'high', 'ultra'], note = document.getElementById('notice'), toast = document.getElementById('toast');
+    const was = __loft.tier, lower = order[Math.max(0, order.indexOf(was) - 1)];
+    const before = localStorage.getItem('home.qnote') === '1';
+    note.classList.remove('on'); note.textContent = '';
+    __loft.autoTierTo(lower);
+    const first = [note.classList.contains('on'), note.textContent, localStorage.getItem('home.qnote')];
+    // Another message straight after must not take the note away.
+    toast.textContent = 'something else'; toast.classList.add('on');
+    await wait(50);
+    const kept = note.classList.contains('on') && /quality/i.test(note.textContent);
+    toast.classList.remove('on'); toast.textContent = '';
+    note.classList.remove('on'); note.textContent = '';
+    // Back up and down again: a second step down, on any machine with a level below its own.
+    __loft.autoTierTo(was); __loft.autoTierTo(lower);
+    await wait(50);
+    const again = note.classList.contains('on');
+    __loft.autoTierTo(was);
+    return { was, lower, before, first, kept, again, steps: lower !== was };
+  });
+  const toldOk = !told.steps || (told.before ? !told.first[0] && !told.again : told.first[0] && /Settings/.test(told.first[1]) && told.first[2] === '1' && told.kept && !told.again);
+  console.log('a note the first time the quality lowers itself:', told.was, '->', told.lower, told.before ? '(already told earlier in this run)' : JSON.stringify(told.first[1]), '| stays under another message', told.kept, '| told again', told.again, toldOk ? 'PASS' : 'FAIL');
   const t0 = await p.evaluate(() => __loft.screens.desktop.st.wins.find(w => w.app === 'terminal').x);
   const tb = await p.locator('.dt-win[data-app="terminal"] .dt-title span').boundingBox();
   await p.mouse.move(tb.x + tb.width + 60, tb.y + tb.height / 2); await p.mouse.down();

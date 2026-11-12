@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LOCO, CROUCH, blendWeights, strideRate } from '../../web/src/pure/blend.js';
-import { tierStep, ease, p90, TIER_ORDER } from '../../web/src/pure/tier.js';
+import { tierStep, ease, p90, TIER_ORDER, qualityNote, QUALITY_NOTE, makeQualityNotice } from '../../web/src/pure/tier.js';
 
 const sum = m => [...m.values()].reduce((a, b) => a + b, 0);
 
@@ -113,4 +113,65 @@ test('a stutter every tenth frame steps down even when the average looks fine', 
   assert.deepEqual(run('ultra', [stretch, stretch]).seen, ['ultra', 'high']);
   assert.equal(tierStep('ultra', Array(100).fill(16.7), 7000, { slowRuns: 1, top: 'ultra' }).tier, 'ultra', 'a steady 60 fps stays');
   assert.equal(p90(stretch), 33.3);
+});
+
+test('the visitor is told once, in plain words, when the quality lowers itself, and where its control is', () => {
+  assert.equal(qualityNote('ultra', 'high', false), QUALITY_NOTE);
+  assert.equal(qualityNote('medium', 'low', null), QUALITY_NOTE);
+  assert.match(QUALITY_NOTE, /Settings/);
+  // Told before (this visit or an earlier one): nothing more.
+  assert.equal(qualityNote('ultra', 'high', true), null);
+  assert.equal(qualityNote('high', 'medium', '1'), null);
+  // Stepping back up, staying put, or a name that is not a quality level says nothing.
+  assert.equal(qualityNote('high', 'ultra', false), null);
+  assert.equal(qualityNote('high', 'high', false), null);
+  assert.equal(qualityNote('high', 'auto', false), null);
+});
+
+// A notice wired to a pretend page: what was shown, and whether the visitor is remembered as told.
+function notice(stored = false) {
+  const page = { shown: [], stored };
+  return { page, n: makeQualityNotice({ seen: () => page.stored, remember: () => { page.stored = true; }, show: t => page.shown.push(t) }) };
+}
+
+test('a quality note due while the welcome screen is up waits until the page is open, and is not spent before', () => {
+  const { page, n } = notice();
+  n.stepped('ultra', 'high');
+  assert.deepEqual(page.shown, [], 'nothing can be read yet');
+  assert.equal(page.stored, false, 'so the visitor does not count as told');
+  n.opened();
+  assert.deepEqual(page.shown, [QUALITY_NOTE]);
+  assert.equal(page.stored, true);
+  n.stepped('high', 'medium'); n.opened();
+  assert.equal(page.shown.length, 1, 'once only');
+});
+
+test('with the page open the note shows at the step down; never for a step up or a visitor told before', () => {
+  const a = notice();
+  a.n.opened();
+  assert.deepEqual(a.page.shown, [], 'opening the page alone says nothing');
+  a.n.stepped('medium', 'high');
+  assert.deepEqual(a.page.shown, []);
+  a.n.stepped('high', 'medium');
+  assert.deepEqual(a.page.shown, [QUALITY_NOTE]);
+  a.n.stepped('medium', 'low');
+  assert.equal(a.page.shown.length, 1);
+  const b = notice(true);
+  b.n.stepped('ultra', 'high'); b.n.opened(); b.n.stepped('high', 'low');
+  assert.deepEqual(b.page.shown, []);
+});
+
+test('a waiting note is dropped if the quality has climbed back before the page opens', () => {
+  const { page, n } = notice();
+  n.stepped('ultra', 'high'); n.stepped('high', 'medium');
+  n.stepped('medium', 'high');
+  n.opened();
+  assert.deepEqual(page.shown, [QUALITY_NOTE], 'still lower than it started: the note stands');
+  const b = notice();
+  b.n.stepped('ultra', 'high'); b.n.stepped('high', 'ultra');
+  b.n.opened();
+  assert.deepEqual(b.page.shown, [], 'back where it started: nothing to say');
+  assert.equal(b.page.stored, false, 'and the one note is not spent');
+  b.n.stepped('ultra', 'high');
+  assert.deepEqual(b.page.shown, [QUALITY_NOTE], 'a later step down still gets its note');
 });

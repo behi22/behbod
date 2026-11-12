@@ -28,4 +28,28 @@ export function tierStep(current, times, now, state = {}) {
   return { tier: current, slowRuns: 0, goodRuns: good, wait, top };
 }
 
+// The quality looks after itself and its only control is on the computer (Settings). The first time it steps down by
+// itself, the visitor is told once what happened and where the control is; `seen` is whether they were told before.
+export const QUALITY_NOTE = "Lowered the quality to keep things smooth. You can change it in the computer's Settings.";
+export function qualityNote(from, to, seen) {
+  return !seen && TIER_ORDER.indexOf(to) >= 0 && TIER_ORDER.indexOf(to) < TIER_ORDER.indexOf(from) ? QUALITY_NOTE : null;
+}
+// The note is only spent once it can be read: a slow machine steps down in its first seconds, while the welcome
+// screen still covers the page, so a note due then waits for `opened()`. `seen` and `remember` read and write whether
+// this visitor was ever told; `show` puts the words on the page.
+export function makeQualityNotice({ seen, remember, show }) {
+  let open = false, due = false, told = false, was = null;
+  const tell = () => { told = true; due = false; remember(); show(QUALITY_NOTE); };
+  return {
+    stepped(from, to) {
+      if (told) return;
+      // A note still waiting is dropped if the quality climbs back to where it was: it would no longer be true.
+      if (due && TIER_ORDER.indexOf(to) >= TIER_ORDER.indexOf(was)) { due = false; was = null; return; }
+      if (!qualityNote(from, to, seen())) return;
+      if (open) tell(); else if (!due) { due = true; was = from; }
+    },
+    opened() { open = true; if (due && !told) tell(); },
+  };
+}
+
 export const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;

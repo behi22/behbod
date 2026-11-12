@@ -21,6 +21,7 @@
   .prompt.on { opacity: 1; }
   .toast { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); padding: 8px 14px; background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; font-size: 13px; color: var(--accent); opacity: 0; transition: opacity .3s; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; text-align: center; }
   .toast.on { opacity: 1; }
+  .toast.notice { top: calc(18% + 64px); }
   .prompt b { color: var(--bg); background: var(--accent); padding: 1px 8px; border-radius: 4px; margin-right: 8px; }
   .corner { position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; pointer-events: auto; max-width: calc(100% - 150px); }
   .joy { display: none; }
@@ -66,10 +67,11 @@
 <canvas id="view"></canvas>
 <div class="hud">
   <div class="tag"><b>BEHBOD</b> · HOME<span class="long"> · WORK IN PROGRESS</span></div>
-  <div class="corner"><button class="chip" id="who">Head: hood</button><button class="chip" id="hood">Hood up</button><button class="chip" id="closet">Wardrobe</button><button class="chip" id="q">Quality: auto</button><button class="chip" id="snd">Sound off</button></div>
+  <div class="corner"><button class="chip" id="who">Head: hood</button><button class="chip" id="hood">Hood up</button><button class="chip" id="closet">Wardrobe</button><button class="chip" id="snd">Sound off</button></div>
   <div class="stats" id="stats"></div>
   <input id="cmd" class="cmd" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type a command, like help" aria-label="Terminal command">
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast notice" id="notice" role="status" aria-live="polite"></div>
   <div class="prompt" id="prompt"><b>E</b>Use computer</div>
   <div class="keys"><span><b>WASD</b>move</span><span><b>Shift</b>run</span><span><b>Space</b>jump</span><span><b>Drag</b>look</span><span><b>E</b>use</span><span><b>C</b>crouch, tap twice to roll</span><span><b>H</b>head</span><span><b>G</b>hood</span><span><b>O</b>wardrobe</span><span><b>Click</b>walk there</span><span><b>Esc</b>back</span></div>
   <div class="joy" id="joy" aria-label="Walk"><i></i></div>

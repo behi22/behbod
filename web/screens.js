@@ -50,7 +50,7 @@ export function makeCanvases(meta, opts = {}) {
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
   const CMDS = {
-    help: () => say('commands: whoami  projects  postit  ls  contact  clear  exit', '  ' + Object.keys(EXTRA).join('  ')),
+    help: () => say('commands: whoami  projects  postit  ls  contact  clear  exit', '  ' + Object.keys(EXTRA).join('  '), 'picture quality sets itself; to change it, open Settings'),
     whoami: () => say('Behbod Babai. Engineer in Vancouver.', 'I make computers talk back.'),
     projects: () => say('meet-bex      a voice receptionist you can talk to', 'profile-art   my GitHub profile, redrawn every hour', 'aic-voice-microsite'),
     postit: () => say('the note on this monitor is my tattoo:', 'Bengar o beshno, bogzar o beh sho'),
