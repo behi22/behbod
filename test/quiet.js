@@ -1,9 +1,13 @@
-// Test browsers stay silent. The house plays music, the piano and the room's sound, and Firefox and WebKit under
+// Test browsers stay silent and leave the mouse alone. The house plays music, the piano and the room's sound, and Firefox and WebKit under
 // Playwright play it out loud on the machine running the tests. Chrome is muted by a switch, Firefox by its volume
 // setting, and every page (WebKit's too) gets a script that sends all sound into a silent node and mutes media.
 function silence() {
   if (window.__quiet) return;
   window.__quiet = true;
+  // Nor does a test browser ever take the mouse. The range asks to hold the pointer the way a shooter does, and a
+  // hidden test window that was given it pinned the real cursor to the edge of the screen. Here the request does
+  // nothing; the range still aims with the mouse's own movement.
+  if (typeof Element !== 'undefined') Element.prototype.requestPointerLock = function () { return Promise.resolve(); };
   if (typeof AudioNode !== 'undefined') {
     const connect = AudioNode.prototype.connect, hush = new WeakMap();
     AudioNode.prototype.connect = function (to, ...rest) {
