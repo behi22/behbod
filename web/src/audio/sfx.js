@@ -1,6 +1,7 @@
 import { shot, perc, glide, makePanner, setPos, stats } from './core.js';
 import { tone, noisy } from './drums.js';
 import { midiToFreq } from './pure/notes.js';
+import { rangeSounds } from './range.js';
 
 const V = { a: [750, 1200], e: [550, 1850], i: [300, 2300], o: [480, 880], u: [350, 750], ae: [650, 1700] };
 const pt = (x, v) => [x, ...v];
@@ -185,6 +186,7 @@ export function makeSfx(env) {
   };
 
   return {
+    ...rangeSounds(go),
     bh22,
     bh22Word(word, pos) {
       const syls = WORDS[String(word || '').toLowerCase().replace(/[^a-z]/g, '')];

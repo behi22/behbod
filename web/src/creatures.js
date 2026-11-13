@@ -188,7 +188,7 @@ const TIPS = [
   'Beep. Welcome in. Walk up to anything glowing and press E.',
   'The red book in the library is not a book.',
   'Press G to flip your hood, O for the wardrobe.',
-  'A top score at the holo range unlocks the gold kit.',
+  'Three stars on a stage at the range unlocks the gold kit.',
   'Sit at the desk and type help. Pishi may join you.',
   'Jessi loves the ball. Press E next to her.',
   'Look through the telescope on the balcony. Something is up there.',

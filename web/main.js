@@ -13,7 +13,7 @@ import { makeCreatures } from './src/creatures.js';
 import { openGame } from './src/games/index.js';
 import { makeAudio } from './src/audio/index.js';
 import { makeOutside3d } from './src/outside3d.js';
-import { makeRange } from './src/range.js';
+import { makeRange } from './src/range/index.js';
 import { makeTelescope } from './src/telescope.js';
 import { makePianoMode } from './src/pianomode.js';
 import { makePanels } from './src/panel.js';
@@ -27,7 +27,7 @@ import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
-import { hoodUp } from './src/pure/look.js';
+import { hoodUp, wornColours } from './src/pure/look.js';
 import { tierStep, ease, makeQualityNotice } from './src/pure/tier.js';
 import { makeCanvases } from './screens.js';
 import { Sound } from './sound.js';
@@ -53,7 +53,8 @@ const sitInfo = await load.json('assets/sitposes.json').catch(() => null);
 // My YouTube videos for the TV and the screening wall: [{ id, title, by }].
 const media = await fetch('media.json').then(r => (r.ok ? r.json() : {})).catch(() => ({}));
 const videos = () => (media.videos || []).filter(v => /^[A-Za-z0-9_-]{11}$/.test(v.id || ''));
-const [zoneGltfs, meGltf] = await Promise.all([Promise.all(meta.zones.map(z => load.glb('assets/' + z.glb, z.id))), load.glb('assets/behbod_v3.glb', 'me')]);
+// The house's zones come first; a lit zone (the range) is fetched once the house is up.
+const [zoneGltfs, meGltf] = await Promise.all([Promise.all(meta.zones.filter(z => !z.lit).map(z => load.glb('assets/' + z.glb, z.id))), load.glb('assets/behbod_v3.glb', 'me')]);
 
 const screens = makeCanvases(meta, { videos });
 const col = makeCollision(meta);
@@ -141,17 +142,23 @@ function earn(id) {
   if (title) setTimeout(() => { toast('Achievement: ' + title); audio.sfx.achievement(); }, 400);
 }
 
-// ---------- the holo range, the telescope and the piano ----------
+// ---------- the range, the telescope and the piano ----------
 const UNLOCK_NAMES = { kit: 'the keeper kit', gold: 'the gold colourway', visor: 'the red visor', vault: 'the secret room' };
-const range = makeRange(scene, camera, meta, {
-  sfx: audio.sfx, best: () => progress.best('range'),
-  onScore: s => {
-    const got = progress.score('range', s);
-    if (s >= 20) earn('range');
+const range = makeRange({
+  engine, camera, meta, canvas, coarse, sfx: audio.sfx, progress,
+  // The sleeves in the hand are the hoodie I am wearing.
+  look: () => { const c = wornColours(me.look); return { M_Hoodie: c.hoodie, M_Hoodie_Rib: c.rib }; },
+  // A star earns the achievement; what a run unlocks shows up on the unlock stands and in the wardrobe at once.
+  onResult: (res, got) => {
+    if (res.stars > 0) earn('range');
     world.showUnlocks(progress.unlocked()); wardrobe.render();
-    return got.map(u => UNLOCK_NAMES[u]);
+    return got.unlocks.map(u => UNLOCK_NAMES[u]);
   },
-  onExit: () => { mode = 'walk'; me.root.visible = true; },
+  // Its rooms are drawn while I am in them or the bookcase door stands open.
+  visible: () => pos.z > 0.05 || (world.doors.secret?.k || 0) > 0.002,
+  onReady: room => walkable.push(room.group),
+  // Back to walking, at the line, with the camera behind me.
+  onExit: ({ at }) => { mode = 'walk'; pos.copy(at); vel.set(0, 0, 0); facing = prevFacing = 0; yaw = Math.PI; pitch = 0.2; lastLook = performance.now(); me.root.visible = true; me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos); },
 });
 const scope = makeTelescope(scene, camera, meta, {
   sky: out3d?.deathStar,
@@ -166,11 +173,23 @@ const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t }
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 world.retireFighters();
 const tvMatch = meta.screens.tv ? makeTvMatch({ texture: screens.textures.tv, at: b2t(...meta.screens.tv.center).toArray(), normal: [1, 0, 0], fps: () => (tierName === 'low' ? 5 : 10) }) : null;
+// The range is fetched behind the scenes, with no click: as soon as I head for the library, where its door is, or
+// (on a computer) once the house has been open for a quiet while. A phone only fetches it on the way there.
+let rangeAsked = false, rangeTries = 0, rangeRetryAt = 0;
+// A fetch that fails is tried again only after a wait, and three times at most: standing in the library with no
+// connection must not ask over and over.
+const rangeFailed = e => { rangeAsked = false; rangeRetryAt = performance.now() + 20000; console.warn('[loft] the range could not be fetched', e); };
+function askRange() {
+  if (rangeAsked || rangeTries >= 3 || performance.now() < rangeRetryAt) return;
+  rangeAsked = true; rangeTries++;
+  range.load().catch(rangeFailed);
+}
+function rangeLater() { if (!coarse) setTimeout(askRange, 12000); }
+const bookcase = b2t((meta.doors.find(d => d.id === 'secret')?.pivot || [8, 0, 0])[0] + 0.5, 0, 0);
 function enterRange() {
-  if (mode !== 'walk') return;
+  if (mode !== 'walk' || !range.enter()) return;
   mode = 'range'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
-  range.enter();
 }
 // Penalties at the mini goal, BH-22 in goal.
 const pens = makePenalties(scene, meta, { creatures, sfx: audio.sfx, toast, onGoal: () => earn('goal'), onExit: () => { mode = 'walk'; me.root.visible = true; } });
@@ -362,13 +381,14 @@ const SAY = {
   albums: 'Album art from my top tracks, once Spotify is connected.',
   tea: 'Fresh tea from the samovar.',
   resume: 'My resume is coming with the LinkedIn update.',
-  secret_room: 'Locked. A score of 50 at the holo range opens it.',
+  secret_room: 'Locked. Three stars on every stage of the range, on Hard, opens it. The last two stages are still being built.',
+  loadout: 'The gun wall. More guns hang here as you earn stars at the line.',
   projects: 'My projects, all the way up the stairs.',
   claude: 'A tribute to Claude, who helped me bring this idea to life.',
   wall: 'The weather and this month, holidays circled.',
   trophies: 'The trophy shelf.',
   collection: 'The collection case.',
-  unlocks: 'Win these at the holo range: the keeper kit, gold, and the red visor.',
+  unlocks: 'Win these at the range: the keeper kit and gold now, the red visor once its last stages are built.',
   mirror: 'Looking good.',
 };
 // The arcade, the mini goal and the console all play the shootout; the boards play their own games.
@@ -391,6 +411,9 @@ function act(it) {
   if (it.seat) return sit(it);
   const at = b2t(...(it.at || [0, 0, 0]));
   if (it.id === 'secret') {
+    // The range behind it arrives a moment after the house; the bookcase waits for it.
+    if (!range.built) return toast('This copy of the house is out of date. Reload the page, then pull the book again.');
+    if (!range.ready) { rangeAsked = true; range.load().then(() => { if (!world.doors.secret.open) act(it); }, e => { rangeFailed(e); toast('The range could not be fetched.'); }); return toast('One moment.'); }
     const d = world.toggleDoor('secret');
     audio.sfx.door('bookcase', at);
     if (d.open) earn('secret');
@@ -449,7 +472,7 @@ addEventListener('keydown', e => {
   if (mode === 'desk') { if (e.key.length === 1 || e.key === 'Enter') sound.key(); return screens.terminalKey(e, () => leaveDesk()); }
   // A held key repeats; the action keys only count the first press, or holding E would sit, stand, sit.
   if (e.repeat && (e.code === 'KeyE' || e.code === 'KeyO' || e.code === 'KeyH' || e.code === 'KeyG')) return;
-  if (mode === 'range') { if (e.code === 'Escape') range.exit(); else if (e.code === 'Space') { e.preventDefault(); range.fire(pointerNdc); } else range.key(e); return; }
+  if (mode === 'range') { if (e.code === 'Escape') { if (!e.repeat) range.escape(); } else if (range.key(e, true)) e.preventDefault(); return; }
   if (mode === 'pens') {
     if (e.code === 'Escape') pens.exit();
     // One kick per press: a held Space must not fire the next kick, or start a new round.
@@ -487,18 +510,15 @@ addEventListener('keydown', e => {
   if (e.code === 'Backquote') { showStats = !showStats; $('stats').style.display = showStats ? 'block' : 'none'; }
   if (e.code === 'Space') e.preventDefault();
 });
-addEventListener('keyup', e => { keys.delete(e.code); if (pianoMode.active) pianoMode.keyup(e); });
+addEventListener('keyup', e => { keys.delete(e.code); if (pianoMode.active) pianoMode.keyup(e); if (mode === 'range') range.key(e, false); });
 addEventListener('blur', () => keys.clear());
-// Where the pointer is, in screen terms (-1 to 1), for the holo range's aim.
-const pointerNdc = new THREE.Vector2();
-const toNdc = e => new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
 canvas.addEventListener('pointerdown', e => {
+  // At the firing line the range reads the mouse itself.
+  if (mode === 'range') return;
   dragging = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: 0 }; canvas.setPointerCapture(e.pointerId);
-  if (mode === 'range') range.fire(toNdc(e));
   if (mode === 'pens') { aim(e); pens.aimAt(ray.ray); pens.shoot(); }
 });
 canvas.addEventListener('pointermove', e => {
-  pointerNdc.copy(toNdc(e));
   if (mode === 'pens' && e.pointerType === 'mouse') { aim(e); pens.aimAt(ray.ray); }
   if (!dragging || e.pointerId !== dragging.id) return;
   const dx = e.clientX - dragging.x, dy = e.clientY - dragging.y;
@@ -574,6 +594,8 @@ $('use').addEventListener('click', () => {
 $('hood').addEventListener('click', () => me.toggleHood());
 $('closet').addEventListener('click', () => wardrobe.toggle());
 const ray = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+// What a click can land on to walk there: the house's zones, and the range's rooms once they are in.
+const walkable = zoneGltfs.map(g => g.scene);
 const aim = e => ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
 function tapMove(e) {
   aim(e);
@@ -586,7 +608,7 @@ function tapMove(e) {
     return;
   }
   // Aim at whatever floor the click lands on, then walk there along a path.
-  const hits = ray.intersectObjects(zoneGltfs.map(g => g.scene), true).filter(h => h.face && h.face.normal.y > 0.7);
+  const hits = ray.intersectObjects(walkable, true).filter(h => h.face && h.face.normal.y > 0.7);
   const hit = hits[0]?.point;
   if (hit) { walkTo(hit); return; }
   floorPlane.constant = -pos.y;
@@ -663,6 +685,8 @@ function walk(dt, now) {
   // Let the camera drift back behind me while I move and nobody is steering it.
   if (hs > 0.5 && now - lastLook > 1600 && !coarse) { let d = (facing + Math.PI) - yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); yaw += d * Math.min(1, 1.2 * dt); }
   if (-pos.z > meta.regions[1].min[1]) earn('balcony');
+  // A computer asks from the library's doorway; a phone only at the shelf itself, so the walk past it costs no data.
+  if (!rangeAsked && pos.y < 2 && Math.hypot(pos.x - bookcase.x, pos.z - bookcase.z) < (coarse ? 2.2 : 4.5)) askRange();
   const was = near;
   near = null;
   if (grounded) {
@@ -730,10 +754,6 @@ function step() {
     } else if (mode === 'desk' && desk.range) {
       camera.position.lerp(desk.eye(), Math.min(1, 10 * dt));
       camLook.lerp(desk.aim(), Math.min(1, 10 * dt));
-    } else if (mode === 'range') {
-      range.view(tmpP, tmpL, pointerNdc.x, pointerNdc.y);
-      camera.position.lerp(tmpP, Math.min(1, 6 * dt));
-      camLook.lerp(tmpL, Math.min(1, 6 * dt));
     } else if (mode === 'pens') {
       // Arrows or WASD nudge the aim across the goal and up and down.
       const k = dt * 0.5;
@@ -747,7 +767,8 @@ function step() {
       scope.view(camera.position, camLook);
     }
   }
-  camera.lookAt(camLook);
+  // At the firing line the range holds the camera (my eye, the aim, the kick of each shot).
+  if (mode === 'range') range.pose(dt, camLook); else camera.lookAt(camLook);
   range.tick(dt, t); scope.tick(dt);
   liveVideo.tick();
   fleet.tick(dt, t, camera.position);
@@ -818,8 +839,8 @@ $('note').textContent = 'Getting the room ready';
 await engine.warmUp();
 $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
 $('enter').classList.add('ready');
-$('enter').addEventListener('click', () => { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); });
-if (params.has('auto')) { $('gate').classList.add('gone'); qualityNotice.opened(); }
+$('enter').addEventListener('click', () => { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); });
+if (params.has('auto')) { $('gate').classList.add('gone'); qualityNotice.opened(); rangeLater(); }
 window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, printer, rubik, act: id => act(things.items.find(i => i.id === id)), stand,
   walkTo: (x, y, z) => walkTo(b2t(x, y, z)), goTo, chair, get route() { return route ? route.points.length : 0; }, wardrobe,
   get near() { return near?.id ?? null; }, get facing() { return facing; },

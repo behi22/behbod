@@ -222,7 +222,7 @@ export function makePanels(surface, ctx) {
   add('board', 1300, 600, (g, c) => {
     g.fillStyle = '#e9eef0'; g.fillRect(0, 0, c.width, c.height);
     text(g, 'home', 60, 90, 56, '#1c3d8f', 700);
-    [['the whole world', true], ['the character, refined', false], ['piano, records, Spotify', false], ['holo range game', false], ['guestbook + mailbox', false], ['launch: behbod.dev', false]]
+    [['the whole world', true], ['the character, refined', false], ['piano, records, Spotify', false], ['the range, five guns', false], ['guestbook + mailbox', false], ['launch: behbod.dev', false]]
       .forEach(([l, done], i) => { text(g, (done ? '✓ ' : '□ ') + l, 70, 170 + i * 66, 40, done ? '#1f8a4c' : '#2b2b2b', 600); });
     g.strokeStyle = '#c0392b'; g.lineWidth = 6; g.beginPath(); g.moveTo(760, 140); g.bezierCurveTo(900, 120, 1000, 260, 1100, 220); g.stroke();
     text(g, 'stay curious', 860, 470, 54, '#c0392b', 700, "'Pacifico', cursive");
@@ -381,18 +381,6 @@ export function makePanels(surface, ctx) {
     }
   }, 60000);
 
-  // The holo range: the console and the scoreboard.
-  add('console', 260, 440, g => {
-    g.fillStyle = '#031018'; g.fillRect(0, 0, 260, 440);
-    text(g, 'HOLO', 130, 120, 44, '#5fd0ff', 700, MONO, 'center');
-    text(g, 'RANGE', 130, 170, 44, '#5fd0ff', 700, MONO, 'center');
-    text(g, 'soon', 130, 320, 26, '#9be3ff', 400, MONO, 'center');
-  });
-  add('range', 1500, 500, g => {
-    g.fillStyle = '#020a10'; g.fillRect(0, 0, 1500, 500);
-    text(g, 'HIGH SCORE', 750, 180, 80, '#5fd0ff', 700, MONO, 'center');
-    text(g, '000000', 750, 340, 140, '#ffffff', 700, MONO, 'center');
-  });
   for (const [k, label] of [['unlock_kit', 'keeper kit'], ['unlock_gold', 'gold'], ['unlock_visor', 'red visor']]) {
     add(k, 260, 80, g => { g.fillStyle = '#05080c'; g.fillRect(0, 0, 260, 80); text(g, 'LOCKED', 130, 34, 22, '#5fd0ff', 700, MONO, 'center'); text(g, label, 130, 64, 18, '#9be3ff', 400, MONO, 'center'); });
   }

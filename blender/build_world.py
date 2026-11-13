@@ -2,6 +2,7 @@
 
 blender -b --factory-startup -P blender/build_world.py -- draft    (about two minutes, a quick look)
 blender -b --factory-startup -P blender/build_world.py              (full quality)
+blender -b --factory-startup -P blender/build_world.py -- mid      (half the full bake's size and samples: enough to judge a look)
 blender -b --factory-startup -P blender/build_world.py -- reuse     (finish and export the last full bake again)
 blender -b --factory-startup -P blender/build_world.py -- reuse only=shell   (finish and export just these again from their saved bakes)
 blender -b --factory-startup -P blender/build_world.py -- only=gallery,shell   (bake just these zones; the rest stay as they are)
@@ -40,4 +41,4 @@ if 'sealed' in ARGS:
     from zones.layout import W, D, H, WALL
     sys.exit(0 if sealed.report(sealed.leaks(W, D, H, WALL)) else 1)
 CPU = next((int(a[4:]) for a in ARGS if a.startswith('cpu=')), 0)
-bake.build_all(ROOT, draft='draft' in ARGS, exposure=EXPOSURE, reuse='reuse' in ARGS, only=ONLY, cpu=CPU)
+bake.build_all(ROOT, draft='draft' in ARGS, exposure=EXPOSURE, reuse='reuse' in ARGS, only=ONLY, cpu=CPU, mid='mid' in ARGS)

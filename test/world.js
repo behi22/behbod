@@ -7,7 +7,7 @@ require('fs').mkdirSync(OUT, { recursive: true });
 const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&stats';
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
 const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], studio: [15.6, 4.4, 0.45, -2.2], desk: [19.0, 2.6, 0.45, -2.3], piano: [16.0, 8.9, 0, 0.6], teabar: [14.6, 9.4, 0, 0.1],
-  mezz: [9.5, 2.0, 3.0, 2.0], balcony: [11.6, 16.2, 0, Math.PI], range: [8.1, -0.8, 0, -1.6], entry: [2.2, 3.6, 0, 2.6], stairs: [2.0, 9.2, 0, 2.4], videos: [19.2, 9.6, 0, -1.4], library: [9.0, 3.6, 0, -2.4] };
+  mezz: [9.5, 2.0, 3.0, 2.0], balcony: [11.6, 16.2, 0, Math.PI], range: [11.7, -3.2, 0, Math.PI], entry: [2.2, 3.6, 0, 2.6], stairs: [2.0, 9.2, 0, 2.4], videos: [19.2, 9.6, 0, -1.4], library: [9.0, 3.6, 0, -2.4] };
 
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
@@ -15,10 +15,19 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const errs = [], warns = [];
   p.on('pageerror', e => errs.push(e.message));
   p.on('response', r => { if (r.status() >= 400) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`); });
-  p.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200) + ' @ ' + (m.location()?.url || '').slice(0, 100)); if (m.type() === 'warning' && /\[loft\]/.test(m.text())) warns.push(m.text()); });
+  p.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200) + ' @ ' + (m.location()?.url || '').slice(0, 100)); if (m.type() === 'warning' && /\[(loft|range)\]/.test(m.text())) warns.push(m.text()); });
   await p.goto(URL);
   await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
   await p.waitForTimeout(1500);
+  // The range's rooms are fetched after the house; everything below that goes in there waits for them once, here.
+  // (Without them in the world file the range can never be ready: said at once, not after a minute's wait.)
+  const rangeBuilt = await p.evaluate(() => __loft.range.built);
+  if (!rangeBuilt) console.log('the range is in this world file: FAIL');
+  const rangeFrom = Date.now();
+  await p.waitForFunction(() => __loft.range.ready, null, { timeout: 60000 });
+  console.log('the range arrives after the house:', Date.now() - rangeFrom + 1500, 'ms after the first frame', 'PASS');
+  const fits = await p.evaluate(() => ({ built: __loft.range.built, patched: __loft.range.patched }));
+  console.log('the range is in this world file and its shader patches fit this three:', JSON.stringify(fits), fits.built && fits.patched ? 'PASS' : 'FAIL');
   const info = await p.evaluate(() => ({ zones: __loft.meta.zones.length, things: __loft.meta.interact.length, physics: __loft.physics, calls: __loft.renderer.info.render.calls, tris: __loft.renderer.info.render.triangles }));
   console.log('loaded', JSON.stringify(info));
 
@@ -44,7 +53,7 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
     // Sitting down and standing back up take a second each.
     await p.waitForFunction(() => __loft.mode !== 'sit' && __loft.mode !== 'rising', null, { timeout: 4000 }).catch(() => {});
     await p.waitForTimeout(300);
-    const left = await p.evaluate(() => ({ mode: __loft.mode, overlay: !!document.querySelector('.g-overlay, .video, .rg-hud, .ts-veil, .pm, .pn') }));
+    const left = await p.evaluate(() => ({ mode: __loft.mode, overlay: !!document.querySelector('.g-overlay, .video, .rg, .ts-veil, .pm, .pn') }));
     if (left.mode !== 'walk' || left.overlay) missed.push(`${it.id} (Esc left mode ${left.mode}${left.overlay ? ' and an overlay' : ''})`);
   }
   console.log('things you can use', items.length, missed.length ? 'NOT REACHABLE: ' + missed.join(', ') : 'all reachable PASS');
@@ -238,27 +247,99 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const gone = await p.evaluate(() => !document.querySelector('.dt.on') && getComputedStyle(document.querySelector('.dt')).display === 'none');
   console.log('the desktop goes when I stand up:', gone ? 'PASS' : 'FAIL');
 
-  // The holo range: start a round, click real targets on screen, and the round ends on time with the score kept.
+  // The range: stepping up to the line brings the stage card; the warm-up is played the way a visitor plays it (the
+  // view turned onto each plate as it stands up, the trigger pulled); plates fall and the score counts; the run ends
+  // with a result that is kept; Esc pauses a run and leaves from a card.
   const spot = async it => { const q = await p.evaluate(id => __loft.meta.interact.find(i => i.id === id).at, it); await p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, b2t(...q)); await p.waitForTimeout(400); };
   await p.evaluate(() => { if (!__loft.world.doors.secret.open) __loft.act('secret'); });
   await p.waitForTimeout(1500);
   await spot('range');
   await p.evaluate(() => __loft.act('range')); await p.waitForTimeout(1200);
-  await p.click('.rg-card button');
-  const r0 = Date.now();
-  let shots = 0;
-  while (Date.now() - r0 < 12000) {
-    const xy = await p.evaluate(() => { const v = __loft.range.live()[0]; if (!v) return null; v.project(__loft.camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
-    if (xy) { await p.mouse.click(xy[0], xy[1]); shots++; }
-    await p.waitForTimeout(220);
+  const rgCard = await p.evaluate(() => ({ mode: __loft.mode, state: __loft.range.state, stages: document.querySelectorAll('.rg-card .rg-list button').length, open: document.querySelectorAll('.rg-card .rg-list button:not([disabled])').length }));
+  console.log('at the line: the stage card, the first stage open', JSON.stringify(rgCard), rgCard.mode === 'range' && rgCard.state === 'menu' && rgCard.stages === 5 && rgCard.open === 1 ? 'PASS' : 'FAIL');
+  await p.click('.rg-card .rg-acts button.go');
+  await p.waitForFunction(() => __loft.range.state === 'play', null, { timeout: 8000 });
+  const rgT = Date.now();
+  let rgPulls = 0;
+  while (Date.now() - rgT < 11000) {
+    const d = await p.evaluate(() => { const g = __loft.range.debug; return { n: g.targets.length, id: g.targets[0]?.id, phase: g.weapon.phase }; });
+    if (d.n && d.phase === 'ready') {
+      await p.evaluate(id => __loft.range.aimAtTarget(id), d.id);
+      await p.waitForTimeout(110);
+      const before = await p.evaluate(id => { const n = __loft.range.debug.run.shots; __loft.range.aimAtTarget(id); __loft.range.press('fire', true); return n; }, d.id);
+      await p.waitForFunction(n => __loft.range.debug.run.shots > n || __loft.range.debug.weapon.phase !== 'ready', before, { timeout: 3000 });
+      await p.evaluate(() => __loft.range.press('fire', false));
+      rgPulls++;
+    }
+    await p.waitForTimeout(120);
   }
-  const hitScore = await p.evaluate(() => __loft.range.score);
   await p.screenshot({ path: `${OUT}/w-range-game.png` });
-  await p.waitForFunction(() => /ROUND OVER/.test(document.querySelector('.rg-card')?.textContent || ''), null, { timeout: 40000 });
-  const best = await p.evaluate(() => __loft.progress.best('range'));
-  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
-  const afterRange = await p.evaluate(() => __loft.mode);
-  console.log('holo range', shots, 'shots scored', hitScore, '| best kept', best, '| back to', afterRange, hitScore > 0 && best >= hitScore && afterRange === 'walk' ? 'PASS' : 'FAIL');
+  const rgMid = await p.evaluate(() => { const g = __loft.range.debug; return { score: g.run.score, kills: g.run.kills, shots: g.run.shots, hits: g.run.hits, ammo: g.weapon.ammo, cases: g.fx.casings }; });
+  console.log('warm-up:', rgPulls, 'pulls', JSON.stringify(rgMid), rgMid.kills >= 3 && rgMid.score >= 300 && rgMid.shots <= rgPulls && rgMid.shots >= rgPulls - 2 && rgMid.hits >= rgMid.kills && rgMid.cases > 0 ? 'PASS' : 'FAIL');
+  // Esc in the middle of a run is the pause, not the way out; Resume goes on.
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  const rgPaused = await p.evaluate(() => ({ mode: __loft.mode, state: __loft.range.state, card: document.querySelector('.rg-card h2')?.textContent }));
+  await p.click('.rg-card .rg-acts button.go'); await p.waitForTimeout(300);
+  const rgResumed = await p.evaluate(() => __loft.range.state);
+  console.log('Esc pauses a run, Resume goes on:', JSON.stringify(rgPaused), rgResumed, rgPaused.mode === 'range' && rgPaused.state === 'paused' && rgPaused.card === 'PAUSED' && rgResumed === 'play' ? 'PASS' : 'FAIL');
+  // The rest of the minute goes by quickly (time handed out in steps), the result card comes and the result is kept.
+  await p.evaluate(() => __loft.range.film(true));
+  for (let i = 0; i < 400 && await p.evaluate(() => __loft.range.state) === 'play'; i++) await p.evaluate(() => new Promise(r => { __loft.range.advance(0.5); requestAnimationFrame(() => requestAnimationFrame(r)); }));
+  await p.evaluate(() => __loft.range.film(false));
+  const rgOver = await p.evaluate(() => ({ state: __loft.range.state, card: document.querySelector('.rg-card .rg-num')?.textContent, kept: __loft.progress.rangeScore('warmup', 'normal'), stars: (__loft.progress.rangeBest().warmup || {}).normal }));
+  console.log('the run ends with a result that is kept:', JSON.stringify(rgOver), rgOver.state === 'over' && +rgOver.card >= rgMid.score && rgOver.kept === +rgOver.card && Number.isInteger(rgOver.stars) ? 'PASS' : 'FAIL');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(700);
+  const afterRange = await p.evaluate(() => ({ mode: __loft.mode, hud: !!document.querySelector('.rg'), fov: __loft.camera.fov, shown: __loft.headVisible }));
+  console.log('Esc from the card leaves the range:', JSON.stringify(afterRange), afterRange.mode === 'walk' && !afterRange.hud && afterRange.shown ? 'PASS' : 'FAIL');
+  // Leaving sets me down clear of the bench and the crates: I can walk straight off.
+  await p.waitForTimeout(400);
+  const rgExitAt = await p.evaluate(() => [__loft.pos.x, -__loft.pos.z]);
+  await p.keyboard.down('KeyS'); await p.waitForTimeout(700); await p.keyboard.up('KeyS');
+  const rgWalked = await p.evaluate(a => Math.hypot(__loft.pos.x - a[0], -__loft.pos.z - a[1]), rgExitAt);
+  console.log('out of the range I stand clear and can walk off:', rgExitAt.map(v => v.toFixed(2)).join(', '), 'then', rgWalked.toFixed(2), 'm', rgWalked > 0.5 ? 'PASS' : 'FAIL');
+
+  // A second visit, with the real mouse and keys. Time is handed out in steps so nothing moves between the aim and
+  // the shot: the right button raises the sights, a click fires, and a shot into a walker's chest counts as its body
+  // (it is seen side on, with an arm always in front; the arm must not take the hit). R reloads; Ctrl+R is left to
+  // the browser; a key held when the run is paused is not still held when it goes on.
+  await spot('range');
+  await p.evaluate(() => __loft.act('range')); await p.waitForTimeout(900);
+  await p.evaluate(() => __loft.range.start('walkers', 'normal', 7));
+  await p.waitForFunction(() => __loft.range.state === 'play', null, { timeout: 20000 });
+  await p.evaluate(() => __loft.range.film(true));
+  const rgStepBy = (dt, n = 1) => p.evaluate(async ([d, k]) => { for (let i = 0; i < k; i++) { __loft.range.advance(d); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); } }, [dt, n]);
+  // On to the first walker, then three seconds more so it is out from behind the fins.
+  for (let i = 0; i < 300 && !(await p.evaluate(() => __loft.range.debug.targets.some(t => t.kind === 'walker'))); i++) await rgStepBy(0.1);
+  await rgStepBy(0.1, 30);
+  await p.mouse.move(700, 410);
+  await p.mouse.down({ button: 'right' });
+  await rgStepBy(0.05, 8);
+  const rgWid = await p.evaluate(() => (__loft.range.debug.targets.find(t => t.kind === 'walker') || {}).id);
+  const rgHp0 = await p.evaluate(id => __loft.range.debug.run.live.get(id)?.hp, rgWid);
+  await p.evaluate(id => __loft.range.aimAtTarget(id, 'body'), rgWid);
+  await p.mouse.down();
+  await rgStepBy(0.01, 4);
+  await p.mouse.up();
+  await p.mouse.up({ button: 'right' });
+  const rgShot1 = await p.evaluate(id => ({ hp: __loft.range.debug.run.live.get(id)?.hp, shots: __loft.range.debug.run.shots, aim: __loft.range.debug.aim }), rgWid);
+  console.log('a real click fires down the sights; a walker\'s chest is its body:', rgHp0, '->', rgShot1.hp, 'shots', rgShot1.shots, 'aimed', rgShot1.aim.toFixed(2), rgShot1.shots === 1 && rgShot1.aim > 0.9 && rgHp0 - rgShot1.hp === 34 ? 'PASS' : 'FAIL');
+  await p.keyboard.down('KeyR'); await rgStepBy(0.02, 2); await p.keyboard.up('KeyR');
+  const rgReloading = await p.evaluate(() => __loft.range.debug.weapon.phase);
+  const rgBrowsers = await p.evaluate(() => __loft.range.key({ code: 'KeyR', ctrlKey: true }, true));
+  console.log('R reloads, Ctrl+R is left to the browser:', rgReloading, rgBrowsers, rgReloading === 'reload' && rgBrowsers === false ? 'PASS' : 'FAIL');
+  await p.evaluate(() => __loft.range.film(false));
+  await p.evaluate(() => __loft.range.press('right', true));
+  await p.waitForTimeout(300);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+  await p.click('.rg-card .rg-acts button.go'); await p.waitForTimeout(250);
+  const rgAlong0 = await p.evaluate(() => __loft.range.debug.along);
+  await p.waitForTimeout(500);
+  const rgAlong1 = await p.evaluate(() => __loft.range.debug.along);
+  console.log('a key held into the pause is let go:', rgAlong0.toFixed(2), rgAlong1.toFixed(2), Math.abs(rgAlong1 - rgAlong0) < 0.02 && Math.abs(rgAlong0) > 0.1 ? 'PASS' : 'FAIL');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(700);
+  const rgGone = await p.evaluate(() => ({ mode: __loft.mode, hud: !!document.querySelector('.rg') }));
+  console.log('Esc twice from a run: the pause, then out:', JSON.stringify(rgGone), rgGone.mode === 'walk' && !rgGone.hud ? 'PASS' : 'FAIL');
 
   // Nothing shows through round the front door: looking straight at each edge of it from inside, with the house
   // drawn alone on a marker colour, no marker shows (there used to be a slit down each side and one over the top).

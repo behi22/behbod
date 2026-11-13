@@ -3,7 +3,9 @@
 // the middle lane), d metres downrange from the firing line, h metres above the floor.
 import { GUNS } from './arsenal.js';
 
-export const HALL = { half: 5.6, near: 7, far: 28, tunnel: [42, 74], tunnelHalf: 1.0 };
+// half: how far either side of the middle the targets go; wing: how far beyond that a walker starts and ends, out of
+// sight behind the fins down each side; lanes: the depths of the gaps between the fins, which the walkers cross in.
+export const HALL = { half: 5.6, near: 7, far: 28, tunnel: [42, 74], tunnelHalf: 1.0, wing: 1.5, lanes: [9.4, 11.8, 14.2, 16.6, 19.0, 21.4, 23.8, 26.2] };
 export const DIFFICULTIES = {
   easy: { name: 'Easy', speed: 0.8, life: 1.35, hp: 0.8, bolts: 0, shields: 3, score: 0.8 },
   normal: { name: 'Normal', speed: 1, life: 1, hp: 1, bolts: 0, shields: 3, score: 1 },
@@ -48,32 +50,36 @@ export function script(stageId, difficulty = 'normal', seed = 1) {
   const plate = (t, d, life, o = {}) => add(t, 'plate', { x: +pick(-HALL.half + 0.6, HALL.half - 0.6).toFixed(2), d: +d.toFixed(1), h: +pick(0.9, 1.9).toFixed(2), life: +(life * D.life).toFixed(2), slide: 0, size: 1, ...o });
   const slider = (t, d, life) => plate(t, d, life, { slide: +(side() * pick(0.9, 1.6) * D.speed).toFixed(2) });
   const far = (t, life) => plate(t, pick(...HALL.tunnel), life, { x: +pick(-HALL.tunnelHalf + 0.25, HALL.tunnelHalf - 0.25).toFixed(2), h: +pick(0.8, 1.7).toFixed(2), size: 0.7 });
-  // A walker crosses the hall at one depth, from one side to the other, and is gone when it gets there.
-  const walker = (t, d) => { const s = side(), speed = pick(1.0, 1.5) * D.speed; add(t, 'walker', { x: -s * (HALL.half + 0.8), x1: s * (HALL.half + 0.8), d: +d.toFixed(1), h: 0, speed: +speed.toFixed(2), life: +((2 * HALL.half + 1.6) / speed).toFixed(2) }); };
+  // A walker crosses the hall in one of the lanes between `lo` and `hi` metres out, from the wing on one side to the
+  // wing on the other, and is gone when it gets there.
+  const walker = (t, lo, hi) => {
+    const lanes = HALL.lanes.filter(l => l >= lo && l <= hi), d = lanes[Math.floor(rnd() * lanes.length)], s = side(), speed = pick(1.0, 1.5) * D.speed, edge = HALL.half + HALL.wing;
+    add(t, 'walker', { x: -s * edge, x1: s * edge, d, h: 0, speed: +speed.toFixed(2), life: +(2 * edge / speed).toFixed(2) });
+  };
   // A drone circles a point in the air on two sine waves, for a while, then leaves.
   // Its swing to either side stops short of the hall's walls, wherever its middle is.
-  const drone = (t, life) => { const x = +pick(-3.5, 3.5).toFixed(2); add(t, 'drone', { x, d: +pick(10, 22).toFixed(1), h: +pick(1.7, 3.0).toFixed(2),
+  const drone = (t, life) => { const x = +pick(-3.5, 3.5).toFixed(2); add(t, 'drone', { x, d: +pick(8, 15).toFixed(1), h: +pick(1.7, 2.9).toFixed(2),
     ax: +Math.min(pick(1.2, 2.4), HALL.half - 0.4 - Math.abs(x)).toFixed(2), ah: +pick(0.3, 0.8).toFixed(2), ad: +pick(0.5, 2).toFixed(2),
     fx: +(pick(0.5, 0.9) * D.speed).toFixed(2), fh: +(pick(0.9, 1.5) * D.speed).toFixed(2), ph: +pick(0, 6.28).toFixed(2), life: +(life * D.life).toFixed(2) }); };
 
   if (st.id === 'warmup') {
-    for (let i = 0; i < 6; i++) plate(1.5 + i * 2.6, pick(8, 13), 3.2);
-    for (let i = 0; i < 5; i++) { const t = 17.5 + i * 3.4; plate(t, pick(10, 18), 3.0); plate(t + 0.5, pick(10, 18), 3.0); }
-    for (let i = 0; i < 5; i++) slider(35 + i * 2.9, pick(12, 20), 3.2);
-    for (let i = 0; i < 5; i++) { const t = 49.5 + i * 1.9; plate(t, pick(20, 27), 2.6, { size: 0.8 }); }
+    for (let i = 0; i < 6; i++) plate(1.5 + i * 2.6, pick(7, 11), 3.2);
+    for (let i = 0; i < 5; i++) { const t = 17.5 + i * 3.4; plate(t, pick(8, 15), 3.0); plate(t + 0.5, pick(8, 15), 3.0); }
+    for (let i = 0; i < 5; i++) slider(35 + i * 2.9, pick(9, 15), 3.2);
+    for (let i = 0; i < 5; i++) { const t = 49.5 + i * 1.9; plate(t, pick(15, 21), 2.6, { size: 0.8 }); }
   } else if (st.id === 'walkers') {
-    for (let i = 0; i < 9; i++) walker(2 + i * 7.4 + pick(0, 1.5), pick(9, 24));
-    for (let i = 0; i < 9; i++) (i % 3 ? plate : slider)(5.5 + i * 7.4 + pick(0, 2), pick(9, 22), 3.0);
+    for (let i = 0; i < 9; i++) walker(2 + i * 7.4 + pick(0, 1.5), 9, 17);
+    for (let i = 0; i < 9; i++) (i % 3 ? plate : slider)(5.5 + i * 7.4 + pick(0, 2), pick(8, 16), 3.0);
   } else if (st.id === 'swarm') {
     for (let w = 0; w < 5; w++) for (let i = 0; i < 2 + (w > 1) + (w > 3); i++) drone(2 + w * 13.5 + i * 1.3, 9.5);
-    for (let i = 0; i < 6; i++) slider(8 + i * 10.5 + pick(0, 2), pick(10, 20), 2.8);
+    for (let i = 0; i < 6; i++) slider(8 + i * 10.5 + pick(0, 2), pick(9, 16), 2.8);
   } else if (st.id === 'dark') {
-    for (let i = 0; i < 6; i++) walker(3 + i * 10.5 + pick(0, 2), pick(8, 20));
+    for (let i = 0; i < 6; i++) walker(3 + i * 10.5 + pick(0, 2), 9, 20);
     for (let w = 0; w < 4; w++) for (let i = 0; i < 2; i++) drone(8 + w * 15.5 + i * 1.6, 9.5);
     for (let i = 0; i < 8; i++) plate(5 + i * 8.2 + pick(0, 2), pick(8, 18), 3.4);
   } else {
     for (let i = 0; i < 12; i++) far(2 + i * 6.6 + pick(0, 1.5), 4.6);
-    for (let i = 0; i < 5; i++) walker(12 + i * 14.5 + pick(0, 2), pick(16, 27));
+    for (let i = 0; i < 5; i++) walker(12 + i * 14.5 + pick(0, 2), 16, 27);
     for (let w = 0; w < 3; w++) for (let i = 0; i < 3; i++) drone(26 + w * 19 + i * 1.4, 9.5);
   }
   // Nothing appears so late that it cannot be dealt with before the clock runs out.

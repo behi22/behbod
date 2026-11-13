@@ -64,7 +64,7 @@ test('the warm-up is plates only; the walkers and drones come later; only the la
 test('every target stays inside the hall (or the tunnel) for its whole life, whatever the seed', () => {
   for (let seed = 1; seed <= 40; seed++) for (const st of STAGES) for (const d of ['easy', 'normal', 'hard']) for (const s of script(st.id, d, seed)) {
     for (let age = 0; age <= s.life; age += 0.25) {
-      const q = place(s, age), half = s.kind === 'walker' ? HALL.half + 0.9 : q.d > HALL.far ? HALL.tunnelHalf : HALL.half;
+      const q = place(s, age), half = s.kind === 'walker' ? HALL.half + HALL.wing + 0.1 : q.d > HALL.far ? HALL.tunnelHalf : HALL.half;
       assert.ok(Math.abs(q.x) <= half + 1e-6, `${st.id} ${s.kind} ${s.id} at x ${q.x.toFixed(2)}`);
       assert.ok(q.d >= 5 && q.d <= HALL.tunnel[1] && q.h >= 0 && q.h <= 4, `${st.id} ${s.kind} at d ${q.d.toFixed(1)} h ${q.h.toFixed(2)}`);
     }
@@ -264,4 +264,31 @@ test('stars add up across stages by the best of any difficulty, and open the nex
   assert.equal(legend(Object.fromEntries(STAGES.map(s => [s.id, { hard: 3 }]))), true);
   assert.equal(legend(Object.fromEntries(STAGES.map(s => [s.id, { normal: 3, hard: 2 }]))), false);
   assert.ok(starsToOwnEverything <= MAX_STARS - 3, 'every gun can be owned without a perfect record');
+});
+
+test('walkers cross in the lanes between the fins, from wing to wing', () => {
+  for (const st of ['walkers', 'dark', 'long']) for (let seed = 1; seed <= 12; seed++) {
+    for (const w of script(st, 'hard', seed).filter(s => s.kind === 'walker')) {
+      assert.ok(HALL.lanes.includes(w.d), `${st} walker at d ${w.d}`);
+      assert.equal(Math.abs(w.x), HALL.half + HALL.wing);
+      assert.equal(w.x1, -w.x);
+      const end = place(w, w.life);
+      assert.ok(Math.abs(end.x - w.x1) < 0.1, 'its life is the crossing');
+    }
+  }
+  const near = script('walkers', 'normal', 3).filter(s => s.kind === 'walker').map(s => s.d);
+  assert.ok(Math.max(...near) <= 17, 'the walkers\' stage is pistol work: the near half of the hall');
+});
+
+test('the rooms as built hold the hall the stages are written for', async () => {
+  const { readFileSync } = await import('node:fs');
+  const R = JSON.parse(readFileSync(new URL('../../web/assets/world.json', import.meta.url), 'utf8')).range;
+  assert.equal(R.half, HALL.half);
+  assert.equal(R.wing, HALL.wing);
+  assert.deepEqual(R.lanes, HALL.lanes);
+  assert.ok(R.far >= HALL.far + 1, 'the far wall is beyond the deepest target');
+  assert.ok(R.tunnel.from <= HALL.tunnel[0] && R.tunnel.to >= HALL.tunnel[1] + 1 && R.tunnel.half >= HALL.tunnelHalf, 'the tunnel holds the long shots');
+  assert.ok(R.box[1][0] - R.box[0][0] >= 2 * (HALL.half + HALL.wing), 'the wings are wide enough for a walker to start out of sight');
+  // No cover stands in a lane the walkers use: each barrier is in front of one, never across it.
+  for (const [, y, , depth] of R.cover) for (const lane of HALL.lanes) assert.ok(Math.abs((R.line[1] - y) - lane) > depth / 2 + 0.3, `cover at ${y} is clear of lane ${lane}`);
 });

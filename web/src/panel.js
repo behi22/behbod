@@ -55,7 +55,7 @@ export function makePanels(store) {
   const STORY = [
     ['Home', 'A home that only exists here: a desk that faces the water, a piano, tea always on, and a cat who thinks the keyboard is hers.'],
     ['The residents', 'BH-22 patrols, docks under the stairs and chases the mouse droid it has never caught. Pishi keeps watch from the window or the perch over the fire. Jessi naps by the glass and will fetch for anyone.'],
-    ['Look around', 'Most things here do something. Try the bookcase in the library, the telescope on the balcony, and the terminal at the desk. A good score at the holo range opens the last door.'],
+    ['Look around', 'Most things here do something. Try the bookcase in the library, the telescope on the balcony, and the terminal at the desk. The range behind it holds the last door.'],
   ];
   return {
     get open() { return !!open; },

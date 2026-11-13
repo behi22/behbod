@@ -31,4 +31,11 @@ SKYLIGHT = (17.3, 10.0, 19.3, 12.0)
 TEABAR = (13.0, 7.4, 16.5, 8.3)
 SLIDING_DOOR = (10.2, 12.2)
 BALCONY = (3.0, 15.0, 19.0, 18.0)
-RANGE = (5.2, -3.5, 18.2, -0.2)
+# The range behind the south wall: its rooms' inside (west, the hall's far wall, east, the back of the house wall).
+# The loadout room runs from the house wall to the bench across the firing line and has a low ceiling; the hall beyond
+# the bench is higher; the tunnel for the long shots goes on south from the hall's far wall.
+RANGE = (5.2, -37.0, 18.2, -0.2)
+RANGE_LINE = -7.0
+RANGE_LOW, RANGE_HALL_H = 3.2, 5.0
+RANGE_TUNNEL = (10.7, -83.0, 12.7, -37.0)
+RANGE_TUNNEL_H = 2.6

@@ -63,7 +63,7 @@ export function makeWardrobe(me, { unlocked, onClose }) {
       ...section('Earned', [
         ...Object.entries(OUTFITS).map(([id, o]) => btn(o.label, look.outfit === id, () => me.setLook({ outfit: look.outfit === id ? null : id }), { disabled: !got.includes(id) })),
         btn('Red visor', look.visor === 'red', () => me.setLook({ visor: look.visor === 'red' ? 'teal' : 'red' }), { disabled: !got.includes('visor') }),
-      ], got.length ? '' : 'Win these with a top score at the holo range.'));
+      ], got.length ? '' : 'Win these with stars at the range.'));
   }
   function show() {
     if (el) return;

@@ -17,10 +17,12 @@ _off = [Vector()]
 
 
 @contextmanager
-def zone(zid, px=2048):
+def zone(zid, px=2048, lit=False):
+    # lit: the bake holds the light alone and is saved beside the model; the surfaces keep their own materials, which
+    # the page lights itself. Such a zone is fetched after the house, not with it.
     if zid not in GROUPS:
-        GROUPS[zid] = {'baked': [], 'emit': [], 'glass': [], 'px': px}
-        META['zones'].append({'id': zid, 'glb': f'zones/{zid}.glb'})
+        GROUPS[zid] = {'baked': [], 'emit': [], 'glass': [], 'px': px, 'lit': lit}
+        META['zones'].append({'id': zid, 'glb': f'zones/{zid}.glb', **({'lit': True, 'light': f'zones/{zid}_light.webp'} if lit else {})})
     prev = _zone[0]
     _zone[0] = zid
     try:
@@ -268,6 +270,17 @@ def make_materials():
         'stone': node_mat('stone', noisy((0.2, 0.2, 0.21), 9, 0.3, 0.8)),
         'kit_white': principled('kit_white', (0.86, 0.86, 0.84), 0.6),
         'turf': node_mat('turf', noisy((0.08, 0.2, 0.07), 200, 0.35, 0.9)),
+        # The range's surfaces (a lit zone): plain values, which the page reads and lights itself.
+        'r_floor': principled('r_floor', (0.05, 0.052, 0.058), 0.3),
+        'r_wall': principled('r_wall', (0.13, 0.135, 0.147), 0.85),
+        'r_panel': principled('r_panel', (0.03, 0.032, 0.038), 0.9),
+        'r_steel': principled('r_steel', (0.45, 0.47, 0.5), 0.36, 1.0),
+        'r_dark': principled('r_dark', (0.028, 0.03, 0.035), 0.42),
+        'r_rubber': principled('r_rubber', (0.022, 0.022, 0.024), 0.95),
+        'r_yellow': principled('r_yellow', (0.6, 0.4, 0.02), 0.55),
+        'r_bench': principled('r_bench', (0.36, 0.23, 0.12), 0.48),
+        'r_line': principled('r_line', (0.5, 0.51, 0.52), 0.6),
+        'r_crate': principled('r_crate', (0.15, 0.18, 0.09), 0.7),
     }
     E = {  # emitters: lit at runtime and kept out of the bake target, but they light the bake
         'screen': principled('E_screen', (0, 0, 0), 0.3, emit=(0.55, 0.7, 1.0), strength=2.5),
@@ -284,6 +297,8 @@ def make_materials():
         'holo': principled('E_holo', (0, 0, 0), 0.5, emit=(0.25, 0.75, 1.0), strength=9),
         'aqua': principled('E_aqua', (0, 0, 0), 0.5, emit=(0.15, 0.55, 0.8), strength=4),
         'sky': principled('E_sky', (0, 0, 0), 1.0, emit=(0.12, 0.17, 0.32), strength=1.6),
+        'range_white': principled('E_range_white', (0, 0, 0), 0.5, emit=(0.82, 0.9, 1.0), strength=14),
+        'range_panel': principled('E_range_panel', (0, 0, 0), 0.5, emit=(1.0, 0.93, 0.84), strength=10),
     }
     G = {
         'glass': principled('G_glass', (0.8, 0.9, 1.0), 0.02, transmission=1.0),

@@ -8,7 +8,7 @@ export const FITS = { hoodie: { boxy: '', short: '_short', relaxed: '_relaxed' }
 export const ACCESSORIES = ['headphones', 'watch', 'backpack'];
 export const PALETTE = ['#1f2a44', '#141518', '#eceae4', '#2b2f3a', '#7b2ff7', '#3ee6c4', '#c0392b', '#e67e22', '#f1c40f', '#27ae60', '#2980b9', '#8e44ad',
   '#d35400', '#7f8c8d', '#bdc3c7', '#ffffff', '#5d4037', '#ff6b81', '#00b894', '#0a3d62'];
-// Colourways you earn at the holo range.
+// Colourways you earn at the range.
 export const OUTFITS = {
   kit: { label: 'BEHI 22 keeper kit', colours: { hoodie: '#111114', pants: '#111114', shoes: '#f2f2f2' }, rib: '#7b2ff7' },
   gold: { label: 'Gold', colours: { hoodie: '#c9a227', pants: '#2b2b2b', shoes: '#c9a227' }, rib: '#8a6d12' },

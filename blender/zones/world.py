@@ -1,7 +1,7 @@
 """World-wide settings the page reads: where you start, the camera's rooms, the view outside, lights for the character."""
 import math
 from lib.core import META, zone, plane
-from zones.layout import W, D, H, STUDIO_Z, BALCONY, RANGE, FRONT_DOOR
+from zones.layout import W, D, H, STUDIO_Z, BALCONY, RANGE, RANGE_LINE, RANGE_LOW, FRONT_DOOR
 
 
 def build(M, E, G):
@@ -14,7 +14,8 @@ def build(M, E, G):
     META['regions'] = [
         {'id': 'loft', 'min': [0.2, 0.2], 'max': [W - 0.2, D - 0.2], 'top': H - 0.25},
         {'id': 'balcony', 'min': [bx0 + 0.1, by0 + 0.2], 'max': [bx1 - 0.1, by1 - 0.1], 'top': 4.5},
-        {'id': 'range', 'min': [rx0 + 0.15, ry0 + 0.15], 'max': [rx1 - 0.15, ry1 - 0.15], 'top': 2.8},
+        # The range's loadout room, from the bench across the firing line back to the house wall.
+        {'id': 'range', 'min': [rx0 + 0.15, RANGE_LINE + 0.45], 'max': [rx1 - 0.15, ry1 - 0.15], 'top': RANGE_LOW - 0.25},
     ]
     META['spots'] = {'desk': META['points']['desk_use'], 'window': [5.1, 13.7, 0.0], 'lounge': [7.0, 10.2, -0.45]}
     META['window'] = {'center': [W / 2, D + 0.08, H / 2], 'w': W, 'h': H}

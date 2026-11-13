@@ -34,22 +34,46 @@ export function makeEngine(canvas, coarse) {
   scene.fog = new THREE.FogExp2(0x0a0f1c, 0.05);
   const camera = new THREE.PerspectiveCamera(coarse ? 60 : 55, 1, 0.05, 120);
   const mosaicU = { centre: new THREE.Uniform(new THREE.Vector2()), drift: new THREE.Uniform(new THREE.Vector2()), radius: new THREE.Uniform(0), cells: new THREE.Uniform(40), aspect: new THREE.Uniform(1) };
-  const onTier = [];
-  let composer = null, tier = TIERS.medium, bg = null;
+  const onTier = [], layers = [];
+  let composer = null, tier = TIERS.medium, bg = null, bgOn = true;
 
   // The world outside the glass is its own scene with its own far-reaching camera, drawn first; the loft goes on top.
+  // Layers are scenes of their own drawn with it. One marked `under` (the range's rooms) goes in before the loft and
+  // shares its depth, so each hides the other properly and the loft's see-through things (my shadow on the floor)
+  // still show over it; the rest (the gun in the hand, on a fresh depth and its own camera) go on top.
   function drawScenes(target) {
     renderer.setRenderTarget(target);
     renderer.autoClear = false;
     renderer.clear();
-    renderer.render(bg.scene, bg.camera);
+    if (bgOn) renderer.render(bg.scene, bg.camera);
     renderer.clearDepth();
+    drawLayers(true);
     renderer.render(scene, camera);
+    drawLayers(false);
     renderer.autoClear = true;
+  }
+  // under: true or false draws that half of the layers; left out, all of them.
+  function drawLayers(under) {
+    for (const l of layers) {
+      if (!l.on() || (under !== undefined && !!l.under !== under)) continue;
+      if (l.clearDepth) renderer.clearDepth();
+      renderer.render(l.scene, l.camera || camera);
+    }
   }
   class BackgroundPass extends Pass {
     constructor() { super('BackgroundPass'); this.needsSwap = false; }
     render(r, inputBuffer) { drawScenes(this.renderToScreen ? null : inputBuffer); }
+  }
+  // Without the world outside, the loft is drawn the plain way and the layers go over it.
+  class LayersPass extends Pass {
+    constructor() { super('LayersPass'); this.needsSwap = false; }
+    render(r, inputBuffer) {
+      if (!layers.some(l => l.on())) return;
+      renderer.setRenderTarget(this.renderToScreen ? null : inputBuffer);
+      renderer.autoClear = false;
+      drawLayers();
+      renderer.autoClear = true;
+    }
   }
 
   function buildPost() {
@@ -57,7 +81,8 @@ export function makeEngine(canvas, coarse) {
     composer = null;
     if (!tier.post) return;
     composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
-    composer.addPass(bg ? new BackgroundPass() : new RenderPass(scene, camera));
+    if (bg) composer.addPass(new BackgroundPass());
+    else { composer.addPass(new RenderPass(scene, camera)); composer.addPass(new LayersPass()); }
     composer.addPass(new EffectPass(camera, new Effect('Mosaic', MOSAIC_FS, { uniforms: new Map(Object.entries(mosaicU)) })));
     const fx = [];
     if (tier.bloom) fx.push(new BloomEffect({ luminanceThreshold: 0.82, luminanceSmoothing: 0.25, intensity: 1.15, mipmapBlur: true, radius: 0.72 }));
@@ -80,7 +105,14 @@ export function makeEngine(canvas, coarse) {
     renderer.setPixelRatio(Math.min(devicePixelRatio, tier.ratio));
     buildPost();
   }
-  function render(dt) { if (composer) composer.render(dt); else if (bg) drawScenes(null); else renderer.render(scene, camera); }
+  function render(dt) {
+    if (composer) composer.render(dt);
+    else if (bg) drawScenes(null);
+    else { renderer.render(scene, camera); if (layers.some(l => l.on())) { renderer.autoClear = false; drawLayers(); renderer.autoClear = true; } }
+  }
+  // A scene drawn with the loft each frame while `on()` says so. under: before the loft, sharing its depth;
+  // clearDepth: start from a fresh depth (the gun in the hand never pokes through a wall); camera: its own, or the loft's.
+  function addLayer(layer) { layers.push({ on: () => true, ...layer }); return layer; }
   function setBackground(outside) { bg = outside; scene.background = null; buildPost(); }
   // Every shader is prepared while the loading screen is up, hidden things included, so nothing coming into view later
   // (the mirror, the range targets, the telescope) stalls a frame while the graphics card builds its program.
@@ -112,5 +144,7 @@ export function makeEngine(canvas, coarse) {
     render(0);
   }
   addEventListener('resize', resize);
-  return { renderer, scene, camera, mosaicU, setTier, resize, render, setBackground, warmUp, onTier: f => onTier.push(f) };
+  return { renderer, scene, camera, mosaicU, setTier, resize, render, setBackground, warmUp, addLayer, onTier: f => onTier.push(f),
+    // The world outside is not drawn while nothing of it can be seen (at the range's firing line).
+    showBackground(on) { bgOn = on; }, get tier() { return tier; } };
 }

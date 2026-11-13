@@ -34,6 +34,27 @@ RUG_SPACE = {
 }
 
 
+def world_uv(me, name='UVMap'):
+    # Coordinates in metres, each face laid flat along the axis it faces most. A lit zone carries these beside its
+    # lightmap's, and the page tiles its surface detail with them.
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    lv = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get('vertex_index', lv)
+    pn = np.empty(len(me.polygons) * 3, np.float32)
+    me.polygons.foreach_get('normal', pn)
+    lt = np.empty(len(me.polygons), np.int32)
+    me.polygons.foreach_get('loop_total', lt)
+    ls = np.empty(len(me.polygons), np.int32)
+    me.polygons.foreach_get('loop_start', ls)
+    axis = np.empty(len(me.loops), np.int8)
+    axis[np.repeat(ls, lt) + (np.arange(len(me.loops)) - np.repeat(np.cumsum(lt) - lt, lt))] = np.repeat(np.abs(pn.reshape(-1, 3)).argmax(axis=1), lt)
+    p = co[lv]
+    uv = np.stack([np.where(axis == 0, p[:, 1], p[:, 0]), np.where(axis == 2, p[:, 1], p[:, 2])], axis=1)
+    me.uv_layers.new(name=name).data.foreach_set('uv', uv.astype(np.float32).ravel())
+
+
 def join(zid):
     objs = GROUPS[zid]['baked']
     for o in objs:
@@ -51,6 +72,8 @@ def join(zid):
         o.data.texspace_location, o.data.texspace_size = RUG_SPACE[zid]
     for uvl in list(o.data.uv_layers):
         o.data.uv_layers.remove(uvl)
+    if GROUPS[zid].get('lit'):
+        world_uv(o.data)
     lm = o.data.uv_layers.new(name='Lightmap')
     o.data.uv_layers.active = lm
     bpy.ops.object.mode_set(mode='EDIT')
@@ -78,7 +101,22 @@ def bake(zid, px, samples, raw_dir):
     o.select_set(True)
     bpy.context.view_layer.objects.active = o
     print(f'baking {zid}: {len(o.data.polygons)} faces at {px} px, {samples} samples', flush=True)
-    bpy.ops.object.bake(type='DIFFUSE', pass_filter={'DIRECT', 'INDIRECT', 'COLOR'}, margin=6, use_clear=True)
+    lit, finish_was = GROUPS[zid].get('lit'), []
+    clamp = scn.cycles.sample_clamp_indirect
+    if lit:
+        # The light alone, without the surfaces' colour. Bare metal has no soft light to bake, and a polished floor
+        # throws bright specks of mirrored lamp into it, so every surface bakes as matt paint of its own colour and
+        # gets its finish back afterwards.
+        for slot in o.material_slots:
+            b = slot.material.node_tree.nodes['Principled BSDF']
+            for key, v in (('Metallic', 0.0), ('Roughness', 1.0), ('Specular IOR Level', 0.0)):
+                finish_was.append((b.inputs[key], b.inputs[key].default_value))
+                b.inputs[key].default_value = v
+        scn.cycles.sample_clamp_indirect = 8.0
+    bpy.ops.object.bake(type='DIFFUSE', pass_filter={'DIRECT', 'INDIRECT'} if lit else {'DIRECT', 'INDIRECT', 'COLOR'}, margin=6, use_clear=True)
+    for socket, v in finish_was:
+        socket.default_value = v
+    scn.cycles.sample_clamp_indirect = clamp
     img.filepath_raw = os.path.join(raw_dir, f'{zid}_raw.exr')
     img.file_format = 'OPEN_EXR'
     img.save()
@@ -144,6 +182,52 @@ def faces_mask(o, name, w, h, grow=5):
         g[1:] |= mask[:-1]; g[:-1] |= mask[1:]; g[:, 1:] |= mask[:, :-1]; g[:, :-1] |= mask[:, 1:]
         mask = g
     return mask
+
+
+def spread(rgb, filled, n=12):
+    # Push each island's edge out into the empty texels round it, so neither the map's smaller copies nor its
+    # compression pull black into an island's edge.
+    filled = filled.copy()
+    for _ in range(n):
+        acc = np.zeros_like(rgb)
+        cnt = np.zeros(filled.shape, np.float32)
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            f = np.roll(filled, (dy, dx), (0, 1))
+            acc += np.roll(rgb, (dy, dx), (0, 1)) * f[..., None]
+            cnt += f
+        new = ~filled & (cnt > 0)
+        rgb[new] = acc[new] / cnt[new][:, None]
+        filled |= new
+    return rgb
+
+
+def finish_lit(zid, web_dir):
+    # A lit zone's map is the light alone, for the page to multiply by each surface's colour: denoised, then squeezed
+    # as x / (1 + x) so light several times brighter than white still fits in eight bits (the page undoes it), then
+    # sRGB, and saved beside the model rather than inside it.
+    raw = GROUPS[zid]['raw']
+    w, h = raw.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    raw.pixels.foreach_get(px)
+    px = px.reshape(h, w, 4)
+    rgb = px[:, :, :3]
+    filled = px[:, :, 3] > 0.5 if px[:, :, 3].min() < 0.5 else np.any(rgb > 0, axis=2)
+    x = spread(edge_aware(rgb, filled, r=max(3, w // 680)), filled)
+    lum = (x @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32))[filled]
+    print(f'{zid} light: mean {float(lum.mean()):.3f}, half under {float(np.percentile(lum, 50)):.3f}, 99% under {float(np.percentile(lum, 99)):.3f}, '
+          f'{100 * float(filled.mean()):.0f}% of the map used', flush=True)
+    del px, rgb, lum
+    x = x / (1 + x)
+    srgb = np.where(x <= 0.0031308, 12.92 * x, 1.055 * np.power(np.clip(x, 0, None), 1 / 2.4) - 0.055)
+    out = np.concatenate([np.clip(srgb, 0, 1), np.ones((h, w, 1), np.float32)], axis=2)
+    del x, srgb
+    img = bpy.data.images.new(f'{zid}_light', w, h, alpha=False)
+    img.pixels.foreach_set(out.ravel())
+    img.file_format = 'WEBP'
+    img.save(filepath=os.path.join(web_dir, f'{zid}_light.webp'), quality=92)
+    bpy.data.images.remove(img)
+    bpy.data.images.remove(raw)
+    GROUPS[zid]['raw'] = None
 
 
 def finish(zid, exposure, out_dir):
@@ -220,6 +304,27 @@ def saved_layout(zid, raw_dir):
         return None
 
 
+def full_samples(zid):
+    # A lit zone's map is the light alone, with no surface pattern to hide the grain: twice the samples.
+    return 128 * (2 if GROUPS[zid].get('lit') else 1)
+
+
+def trial(zid, raw_dir):
+    # What a saved bake falls short of a full one by, as words, or '' when it is a full bake (or one from before
+    # samples were written down, which only its size can speak for).
+    try:
+        with open(os.path.join(raw_dir, f'{zid}_raw.json')) as f:
+            rec = json.load(f)
+    except (OSError, ValueError):
+        return ''
+    short = []
+    if (rec.get('px') or 0) < GROUPS[zid]['px']:
+        short.append(f"{rec.get('px')} px, not {GROUPS[zid]['px']}")
+    if rec.get('samples') and rec['samples'] < full_samples(zid):
+        short.append(f"{rec['samples']} samples, not {full_samples(zid)}")
+    return ' and '.join(short)
+
+
 def load_raw(zid, raw_dir, quiet=False):
     path = os.path.join(raw_dir, f'{zid}_raw.exr')
     if not os.path.exists(path):
@@ -231,7 +336,7 @@ def load_raw(zid, raw_dir, quiet=False):
     return True
 
 
-def build_all(root, draft, exposure=1.3, reuse=False, only=None, cpu=0):
+def build_all(root, draft, exposure=1.3, reuse=False, only=None, cpu=0, mid=False):
     scn = bpy.context.scene
     if cpu:
         # A fixed number of processor cores, for when the graphics chip is busy or stuck.
@@ -257,6 +362,9 @@ def build_all(root, draft, exposure=1.3, reuse=False, only=None, cpu=0):
         if reuse or (only and zid not in only):
             if os.path.exists(os.path.join(raw_dir, f'{zid}_raw.exr')) and saved_layout(zid, raw_dir) == layout_key(zid):
                 load_raw(zid, raw_dir)
+                # A saved bake from a `draft` or `mid` run is a trial: say so every time it is used again.
+                if trial(zid, raw_dir):
+                    print(f'  WARNING {zid}: its saved bake is a trial ({trial(zid, raw_dir)}); bake it in full (only={zid}) before it ships', flush=True)
                 continue
             why = 'its saved bake no longer fits its layout' if saved_layout(zid, raw_dir) else 'it has no bake with a layout record'
             if reuse and (not only or zid in only):
@@ -264,11 +372,12 @@ def build_all(root, draft, exposure=1.3, reuse=False, only=None, cpu=0):
             print(f'  {zid} left as it is: {why} (only={zid} bakes it)', flush=True)
             keep.append(zid)
             continue
-        px = 1024 if draft else GROUPS[zid]['px']
+        px = 1024 if draft else min(2048, GROUPS[zid]['px']) if mid else GROUPS[zid]['px']
         t0 = time.time()
-        bake(zid, px, 40 if draft else 128, raw_dir)
+        samples = full_samples(zid) * (40 if draft else 64 if mid else 128) // 128
+        bake(zid, px, samples, raw_dir)
         with open(os.path.join(raw_dir, f'{zid}_raw.json'), 'w') as f:
-            json.dump({'layout': layout_key(zid), 'px': px}, f)
+            json.dump({'layout': layout_key(zid), 'px': px, 'samples': samples}, f)
         print(f'  {zid} baked in {time.time() - t0:.0f} s', flush=True)
     for o in [o for o in bpy.data.objects if o.type == 'LIGHT']:
         bpy.data.objects.remove(o)
@@ -277,7 +386,10 @@ def build_all(root, draft, exposure=1.3, reuse=False, only=None, cpu=0):
             continue
         if not load_raw(zid, raw_dir, quiet=True):
             raise RuntimeError(f'no bake saved for {zid}')
-        finish(zid, exposure, raw_dir)
+        if GROUPS[zid].get('lit'):
+            finish_lit(zid, out_dir)
+        else:
+            finish(zid, exposure, raw_dir)
     for zid in zones:
         if zid not in keep:
             export(zid, out_dir)
