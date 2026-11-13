@@ -1,5 +1,7 @@
 // The computer's desktop: its apps, where their windows sit, and what each window shows. The 3D monitor paints it on
 // a canvas and the seated view lays the same thing out in HTML, both from this one model, so the two match.
+import { KEYS, LABEL as KEY_LABEL } from './calc.js';
+
 export const W = 1536, H = 646, BAR = 34, DOCK = 70, TITLE = 34, ROW = 46, PAD = 18;
 
 export const STYLE = {
@@ -17,6 +19,7 @@ export const APPS = [
   { id: 'music', title: 'Music', icon: 'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z', rect: [900, 120, 590, 356] },
   { id: 'notes', title: 'Notes', icon: 'M6 3h9l4 4v14H6zM9 11h7M9 15h7M9 7h3', rect: [1010, 330, 470, 214] },
   { id: 'settings', title: 'Settings', icon: 'M4 7h10M18 7h2M4 17h4M12 17h8M14 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0z', rect: [860, 70, 600, 290] },
+  { id: 'calc', title: 'Calculator', icon: 'M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM8.5 7.5h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01', rect: [1160, 56, 320, 470] },
 ];
 const BY = Object.fromEntries(APPS.map(a => [a.id, a]));
 export const appById = id => BY[id];
@@ -87,10 +90,33 @@ export function hit(st, x, y) {
   for (let i = st.wins.length - 1; i >= 0; i--) { const w = st.wins[i]; if (x >= w.x && x < w.x + w.w && y >= w.y && y < w.y + w.h) return w.app; }
   return null;
 }
-// The dock's icons, centred along the bottom.
+// The dock's icons, centred along the bottom; on a narrow screen they shrink so the whole row still fits.
 export function dock(width = W, height = H) {
-  const size = 50, gap = 14, w = APPS.length * size + (APPS.length - 1) * gap, x0 = (width - w) / 2, y = height - DOCK + (DOCK - size) / 2;
+  const n = APPS.length, gap = width < 700 ? 8 : 14, size = Math.max(24, Math.min(50, Math.floor((width - 40 - (n - 1) * gap) / n)));
+  const w = n * size + (n - 1) * gap, x0 = (width - w) / 2, y = height - DOCK + (DOCK - size) / 2;
   return APPS.map((a, i) => ({ app: a.id, x: x0 + i * (size + gap), y, size }));
+}
+
+// The calculator's face inside its window: the display over five rows of four keys, or, in a window much wider than
+// it is tall (a phone on its side), the display beside them, so the keys keep a height a finger can find.
+// `mainLen` is how many characters the big line holds: a long answer is written smaller rather than running off.
+// The sizes of the three kinds of lettering come back too, so the monitor and the seated view write them alike.
+export function calcLayout(w, mainLen = 1) {
+  const pad = 14, gap = 8, x = w.x + pad, y = w.y + TITLE + 12, width = w.w - 2 * pad, height = w.y + w.h - pad - y;
+  const wide = w.w > w.h * 1.5;
+  const display = wide ? { x, y, w: Math.round(width * 0.4), h: height } : { x, y, w: width, h: Math.min(104, Math.max(64, (w.h - TITLE) * 0.24)) };
+  const kx = wide ? display.x + display.w + 12 : x, ky = wide ? y : y + display.h + 12, area = { w: x + width - kx, h: y + height - ky };
+  const kh = (area.h - gap * 4) / 5, kw = (area.w - gap * 3) / 4, keys = [];
+  KEYS.forEach((row, r) => row.forEach((key, c) => keys.push({ key, label: KEY_LABEL[key] || key, kind: key === '=' ? 'go' : /^[0-9.]$/.test(key) ? 'num' : 'op',
+    x: kx + c * (kw + gap), y: ky + r * (kh + gap), w: kw, h: kh })));
+  const topPx = display.h < 84 ? 12 : STYLE.small;
+  const mainPx = Math.max(12, Math.min(44, display.h - topPx - 26, Math.floor((display.w - 28) / (Math.max(1, mainLen) * 0.6))));
+  return { display, keys, mainPx, topPx, keyPx: Math.max(10, Math.min(22, Math.floor(kh * 0.6))) };
+}
+// The end of a line that is too long for its place: the newest part is the part that matters.
+export function tail(s, px, maxW) {
+  const n = Math.floor(maxW / (px * 0.6));
+  return s.length <= n ? s : n > 1 ? '…' + s.slice(-(n - 1)) : '';
 }
 
 // What an app's window shows, as rows: text pieces and buttons ("pills"). `ctx` is the loft's live state.

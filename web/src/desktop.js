@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { b2t } from './engine.js';
-import { W, H, BAR, DOCK, TITLE, PAD, STYLE, appById, dock, rows, layout, open, close, move, find, parseAct, termShown } from './pure/desktop.js';
+import { W, H, BAR, DOCK, TITLE, PAD, STYLE, appById, dock, rows, layout, open, close, move, find, parseAct, termShown, calcLayout, tail } from './pure/desktop.js';
+import { show as calcShow, NAME as CALC_NAME } from './pure/calc.js';
 import { homography } from './pure/homography.js';
 
 // The seated computer: while I sit at the desk, the same desktop the monitor paints is laid out in HTML right on top
@@ -34,6 +35,14 @@ const CSS = `
 .dt-pill.on { color: ${STYLE.accent}; background: rgba(62,230,196,.16); border-color: ${STYLE.accent}; }
 .dt-notes { position: absolute; box-sizing: border-box; margin: 0; padding: 0; border: 0; outline: 0; resize: none; background: transparent; color: #e9dfb8;
   font: ${STYLE.text}px/28px ${STYLE.font}; user-select: text; -webkit-user-select: text; overflow: hidden; }
+.dt-calc { position: absolute; box-sizing: border-box; border-radius: 10px; background: #05080d; text-align: right; overflow: hidden; white-space: pre; }
+.dt-calc-top { position: absolute; right: 14px; top: 10px; line-height: 1; color: ${STYLE.dim}; }
+.dt-calc-main { position: absolute; right: 14px; bottom: 12px; font-weight: 700; line-height: 1; color: ${STYLE.ink}; }
+.dt-calc-main.err { color: ${STYLE.warm}; }
+.dt-key { position: absolute; box-sizing: border-box; padding: 0; border: 0; border-radius: 10px; font: inherit; line-height: 1; color: ${STYLE.ink}; background: rgba(255,255,255,.05); cursor: pointer; }
+.dt-key:hover { background: rgba(255,255,255,.1); } .dt-key:active { background: rgba(255,255,255,.16); }
+.dt-key.op { font-weight: 700; color: ${STYLE.accent}; background: rgba(62,230,196,.12); } .dt-key.op:hover { background: rgba(62,230,196,.2); }
+.dt-key.go { font-weight: 700; color: #05110f; background: ${STYLE.accent}; } .dt-key.go:hover { background: #6ff0d6; }
 .dt-dockbg { position: absolute; border-radius: 18px; background: rgba(12,18,28,.82); box-shadow: inset 0 0 0 1px rgba(127,138,160,.18); }
 .dt-icon { position: absolute; box-sizing: border-box; border-radius: 12px; padding: 0; background: #121a26; border: 1px solid rgba(127,138,160,.35); cursor: pointer; display: grid; place-items: center; }
 .dt-icon.on { background: #16302f; border-color: ${STYLE.accent}; }
@@ -130,6 +139,23 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
       if (document.activeElement !== ta) ta.value = D.notes;
       place(ta, PAD, TITLE + 11, r.w - 2 * PAD, r.h - TITLE - 22);
       e.append(ta);
+    } else if (w.app === 'calc') {
+      const d = calcShow(D.calc), L = calcLayout({ x: 0, y: 0, w: r.w, h: r.h }, d.main.length);
+      const disp = el('div', 'dt-calc'), main = el('div', 'dt-calc-main' + (D.calc.error ? ' err' : ''), d.main);
+      disp.setAttribute('role', 'status'); disp.setAttribute('aria-live', 'polite');
+      const sum = el('div', 'dt-calc-top', tail(d.top, L.topPx, L.display.w - 28));
+      main.style.fontSize = px(L.mainPx); sum.style.fontSize = px(L.topPx);
+      place(disp, L.display.x, L.display.y, L.display.w, L.display.h);
+      disp.append(sum, main);
+      e.append(disp);
+      for (const k of L.keys) {
+        const b = el('button', 'dt-key ' + k.kind, k.label);
+        b.tabIndex = -1; b.setAttribute('aria-label', CALC_NAME[k.key] || k.key);
+        b.style.fontSize = px(L.keyPx);
+        place(b, k.x, k.y, k.w, k.h);
+        b.addEventListener('click', () => D.calcPress(k.key));
+        e.append(b);
+      }
     } else {
       const L = layout({ x: 0, y: 0, w: r.w, h: r.h }, rows(w.app, D.ctx));
       for (const t of L.texts) {

@@ -243,6 +243,15 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   await p.keyboard.type('whoami'); await p.keyboard.press('Enter'); await p.waitForTimeout(250);
   const ran = await p.evaluate(() => [__loft.screens.desktop.st.focus, __loft.screens.desktop.term.lines.includes('$ whoami')]);
   console.log('notes take typing, Escape only leaves the notes, typing goes back to the terminal:', noted, stillDesk, ran.join(' '), noted && stillDesk === 'desk' && ran[0] === 'terminal' && ran[1] ? 'PASS' : 'FAIL');
+  // The calculator: its keys click, the keyboard types into it while it is in front, and its sums are right.
+  await p.click('.dt-icon[aria-label="Open Calculator"]'); await p.waitForTimeout(250);
+  for (const k of ['7', 'Times', '6', 'Equals']) { await p.click(`.dt-win[data-app="calc"] .dt-key[aria-label="${k}"]`); await p.waitForTimeout(120); }
+  const dtCalc1 = await p.evaluate(() => document.querySelector('.dt-calc-main')?.textContent);
+  await p.keyboard.type('+8/4', { delay: 60 }); await p.keyboard.press('Enter'); await p.waitForTimeout(250);
+  // Letters and spaces typed at the calculator stay out of the terminal.
+  await p.keyboard.type(' hello ', { delay: 40 }); await p.waitForTimeout(150);
+  const dtCalc2 = await p.evaluate(() => [document.querySelector('.dt-calc-main')?.textContent, document.querySelector('.dt-calc-top')?.textContent, __loft.mode, __loft.screens.desktop.st.focus, JSON.stringify(__loft.screens.desktop.term.input)]);
+  console.log('the calculator: 7 x 6 on its keys, then + 8 / 4 on the keyboard:', dtCalc1, dtCalc2.join(' | '), dtCalc1 === '42' && dtCalc2[0] === '44' && dtCalc2[2] === 'desk' && dtCalc2[3] === 'calc' && dtCalc2[4] === '""' ? 'PASS' : 'FAIL');
   await p.keyboard.press('Escape'); await p.waitForTimeout(2500);
   const gone = await p.evaluate(() => !document.querySelector('.dt.on') && getComputedStyle(document.querySelector('.dt')).display === 'none');
   console.log('the desktop goes when I stand up:', gone ? 'PASS' : 'FAIL');

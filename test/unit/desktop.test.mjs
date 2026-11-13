@@ -164,3 +164,39 @@ test('a long line is cut with an ellipsis to the width it has', async () => {
   assert.ok(f.endsWith('…'));
   assert.equal(fit('abc', 20, 5), '');
 });
+
+test('the calculator fits its window: a display and twenty keys, none touching, at any window size', async () => {
+  const { calcLayout, appById, TITLE } = await import('../../web/src/pure/desktop.js');
+  const [, , w, h] = appById('calc').rect;
+  for (const win of [{ x: 100, y: 60, w, h }, { x: 0, y: 34, w: 540, h: 256 }, { x: 0, y: 34, w: 900, h: 300 }, { x: 0, y: 34, w: 300, h: 420 }]) {
+    const L = calcLayout(win, 21);
+    // The lettering fits what it is written on: the sum line and the answer inside the display, a label inside its key.
+    assert.ok(L.topPx + L.mainPx + 20 <= L.display.h, `the display's two lines fit ${win.w} by ${win.h}`);
+    assert.ok(L.keyPx <= L.keys[0].h * 0.7 && L.keys[0].h >= 24, `keys ${L.keys[0].h.toFixed(0)} tall, labels ${L.keyPx}`);
+    assert.ok(L.mainPx * 0.6 * 21 <= L.display.w - 28 + 1e-6, 'a long answer still fits across');
+    assert.equal(L.keys.length, 20);
+    for (const r of [L.display, ...L.keys]) {
+      assert.ok(r.x >= win.x && r.x + r.w <= win.x + win.w + 1e-6 && r.y >= win.y + TITLE && r.y + r.h <= win.y + win.h + 1e-6, 'inside the window, under its title');
+      assert.ok(r.w > 20 && r.h > 12, 'big enough to press');
+    }
+    for (const a of L.keys) for (const b of L.keys) if (a !== b) assert.ok(a.x + a.w <= b.x + 1e-6 || b.x + b.w <= a.x + 1e-6 || a.y + a.h <= b.y + 1e-6 || b.y + b.h <= a.y + 1e-6, `${a.key} and ${b.key} overlap`);
+    assert.ok(L.keys.every(k => k.y >= L.display.y + L.display.h || k.x >= L.display.x + L.display.w), 'the keys sit under the display, or beside it in a wide window');
+  }
+  assert.ok(calcLayout({ x: 0, y: 0, w, h }, 21).mainPx < calcLayout({ x: 0, y: 0, w, h }, 3).mainPx, 'a long line is written smaller');
+  assert.ok(calcLayout({ x: 0, y: 0, w, h }, 21).mainPx * 0.6 * 21 <= w - 28 - 28, 'and fits the display');
+  const { tail } = await import('../../web/src/pure/desktop.js');
+  assert.equal(tail('12 + 3', 15, 200), '12 + 3');
+  const cut = tail('123456789 + 123456789 + 123456789 +', 15, 180);
+  assert.ok(cut.startsWith('…') && cut.length === 20 && cut.endsWith('123456789 +'), `the newest end is kept: ${cut}`);
+  assert.equal(tail('abc', 15, 5), '');
+});
+
+test('the dock holds every app, on the monitor and on a narrow phone', () => {
+  for (const width of [W, 900, 540, 360]) {
+    const icons = dock(width, H);
+    assert.equal(icons.length, APPS.length);
+    assert.ok(icons[0].x >= 8 && icons.at(-1).x + icons.at(-1).size <= width - 8, `fits ${width}`);
+    for (let i = 1; i < icons.length; i++) assert.ok(icons[i].x >= icons[i - 1].x + icons[i - 1].size, 'no two icons overlap');
+    assert.ok(icons.every(d => d.size >= 24), 'still big enough to tap');
+  }
+});

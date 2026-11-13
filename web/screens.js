@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { drawWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
 import { makePanels } from './panels.js';
-import { W as DW, H as DH, BAR, DOCK, TITLE, PAD, STYLE, appById, newDesktop, dock as dockIcons, rows as appRows, layout, wrap, termShown, open as openApp, keepOpen, clockText } from './src/pure/desktop.js';
+import { W as DW, H as DH, BAR, DOCK, TITLE, PAD, STYLE, appById, newDesktop, dock as dockIcons, rows as appRows, layout, wrap, termShown, open as openApp, keepOpen, clockText, calcLayout, tail } from './src/pure/desktop.js';
+import { newCalc, press as calcPress, show as calcShow, fromKeyboard as calcKey } from './src/pure/calc.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -45,7 +46,7 @@ export function makeCanvases(meta, opts = {}) {
   // the same desktop out in HTML over this screen, from the same model.
   S.main = surface(DW, DH);
   const term = { lines: [], input: '', focus: false, blink: 0 };
-  const desk = { st: newDesktop(), ctx: {}, notes: loadNotes(), dirty: true, drawn: -1, listeners: [] };
+  const desk = { st: newDesktop(), ctx: {}, notes: loadNotes(), calc: newCalc(), dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
@@ -97,6 +98,18 @@ export function makeCanvases(meta, opts = {}) {
       g.font = `400 ${STYLE.text}px ${STYLE.font}`; g.fillStyle = '#e9dfb8';
       const cols = Math.floor((w.w - 2 * PAD) / (STYLE.text * 0.6));
       wrap(desk.notes, cols).slice(0, Math.floor((w.h - TITLE - 20) / 28)).forEach((l, i) => g.fillText(l, w.x + PAD, w.y + TITLE + 32 + i * 28));
+    } else if (w.app === 'calc') {
+      const d = calcShow(desk.calc), L = calcLayout(w, d.main.length), D = L.display;
+      g.fillStyle = '#05080d'; g.beginPath(); rrect(g, D.x, D.y, D.w, D.h, 10); g.fill();
+      g.textAlign = 'right';
+      g.font = `400 ${L.topPx}px ${STYLE.font}`; g.fillStyle = STYLE.dim; g.fillText(tail(d.top, L.topPx, D.w - 28), D.x + D.w - 14, D.y + 10 + L.topPx);
+      g.font = `700 ${L.mainPx}px ${STYLE.font}`; g.fillStyle = desk.calc.error ? STYLE.warm : STYLE.ink; g.fillText(d.main, D.x + D.w - 14, D.y + D.h - 18);
+      g.textAlign = 'center';
+      for (const k of L.keys) {
+        g.fillStyle = k.kind === 'go' ? STYLE.accent : k.kind === 'op' ? 'rgba(62,230,196,.12)' : 'rgba(255,255,255,.05)'; g.beginPath(); rrect(g, k.x, k.y, k.w, k.h, 10); g.fill();
+        g.font = `${k.kind === 'num' ? 400 : 700} ${L.keyPx}px ${STYLE.font}`; g.fillStyle = k.kind === 'go' ? '#05110f' : k.kind === 'op' ? STYLE.accent : STYLE.ink; g.fillText(k.label, k.x + k.w / 2, k.y + k.h / 2 + L.keyPx * 0.36);
+      }
+      g.textAlign = 'left';
     } else {
       const L = layout(w, appRows(w.app, desk.ctx));
       for (const t of L.texts) { g.font = `${t.b} ${t.px}px ${STYLE.font}`; g.fillStyle = col(t.c); g.fillText(t.s, t.x, t.y); }
@@ -295,6 +308,8 @@ export function makeCanvases(meta, opts = {}) {
       get term() { return term; },
       get notes() { return desk.notes; },
       set notes(v) { desk.notes = v; saveNotes(v); changed(); },
+      get calc() { return desk.calc; },
+      calcPress(key) { calcPress(desk.calc, key); changed(); },
       setCtx(patch) { Object.assign(desk.ctx, patch); changed(); },
       get ctx() { return desk.ctx; },
       set covered(on) { desk.covered = on; if (!on) desk.dirty = true; },
@@ -320,6 +335,17 @@ export function makeCanvases(meta, opts = {}) {
     },
     terminalKey(e, exit) {
       if (e.key === 'Escape') { exit(); return; }
+      // With the calculator in front the keyboard is the calculator's: the keys it knows work it, and any other
+      // letter or the space bar does nothing (a sum typed with spaces must not spill into the terminal).
+      if (desk.st.focus === 'calc') {
+        // With Ctrl, Cmd or Alt held the key is the browser's own (a shortcut), not the calculator's and not the terminal's.
+        if (e.ctrlKey || e.metaKey || e.altKey) { if (e.key.length === 1) return; }
+        else {
+          const k = calcKey(e.key);
+          if (k) { calcPress(desk.calc, k); changed(); }
+          if (k || e.key.length === 1) { e.preventDefault(); return; }
+        }
+      }
       // Typing at the desk goes to the terminal, bringing it to the front first if something else is.
       if (desk.st.focus !== 'terminal') {
         if (e.key.length !== 1 && e.key !== 'Enter' && e.key !== 'Tab') return;
