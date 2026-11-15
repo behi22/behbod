@@ -1,6 +1,9 @@
 // Test browsers stay silent and leave the mouse alone. The house plays music, the piano and the room's sound, and Firefox and WebKit under
 // Playwright play it out loud on the machine running the tests. Chrome is muted by a switch, Firefox by its volume
 // setting, and every page (WebKit's too) gets a script that sends all sound into a silent node and mutes media.
+// WebKit has no switch or setting, and YouTube's player inside the page (the video on the screening wall) plays at
+// full volume in it whatever the page asks: measured at the speakers. So a WebKit test page never reaches YouTube.
+const VIDEO_HOSTS = /^https?:\/\/([^/]+\.)?(youtube(-nocookie)?\.com|googlevideo\.com)\//;
 function silence() {
   if (window.__quiet) return;
   window.__quiet = true;
@@ -33,8 +36,9 @@ async function launch(type, opts = {}) {
     : name === 'firefox' ? { firefoxUserPrefs: { ...(opts.firefoxUserPrefs || {}), 'media.volume_scale': '0.0' } } : {};
   const b = await type.launch({ ...opts, ...quiet });
   const newContext = b.newContext.bind(b), newPage = b.newPage.bind(b);
-  b.newContext = async (...a) => { const c = await newContext(...a); await c.addInitScript(silence); return c; };
-  b.newPage = async (...a) => { const p = await newPage(...a); await p.addInitScript(silence); return p; };
+  const hush = async t => { await t.addInitScript(silence); if (name === 'webkit') await t.route(VIDEO_HOSTS, r => r.abort()); return t; };
+  b.newContext = async (...a) => hush(await newContext(...a));
+  b.newPage = async (...a) => hush(await newPage(...a));
   return b;
 }
 
