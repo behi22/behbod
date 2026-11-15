@@ -22,17 +22,19 @@ export function newCalc() {
   return { tokens: [], entry: '0', fresh: true, value: null, after: false, error: '', done: '' };
 }
 
-// The display holds twelve figures. Inside, a times or a divide keeps fifteen (so a third times three is one again),
-// and a plus or a minus is rounded where the bigger of its two numbers stops being exact, twelve figures in: that is
-// what keeps 0.1 + 0.2 - 0.3 at 0 instead of the dust the machine's own arithmetic leaves behind.
+// The display holds twelve figures, and a number is rounded to them once, as it is written. A times or a divide keeps
+// all the machine has (rounding there too would round twice, and get the twelfth figure wrong); a plus or a minus is
+// rounded where the bigger of its two numbers stops being exact, twelve figures in: that keeps 0.1 + 0.2 - 0.3 at 0.
 const tidy = v => (Number.isFinite(v) ? +v.toPrecision(15) : v);
+// A half rounds away from nothing whichever sign it has (Math.round alone sends -2.5 to -2).
+const round = x => Math.sign(x) * Math.round(Math.abs(x));
 function add(a, b) {
   const v = a + b, big = Math.max(Math.abs(a), Math.abs(b));
   if (!Number.isFinite(v) || big === 0) return v;
   // The place of the bigger number's twelfth figure, as a power of ten; whatever its size, tiny or huge.
   const e = Math.floor(Math.log10(big)) - (DIGITS - 1);
   if (Math.abs(e) > 290) return v;
-  return tidy(e < 0 ? Math.round(v * 10 ** -e) / 10 ** -e : Math.round(v / 10 ** e) * 10 ** e);
+  return tidy(e < 0 ? round(v * 10 ** -e) / 10 ** -e : round(v / 10 ** e) * 10 ** e);
 }
 
 // A number as the display writes it: no trailing zeros, powers of ten only for the very big and the very small.
@@ -57,7 +59,7 @@ export function work(tokens) {
   for (let i = 1; i < t.length - 1;) {
     if (t[i] === '*' || t[i] === '/') {
       if (t[i] === '/' && t[i + 1] === 0) return ZERO;
-      t.splice(i - 1, 3, tidy(t[i] === '*' ? t[i - 1] * t[i + 1] : t[i - 1] / t[i + 1]));
+      t.splice(i - 1, 3, t[i] === '*' ? t[i - 1] * t[i + 1] : t[i - 1] / t[i + 1]);
     } else i += 2;
   }
   let v = t[0];
@@ -78,7 +80,7 @@ export function press(c, key) {
   if (/^[0-9]$/.test(key)) {
     c.after = false;
     if (c.fresh) { restart(c); c.entry = key; c.fresh = false; c.value = null; }
-    else if (c.entry.replace(/[-.]/g, '').length < DIGITS) c.entry = c.entry === '0' ? key : c.entry === '-0' ? '-' + key : c.entry + key;
+    else if (c.entry.replace(/[-.]/g, '').length < DIGITS) c.entry = c.entry === '0' ? key : c.entry + key;
     return c;
   }
   if (key === '.') {
@@ -91,7 +93,8 @@ export function press(c, key) {
     // Rubbing out only undoes typing; with nothing typed it does nothing at all (an operator just pressed stays pressed).
     if (c.fresh) return c;
     c.entry = c.entry.slice(0, -1);
-    if (c.entry === '' || c.entry === '-') { c.entry = '0'; c.fresh = true; c.value = null; }
+    // A minus sign with only a 0 left to wear it goes too.
+    if (c.entry === '' || c.entry === '-' || c.entry === '-0') { c.entry = '0'; c.fresh = true; c.value = null; }
     return c;
   }
   if (key === 'neg') {
@@ -106,7 +109,7 @@ export function press(c, key) {
     // After plus or minus, a percentage of what came before (200 + 10 % is 200 + 20); otherwise a hundredth.
     const before = c.tokens.length >= 2 && !c.done && (c.tokens.at(-1) === '+' || c.tokens.at(-1) === '-') ? work(c.tokens.slice(0, -1)) : null;
     if (typeof before === 'string') return fail(c, before);
-    const v = tidy(before === null ? number(c) / 100 : before * number(c) / 100);
+    const v = before === null ? number(c) / 100 : before * number(c) / 100;
     if (!Number.isFinite(v)) return fail(c, BIG);
     c.after = false;
     restart(c);
@@ -116,7 +119,9 @@ export function press(c, key) {
   if (OPS.has(key)) {
     restart(c);
     // A second operator straight after the first replaces it.
-    if (c.after && c.tokens.length) c.tokens[c.tokens.length - 1] = key; else c.tokens.push(number(c), key);
+    if (c.after && c.tokens.length) c.tokens[c.tokens.length - 1] = key;
+    // What was typed is written tidily as it joins the sum: 5.0 reads 5, a signed nothing reads 0.
+    else { const n = number(c); c.tokens.push(n, key); c.entry = format(n); }
     c.fresh = true; c.after = true;
     return c;
   }

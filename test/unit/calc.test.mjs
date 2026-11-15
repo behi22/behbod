@@ -125,12 +125,18 @@ test('a sum too big says so, which is not the same as dividing by zero', () => {
   for (let i = 0; i < 30; i++) keys += ' = *';
   assert.equal(main(keys + ' ='), 'Too big');
   assert.equal(main('0 / 0 ='), 'Cannot divide by zero');
+  // A big answer that still fits: percent and the sign work on it, and only the next sum tips it over.
   const c = run('9 9 9 9 9 9 9 9 9 9 9 9 *');
-  for (let i = 0; i < 26; i++) { press(c, '='); press(c, '*'); }
+  for (let i = 0; i < 4; i++) { press(c, '='); press(c, '*'); }
+  assert.equal(show(c).main, '1e192', 'still a number after four squarings');
   press(c, '%');
-  assert.ok(['Too big'].includes(show(c).main) || /e\d+$/.test(show(c).main), show(c).main);
+  assert.equal(show(c).main, '1e190', 'a hundredth of it');
   press(c, 'neg');
-  assert.ok(!/Error/.test(show(c).main), 'never the bare word Error');
+  assert.equal(show(c).main, '\u22121e190', 'and its sign changes');
+  press(c, '=');
+  assert.equal(show(c).main, 'Too big');
+  press(c, '%'); press(c, 'neg');
+  assert.equal(show(c).main, 'Too big', 'a dead calculator stays dead until it is cleared');
 });
 
 test('minus signs are minus signs, above and below', () => {
@@ -181,4 +187,67 @@ test('a thousand random sums of decimals come out exactly right', () => {
     const want = Number(exact) / scale;
     assert.equal(main(keys + ' ='), String(+want.toFixed(places)).replace('-', '\u2212'), keys.replace(/ /g, ''));
   }
+});
+
+test('a divide or a percent is rounded once, where it is written, never twice', () => {
+  assert.equal(main('5 0 / 1 0 0 1 ='), '0.04995004995');
+  assert.equal(main('5 / 9 9 9 ='), '0.00500500500501');
+  assert.equal(main('5 0 / 1 0 0 1 = %'), '0.0004995004995');
+  assert.equal(main('1 / 3 * 3 ='), '1', 'a third times three is still one');
+  assert.equal(main('1 / 4 9 * 4 9 - 1 ='), '0');
+  // Every divide of a whole number up to 250 by one up to 1,200, against exact whole-number arithmetic (rounding
+  // twice got 29 of these wrong, all with divisors near a thousand).
+  const exact = (a, b) => {
+    let e = 0, n = BigInt(a), d = BigInt(b);
+    while (n >= d * 10n) { d *= 10n; e++; }
+    while (n < d) { n *= 10n; e--; }
+    // n / d is now between 1 and 10: twelve figures of it, rounded half up.
+    const q = (n * 10n ** 11n * 2n + d) / (d * 2n);
+    return format(Number(`${q}e${e - 11}`));
+  };
+  let wrong = 0, first = '';
+  for (let a = 1; a <= 250; a++) for (let b = 1; b <= 1200; b++) {
+    const got = main(`${String(a).split('').join(' ')} / ${String(b).split('').join(' ')} =`);
+    if (got !== exact(a, b)) { wrong++; first ||= `${a} / ${b}: ${got}, not ${exact(a, b)}`; }
+  }
+  assert.equal(wrong, 0, first);
+  // And nothing the machine's own arithmetic leaves behind shows in a product of two prices.
+  let s = 7;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  for (let i = 0; i < 5000; i++) {
+    const a = Math.floor(rnd() * 100000), b = Math.floor(rnd() * 10000);
+    const keys = `${(a / 100).toFixed(2).split('').join(' ')} * ${(b / 100).toFixed(2).split('').join(' ')} =`;
+    assert.equal(main(keys), format(a * b / 1e4), keys.replace(/ /g, ''));
+  }
+});
+
+test('rubbing a signed decimal back out leaves a plain 0, and an operator tidies what was typed', () => {
+  assert.equal(main('. 5 neg back back'), '0');
+  assert.equal(main('0 . neg back'), '0');
+  assert.equal(main('. 5 neg back back neg 7'), '7', 'the plain 0 took no sign');
+  assert.deepEqual(show(run('. neg +')), { top: '0 +', main: '0' });
+  assert.deepEqual(show(run('5 . 0 +')), { top: '5 +', main: '5' });
+  assert.equal(main('5 . 0 + ='), '10');
+  assert.equal(main('. 0 0 0 0 0 0 0 0 0 0 1 * 2 ='), '2e-11', 'a tidied tiny number is still itself');
+  // No run of keys ever leaves a signed nothing on either line.
+  const all = KEYS.flat();
+  let a = 99;
+  const rnd = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
+  for (let i = 0; i < 20000; i++) {
+    const c = newCalc(), keys = [];
+    for (let k = 0; k < 12; k++) {
+      const key = all[Math.floor(rnd() * all.length)];
+      keys.push(key); press(c, key);
+      const d = show(c);
+      assert.ok(d.main !== '\u22120' && !/(^| )\u22120( |$)/.test(d.top), `${keys.join(' ')} shows ${JSON.stringify(d)}`);
+    }
+  }
+});
+
+test('a half rounds away from nothing whichever sign it has', () => {
+  assert.equal(main('1 0 0 0 0 0 0 0 0 0 0 1 + . 5 ='), '100000000002');
+  assert.equal(main('1 0 0 0 0 0 0 0 0 0 0 1 neg - . 5 ='), '\u2212100000000002');
+  // The same for a sum with figures after the point, which is rounded on the other path.
+  assert.equal(main('1 0 0 0 0 0 0 0 0 0 0 . 5 + . 2 5 ='), '10000000000.8');
+  assert.equal(main('1 0 0 0 0 0 0 0 0 0 0 . 5 neg - . 2 5 ='), '\u221210000000000.8');
 });

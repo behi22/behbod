@@ -43,6 +43,7 @@ const CSS = `
 .dt-key:hover { background: rgba(255,255,255,.1); } .dt-key:active { background: rgba(255,255,255,.16); }
 .dt-key.op { font-weight: 700; color: ${STYLE.accent}; background: rgba(62,230,196,.12); } .dt-key.op:hover { background: rgba(62,230,196,.2); }
 .dt-key.go { font-weight: 700; color: #05110f; background: ${STYLE.accent}; } .dt-key.go:hover { background: #6ff0d6; }
+.dt-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .dt-dockbg { position: absolute; border-radius: 18px; background: rgba(12,18,28,.82); box-shadow: inset 0 0 0 1px rgba(127,138,160,.18); }
 .dt-icon { position: absolute; box-sizing: border-box; border-radius: 12px; padding: 0; background: #121a26; border: 1px solid rgba(127,138,160,.35); cursor: pointer; display: grid; place-items: center; }
 .dt-icon.on { background: #16302f; border-color: ${STYLE.accent}; }
@@ -72,6 +73,11 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
   root.setAttribute('aria-label', 'The computer on the desk');
   const hud = document.querySelector('.hud');
   hud ? hud.before(root) : document.body.append(root);
+  // What a screen reader hears when the calculator's line changes. It sits outside the desktop, which is rebuilt on
+  // every change: a line that is made anew each time is never read out.
+  const live = document.createElement('div');
+  live.className = 'dt-live'; live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
+  root.after(live);
 
   // The curved screen's four corners: its edges curve toward me, so they sit a sagitta nearer than its middle.
   const s = meta.screens.main, c = b2t(...s.center), half = s.w / 2 / s.r;
@@ -142,7 +148,9 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
     } else if (w.app === 'calc') {
       const d = calcShow(D.calc), L = calcLayout({ x: 0, y: 0, w: r.w, h: r.h }, d.main.length);
       const disp = el('div', 'dt-calc'), main = el('div', 'dt-calc-main' + (D.calc.error ? ' err' : ''), d.main);
-      disp.setAttribute('role', 'status'); disp.setAttribute('aria-live', 'polite');
+      // A finished sum is read whole: its answer alone can read the same as the number typed last, and go unheard.
+      const say = D.calc.done ? `${d.top} ${d.main}` : d.main;
+      if (live.textContent !== say) live.textContent = say;
       const sum = el('div', 'dt-calc-top', tail(d.top, L.topPx, L.display.w - 28));
       main.style.fontSize = px(L.mainPx); sum.style.fontSize = px(L.topPx);
       place(disp, L.display.x, L.display.y, L.display.w, L.display.h);
@@ -264,6 +272,7 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
         shown = false; drag = null;
         notesEl?.blur(); notesEl = null;
         root.classList.remove('on'); root.style.display = 'none'; root.replaceChildren();
+        live.textContent = '';
         D.covered = false;
       }
       if (shown) fitView();

@@ -336,15 +336,13 @@ export function makeCanvases(meta, opts = {}) {
     terminalKey(e, exit) {
       if (e.key === 'Escape') { exit(); return; }
       // With the calculator in front the keyboard is the calculator's: the keys it knows work it, and any other
-      // letter or the space bar does nothing (a sum typed with spaces must not spill into the terminal).
+      // letter, the space bar or Tab does nothing (none of them may spill into the terminal or bring it forward).
       if (desk.st.focus === 'calc') {
         // With Ctrl, Cmd or Alt held the key is the browser's own (a shortcut), not the calculator's and not the terminal's.
-        if (e.ctrlKey || e.metaKey || e.altKey) { if (e.key.length === 1) return; }
-        else {
-          const k = calcKey(e.key);
-          if (k) { calcPress(desk.calc, k); changed(); }
-          if (k || e.key.length === 1) { e.preventDefault(); return; }
-        }
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const k = calcKey(e.key);
+        if (k) { calcPress(desk.calc, k); changed(); }
+        if (k || e.key.length === 1 || e.key === 'Tab') { e.preventDefault(); return; }
       }
       // Typing at the desk goes to the terminal, bringing it to the front first if something else is.
       if (desk.st.focus !== 'terminal') {

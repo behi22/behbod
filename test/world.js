@@ -252,9 +252,26 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   await p.keyboard.type(' hello ', { delay: 40 }); await p.waitForTimeout(150);
   const dtCalc2 = await p.evaluate(() => [document.querySelector('.dt-calc-main')?.textContent, document.querySelector('.dt-calc-top')?.textContent, __loft.mode, __loft.screens.desktop.st.focus, JSON.stringify(__loft.screens.desktop.term.input)]);
   console.log('the calculator: 7 x 6 on its keys, then + 8 / 4 on the keyboard:', dtCalc1, dtCalc2.join(' | '), dtCalc1 === '42' && dtCalc2[0] === '44' && dtCalc2[2] === 'desk' && dtCalc2[3] === 'calc' && dtCalc2[4] === '""' ? 'PASS' : 'FAIL');
+  // A shortcut or Tab pressed at the calculator must not hand the keyboard to the terminal or run its half-typed line,
+  // and the answer is read out from one line that lasts through every redraw.
+  const dtLines0 = await p.evaluate(() => { const d = __loft.screens.desktop; d.term.input = 'whoam'; const n = document.querySelector('.dt-live'); if (n) n.dataset.kept = '1'; return d.term.lines.length; });
+  await p.keyboard.press('Control+Enter'); await p.waitForTimeout(120);
+  await p.keyboard.press('Tab'); await p.waitForTimeout(120);
+  await p.keyboard.type('5', { delay: 40 }); await p.waitForTimeout(250);
+  const dtCalc3 = await p.evaluate(() => {
+    const d = __loft.screens.desktop, n = document.querySelector('.dt-live');
+    const r = [d.st.focus, d.term.input, d.term.lines.length, document.querySelector('.dt-calc-main')?.textContent, n?.getAttribute('aria-live'), n?.dataset.kept, n?.textContent];
+    d.term.input = '';
+    return r;
+  });
+  console.log('a shortcut or Tab at the calculator leaves the terminal alone, and one lasting line reads the answer out:', dtCalc3.join(' | '), dtCalc3[0] === 'calc' && dtCalc3[1] === 'whoam' && dtCalc3[2] === dtLines0 && dtCalc3[3] === '5' && dtCalc3[4] === 'polite' && dtCalc3[5] === '1' && dtCalc3[6] === '5' ? 'PASS' : 'FAIL');
+  // An answer that reads the same as the number typed last is still read out: the line says the whole sum.
+  await p.keyboard.type('c10-5', { delay: 50 }); await p.keyboard.press('Enter'); await p.waitForTimeout(250);
+  const dtSaid = await p.evaluate(() => document.querySelector('.dt-live')?.textContent);
+  console.log('the finished sum is read out, not only its last number:', JSON.stringify(dtSaid), dtSaid === '10 \u2212 5 = 5' ? 'PASS' : 'FAIL');
   await p.keyboard.press('Escape'); await p.waitForTimeout(2500);
-  const gone = await p.evaluate(() => !document.querySelector('.dt.on') && getComputedStyle(document.querySelector('.dt')).display === 'none');
-  console.log('the desktop goes when I stand up:', gone ? 'PASS' : 'FAIL');
+  const gone = await p.evaluate(() => !document.querySelector('.dt.on') && getComputedStyle(document.querySelector('.dt')).display === 'none' && document.querySelector('.dt-live')?.textContent === '');
+  console.log('the desktop goes when I stand up, and its read-out line empties:', gone ? 'PASS' : 'FAIL');
 
   // The range: stepping up to the line brings the stage card; the warm-up is played the way a visitor plays it (the
   // view turned onto each plate as it stands up, the trigger pulled); plates fall and the score counts; the run ends
