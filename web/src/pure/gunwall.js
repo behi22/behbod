@@ -27,6 +27,7 @@ export function said(m) {
   if (m.held) return `The ${m.name} is in your hands. Step up to the line.`;
   return `You take the ${m.name}. Step up to the line.`;
 }
+export const coming = m => `One moment: fetching the ${m.name}.`;
 export function summary(list) {
   const n = list.filter(m => m.owned).length;
   return n === list.length ? `The gun wall: all ${n} guns are yours. Walk up to one to take it.`

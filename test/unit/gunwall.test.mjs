@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { wall, ownedGuns, prompt, said, summary, hang, footprint, outline, SHELF, PANEL, HIDDEN } from '../../web/src/pure/gunwall.js';
+import { wall, ownedGuns, prompt, said, coming, summary, hang, footprint, outline, SHELF, PANEL, HIDDEN } from '../../web/src/pure/gunwall.js';
 import { GUNS, gunsFor } from '../../web/src/pure/arsenal.js';
 import { STAGES, totalStars } from '../../web/src/pure/stages.js';
 import { RIGS } from '../../web/src/pure/rigs.js';
@@ -46,6 +46,7 @@ test('what the wall says: the stars a locked gun needs, take for an owned one, a
   assert.equal(said(pistol), 'The P-22 is in your hands. Step up to the line.');
   assert.equal(prompt(smg), 'Take the Vesper');
   assert.equal(said(smg), 'You take the Vesper. Step up to the line.');
+  assert.equal(coming(smg), 'One moment: fetching the Vesper.', 'a gun still on its way is not claimed as taken');
   assert.equal(prompt(rifle), 'The Keeper: 4 stars');
   assert.equal(said(rifle), 'The Keeper (rifle) unlocks at 4 stars. 3 stars to go.');
   const smgLocked = wall({})[1];

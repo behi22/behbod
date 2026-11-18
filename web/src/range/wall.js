@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { B, drawn, card, batch } from './decor.js';
 import { prepare, breathe } from './room.js';
 import { SILHOUETTES } from './silhouettes.js';
-import { wall as wallOf, prompt, said, summary, hang, footprint, HIDDEN } from '../pure/gunwall.js';
+import { wall as wallOf, prompt, said, coming, summary, hang, footprint, HIDDEN } from '../pure/gunwall.js';
 import { GUNS } from '../pure/arsenal.js';
 
 // A gun's file is fetched to hang it only once you stand near the wall, so the range never loads guns nobody looks at.
@@ -120,7 +120,11 @@ export function makeWall(stage, meta, { renderer, camera, player, best, held, al
     const m = mounts.find(x => x.spot.id === id);
     if (!m?.state) return null;
     const s = m.state;
-    if (s.owned && !s.held) take(s.id).then(ok => { if (ok) { sfx?.click?.(B(...m.at)); sync(); } }, () => {});
+    if (s.owned && !s.held) {
+      take(s.id).then(ok => { if (ok) { sfx?.click?.(B(...m.at)); sync(); } }, () => {});
+      // A gun already fetched is in the hands at once; one still coming may never arrive.
+      if (held() !== s.id) return coming(s);
+    }
     return said(s);
   }
   // Anything in `blockers` nearer than the wall wins the tap.

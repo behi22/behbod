@@ -168,11 +168,31 @@ async function phone(b) {
   await ctx.close();
 }
 
+// A gun whose file never comes: E at it claims nothing and takes nothing.
+async function failing(b) {
+  const ctx = await b.newContext({ viewport: { width: 1280, height: 800 } }), p = await ctx.newPage(), errs = [];
+  p.on('pageerror', e => errs.push(e.message));
+  await p.route('**/assets/range/vesper.glb', r => r.fulfill({ status: 404, body: '' }));
+  await p.addInitScript(() => { try { localStorage.setItem('loft.progress', JSON.stringify({ range: { warmup: { normal: { stars: 1, score: 100 } } } })); } catch (e) { /* the check below fails instead */ } });
+  await p.goto(`${BASE}/?auto&q=ultra`);
+  await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
+  await p.evaluate(() => __loft.range.load());
+  await p.waitForFunction(() => __loft.range.ready, null, { timeout: 60000 });
+  await p.evaluate(() => { if (!__loft.world.doors.secret.open) __loft.act('secret'); });
+  await stand(p, 5.95, MOUNTS[1][1]); await p.waitForTimeout(400);
+  const said = await p.evaluate(() => { __loft.act('wall_smg'); return document.getElementById('toast')?.textContent; });
+  await p.waitForTimeout(2500);
+  const after = await p.evaluate(() => ({ held: __loft.range.held, label: __loft.range.wall.mounts[1].spot.label, toast: document.getElementById('toast')?.textContent }));
+  check('a gun whose file fails: E says it is fetching, never that it is taken, and the pistol stays in the hands', !/You take/.test(said) && !/You take/.test(after.toast) && after.held === 'pistol' && after.label === 'Take the Vesper' && !errs.length, JSON.stringify({ said, after, errs }));
+  await ctx.close();
+}
+
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
     await desktop(b);
     await phone(b);
+    await failing(b);
   } finally { await b.close(); }
   console.log(fails ? `${fails} FAILED` : 'all pass');
   process.exit(fails ? 1 : 0);
