@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
 
-const S = 0.24, PLINTH = 1.0, BASE_H = 0.022, CASE = [0.66, 0.7, 0.66], LID = 0.2;
+const S = 0.27, PLINTH = 1.0, BASE_H = 0.022, CASE = [0.66, 0.7, 0.66], LID = 0.2;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const V2 = (x, y) => new THREE.Vector2(x, y);
 
@@ -61,14 +61,22 @@ export function knightMaterials(env) {
     leather: std(0x141416, 0.5, 0.05),
     grip: std(0x0d0d0e, 0.62, 0),
     cloth: lined(std(0x0c0c0f, 0.8, 0, { envMapIntensity: 0.6, side: THREE.DoubleSide }), 0x52090e),
+    visor: std(0x1c0709, 0.04, 0.55, { envMapIntensity: 2.2 }),
     glow: glow(3.2, 0.3, 0.22),
+    lights: new THREE.MeshBasicMaterial({ vertexColors: true }),
     core: glow(3.6, 3.0, 2.9),
   };
 }
 
+// `tint` colours one piece of the vertex-coloured `lights`, so every lamp on him is one draw.
 function bucketer() {
   const b = new Map();
-  const add = (mat, g, crease) => { if (!b.has(mat)) b.set(mat, []); b.get(mat).push(finish(g, crease)); };
+  const add = (mat, g, crease, tint) => {
+    const out = finish(g, crease);
+    if (tint) { const n = out.attributes.position.count, c = new Float32Array(n * 3); for (let i = 0; i < n; i++) c.set(tint, i * 3); out.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+    if (!b.has(mat)) b.set(mat, []);
+    b.get(mat).push(out);
+  };
   add.build = (group, M) => {
     for (const [name, list] of b) {
       const mesh = new THREE.Mesh(mergeGeometries(list), M[name]);
@@ -117,67 +125,94 @@ export function buildBlade(len, r, M, glowMat) {
   return g;
 }
 
+function chestComputer(add) {
+  const y = 1.37, f = 0.173, box = (w, h, d, x, yy, z) => place(new THREE.BoxGeometry(w, h, d), [x, yy, z]);
+  const RED = [3.2, 0.28, 0.2], AMBER = [2.6, 1.15, 0.12], GREEN = [0.35, 2.2, 1.0], WHITE = [2.4, 2.3, 2.1], OFF = [0.2, 0.05, 0.04];
+  add('steel', box(0.156, 0.104, 0.056, 0, y, f - 0.028), 0.5);
+  add('dark', box(0.14, 0.088, 0.004, 0, y, f + 0.002), 0.5);
+  for (let i = 0; i < 7; i++) add('lights', box(0.013, 0.011, 0.003, -0.054 + i * 0.018, y + 0.026, f + 0.005), 0.5, i < 4 ? GREEN : i < 5 ? AMBER : OFF);
+  [RED, RED, WHITE, AMBER].forEach((c, i) => {
+    add('steel', box(0.019, 0.016, 0.004, -0.054 + i * 0.021, y, f + 0.005), 0.5);
+    add('lights', box(0.014, 0.011, 0.005, -0.054 + i * 0.021, y, f + 0.007), 0.5, c);
+  });
+  for (const x of [0.04, 0.057]) {
+    add('dark', box(0.012, 0.02, 0.004, x, y + 0.001, f + 0.005), 0.5);
+    add('steel', between(new THREE.CylinderGeometry(0.0026, 0.0032, 1, 6).translate(0, 0.5, 0), [x, y - 0.002, f + 0.006], [x, y + 0.01, f + 0.02], true), 0.6);
+  }
+  add('lights', box(0.07, 0.0065, 0.003, -0.026, y - 0.027, f + 0.005), 0.5, RED);
+  add('steel', place(new THREE.CylinderGeometry(0.011, 0.012, 0.007, 12), [0.048, y - 0.026, f + 0.005], [Math.PI / 2, 0, 0]), 0.6);
+  add('lights', place(new THREE.CylinderGeometry(0.0035, 0.0035, 0.004, 8), [0.048, y - 0.026, f + 0.01], [Math.PI / 2, 0, 0]), 0.6, RED);
+}
+
 function buildBody(M) {
   const add = bucketer();
   for (const s of [-1, 1]) {
-    const x = s * 0.115;
-    add('leather', sculpt(ellipsoid([0.058, 0.05, 0.135], [x, 0.05, 0.05]), v => { v.y = Math.max(v.y, 0.012); }), 1.3);
-    add('dark', place(new THREE.BoxGeometry(0.112, 0.018, 0.27), [x, 0.009, 0.045]), 0.6);
-    add('lacquer', sculpt(ellipsoid([0.062, 0.045, 0.07], [x, 0.06, 0.13]), v => { v.y = Math.max(v.y, 0.03); }), 1.1);
-    add('leather', limb([x, 0.05, 0], [x, 0.34, 0.005], 0.062, 0.058), 1.2);
-    add('suit', limb([x, 0.3, 0.005], [x * 0.98, 0.6, 0.01], 0.055, 0.064, 0.006), 1.2);
-    add('lacquer', place(band(0.0, 0.27, 0.074, 0.07, 0.008, 3.6, 24), [x, 0.31, 0.008]), 0.7);
-    add('steel', place(new THREE.TorusGeometry(0.069, 0.005, 6, 32, 3.6), [x, 0.58, 0.008], [Math.PI / 2, 0, Math.PI / 2 - 1.8]), 0.8);
-    add('lacquer', place(cap(0.068, 1.15, 14), [x, 0.6, 0.04], [1.35, 0, 0], [1, 1, 0.85]), 0.9);
-    add('suit', limb([x * 0.98, 0.58, 0.01], [s * 0.1, 0.98, 0.0], 0.068, 0.092, 0.012), 1.2);
+    const x = s * 0.125;
+    add('leather', sculpt(ellipsoid([0.062, 0.052, 0.14], [x, 0.052, 0.05]), v => { v.y = Math.max(v.y, 0.012); }), 1.3);
+    add('dark', place(new THREE.BoxGeometry(0.118, 0.018, 0.28), [x, 0.009, 0.045]), 0.6);
+    add('lacquer', sculpt(ellipsoid([0.066, 0.047, 0.074], [x, 0.062, 0.135]), v => { v.y = Math.max(v.y, 0.03); }), 1.1);
+    add('leather', limb([x, 0.05, 0], [x, 0.35, 0.005], 0.07, 0.066), 1.2);
+    add('lacquer', place(band(0.3, 0.37, 0.075, 0.083, 0.008, Math.PI * 2, 24), [x, 0, 0.005]), 0.7);
+    add('suit', limb([x, 0.3, 0.005], [x * 0.98, 0.6, 0.01], 0.063, 0.072, 0.007), 1.2);
+    add('lacquer', place(band(0.0, 0.25, 0.083, 0.078, 0.008, 3.4, 24), [x, 0.34, 0.012]), 0.7);
+    add('steel', place(new THREE.TorusGeometry(0.077, 0.005, 6, 32, 3.4), [x, 0.59, 0.012], [Math.PI / 2, 0, Math.PI / 2 - 1.7]), 0.8);
+    add('lacquer', place(cap(0.078, 1.15, 14), [x, 0.61, 0.048], [1.35, 0, 0], [1, 1, 0.85]), 0.9);
+    add('steel', place(new THREE.CylinderGeometry(0.012, 0.012, 0.006, 10), [x, 0.62, 0.112], [1.35, 0, 0]), 0.6);
+    add('suit', limb([x * 0.98, 0.58, 0.01], [s * 0.105, 0.98, 0.0], 0.078, 0.104, 0.014), 1.2);
+    add('lacquer', place(band(0.0, 0.2, 0.11, 0.106, 0.008, 2.4, 18), [s * 0.11, 0.74, 0.008]), 0.7);
     for (let i = 0; i < 3; i++) {
-      const y0 = 1.03 - i * 0.07, r0 = 0.168 + i * 0.012;
+      const y0 = 1.03 - i * 0.07, r0 = 0.172 + i * 0.012;
       add('lacquer', place(band(y0 - 0.13, y0, r0 + 0.035, r0, 0.007, 0.95, 14, s * 1.15), [0, 0, 0], [0, 0, 0], [1, 1, 0.8]), 0.7);
       add('steel', place(band(y0 - 0.136, y0 - 0.126, r0 + 0.04, r0 + 0.037, 0.006, 0.95, 14, s * 1.15), [0, 0, 0], [0, 0, 0], [1, 1, 0.8]), 0.7);
     }
   }
-  add('suit', ellipsoid([0.165, 0.1, 0.115], [0, 0.97, 0]), 1.2);
-  add('leather', place(band(1.0, 1.08, 0.162, 0.165, 0.012, Math.PI * 2, 32), [0, 0, 0], [0, 0, 0], [1, 1, 0.76]), 0.7);
-  const hex = new THREE.Shape();
-  for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.PI / 6; hex[i ? 'lineTo' : 'moveTo'](Math.cos(a) * 0.036, Math.sin(a) * 0.03); }
-  add('steel', place(new THREE.ExtrudeGeometry(hex, { depth: 0.008, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.003, bevelSegments: 2 }), [0, 1.04, 0.122]), 0.5);
-  add('glow', place(new THREE.BoxGeometry(0.03, 0.004, 0.004), [0, 1.04, 0.136]), 0.5);
-  add('suit', place(new THREE.LatheGeometry([V2(0, 1.0), V2(0.15, 1.03), V2(0.142, 1.16), V2(0.15, 1.28), V2(0, 1.3)], 24), [0, 0, 0], [0, 0, 0], [1, 1, 0.74]), 1.2);
+  add('suit', ellipsoid([0.17, 0.1, 0.118], [0, 0.97, 0]), 1.2);
+  add('leather', place(band(1.0, 1.08, 0.166, 0.169, 0.012, Math.PI * 2, 32), [0, 0, 0], [0, 0, 0], [1, 1, 0.76]), 0.7);
+  add('steel', place(new THREE.LatheGeometry([V2(0, 0), V2(0.032, 0), V2(0.036, 0.004), V2(0.036, 0.01), V2(0.03, 0.014), V2(0, 0.014)], 16), [0, 1.04, 0.122], [Math.PI / 2, 0, 0]), 0.6);
+  add('dark', place(new THREE.CylinderGeometry(0.016, 0.016, 0.004, 12), [0, 1.04, 0.137], [Math.PI / 2, 0, 0]), 0.6);
+  add('suit', place(new THREE.LatheGeometry([V2(0, 1.0), V2(0.15, 1.03), V2(0.142, 1.16), V2(0.155, 1.28), V2(0, 1.3)], 24), [0, 0, 0], [0, 0, 0], [1, 1, 0.74]), 1.2);
   for (let i = 0; i < 3; i++) add('lacquer', place(band(1.085 + i * 0.058, 1.135 + i * 0.058, 0.152 + i * 0.004, 0.156 + i * 0.006, 0.01, 3.4, 24), [0, 0, 0], [0, 0, 0], [1, 1, 0.78]), 0.6);
-  const chest = new THREE.LatheGeometry([V2(0.155, 1.25), V2(0.168, 1.27), V2(0.2, 1.36), V2(0.205, 1.42), V2(0.18, 1.49), V2(0.12, 1.53), V2(0.07, 1.55), V2(0, 1.555)], 40);
-  add('lacquer', sculpt(place(chest, [0, 0, 0], [0, 0, 0], [1, 1, 0.66]), v => { if (v.z > 0) v.z += 0.016 * Math.exp(-((v.x / 0.03) ** 2)) * Math.min(1, (v.y - 1.25) / 0.08); }), 0.75);
+  add('lacquer', place(new THREE.LatheGeometry([V2(0.155, 1.25), V2(0.172, 1.27), V2(0.215, 1.36), V2(0.226, 1.42), V2(0.205, 1.49), V2(0.135, 1.535), V2(0.07, 1.555), V2(0, 1.56)], 40), [0, 0, 0], [0, 0, 0], [1, 1, 0.66]), 0.75);
   add('steel', place(band(1.245, 1.262, 0.162, 0.164, 0.012, Math.PI * 2, 36), [0, 0, 0], [0, 0, 0], [1, 1, 0.68]), 0.7);
-  add('glow', place(new THREE.OctahedronGeometry(0.018, 0), [0, 1.37, 0.152], [0, 0, 0], [0.8, 1.25, 0.5]), 0.3);
-  add('steel', place(new THREE.OctahedronGeometry(0.03, 0), [0, 1.37, 0.146], [0, 0, 0], [0.9, 1.3, 0.35]), 0.3);
-  for (const s of [-1, 1]) add('steel', between(place(new THREE.BoxGeometry(0.008, 1, 0.005), [0, 0.5, 0]), [s * 0.025, 1.39, 0.142], [s * 0.15, 1.47, 0.105], true), 0.5);
-  add('lacquer', place(band(1.5, 1.6, 0.12, 0.08, 0.01, Math.PI * 2, 28), [0, 0, 0], [0, 0, 0], [1, 1, 0.86]), 0.8);
+  chestComputer(add);
+  add('lacquer', place(band(1.5, 1.6, 0.125, 0.085, 0.01, Math.PI * 2, 28), [0, 0, 0], [0, 0, 0], [1, 1, 0.86]), 0.8);
+  add('steel', place(band(1.5, 1.512, 0.127, 0.125, 0.008, Math.PI * 2, 28), [0, 0, 0], [0, 0, 0], [1, 1, 0.86]), 0.7);
+  for (const s of [-1, 1]) {
+    add('steel', between(new THREE.LatheGeometry([V2(0, 0), V2(0.026, 0), V2(0.03, 0.005), V2(0.024, 0.012), V2(0, 0.013)], 14), [s * 0.165, 1.5, 0.066], [s * 0.665, 2.05, 0.716]), 0.6);
+  }
+  const collar = new THREE.LatheGeometry([V2(0.17, 1.5), V2(0.168, 1.57), V2(0.185, 1.64), V2(0.205, 1.69)], 22, Math.PI - 1.9, 3.8);
+  add('cloth', place(collar, [0, 0, -0.03], [0, 0, 0], [1, 1, 0.82]), 1.3);
   const ARMS = {
-    [-1]: { sh: [-0.235, 1.46, 0], el: [-0.262, 1.19, 0.06], wr: [-0.15, 1.17, 0.235], hand: [-0.12, 1.17, 0.265] },
-    [1]: { sh: [0.235, 1.46, 0], el: [0.21, 1.2, 0.12], wr: [-0.075, 1.255, 0.25], hand: [-0.12, 1.255, 0.265] },
+    [-1]: { sh: [-0.25, 1.46, 0], el: [-0.32, 1.21, 0.0], wr: [-0.25, 1.125, 0.19], hand: [-0.228, 1.11, 0.222], thumb: [[0.03, 0.012, -0.01], [0.012, 0.03, 0.022]], back: [-0.9, 0, 0.42] },
+    [1]: { sh: [0.25, 1.46, 0], el: [0.305, 1.205, 0.035], wr: [0.29, 0.99, 0.085], hand: [0.285, 0.955, 0.095], thumb: [[-0.03, 0.01, 0.01], [-0.022, -0.018, 0.032]], back: [1, 0, 0.1] },
   };
   for (const s of [-1, 1]) {
     for (let i = 0; i < 3; i++) {
-      add('lacquer', place(cap(0.118 - i * 0.012, 1.2, 18), [s * (0.235 + i * 0.022), 1.475 - i * 0.05, 0], [0, 0, -s * (0.42 + i * 0.2)], [1, 0.72, 1.06]), 0.9);
+      add('lacquer', place(cap(0.13 - i * 0.013, 1.2, 18), [s * (0.25 + i * 0.024), 1.48 - i * 0.052, 0], [0, 0, -s * (0.42 + i * 0.2)], [1, 0.72, 1.06]), 0.9);
     }
-    add('steel', place(new THREE.TorusGeometry(0.105, 0.004, 6, 40), [s * 0.282, 1.385, 0], [Math.PI / 2, -s * 0.82, 0], [1, 1.06, 1]), 0.8);
     const A = ARMS[s];
-    add('suit', limb(A.sh, A.el, 0.062, 0.052, 0.012), 1.2);
-    add('suit', limb(A.el, A.wr, 0.052, 0.04, 0.008), 1.2);
-    add('lacquer', place(cap(0.052, 1.3, 12), A.el, [0, 0, 0], [1, 0.8, 1]), 0.9);
-    const fa = V(...A.wr).sub(V(...A.el)), len = fa.length();
-    add('lacquer', between(band(len * 0.12, len * 0.86, 0.058, 0.05, 0.007, Math.PI * 2, 18), A.el, A.wr), 0.7);
-    add('steel', between(band(len * 0.84, len * 0.88, 0.054, 0.053, 0.006, Math.PI * 2, 18), A.el, A.wr), 0.7);
-    add('leather', ellipsoid([0.044, 0.04, 0.048], A.hand), 1.2);
-    add('leather', limb([A.hand[0] + 0.03, A.hand[1] + 0.012, A.hand[2] - 0.01], [A.hand[0] + 0.012, A.hand[1] + 0.03, A.hand[2] + 0.022], 0.012, 0.011), 1.2);
+    add('suit', limb(A.sh, A.el, 0.066, 0.055, 0.012), 1.2);
+    add('suit', limb(A.el, A.wr, 0.055, 0.042, 0.008), 1.2);
+    const ua = V(...A.el).sub(V(...A.sh)).length();
+    add('lacquer', between(band(ua * 0.32, ua * 0.78, 0.07, 0.064, 0.007, Math.PI * 2, 18), A.sh, A.el), 0.7);
+    add('lacquer', place(cap(0.056, 1.3, 12), A.el, [0, 0, 0], [1, 0.8, 1]), 0.9);
+    const len = V(...A.wr).sub(V(...A.el)).length();
+    add('lacquer', between(band(len * 0.12, len * 0.86, 0.064, 0.052, 0.007, Math.PI * 2, 18), A.el, A.wr), 0.7);
+    add('steel', between(band(len * 0.84, len * 0.88, 0.056, 0.055, 0.006, Math.PI * 2, 18), A.el, A.wr), 0.7);
+    add('leather', ellipsoid([0.046, 0.042, 0.05], A.hand), 1.2);
+    const [t0, t1] = A.thumb.map(d => A.hand.map((h, k) => h + d[k]));
+    add('leather', limb(t0, t1, 0.013, 0.012), 1.2);
+    const n = V(...A.back).normalize();
+    add('lacquer', place(new THREE.BoxGeometry(0.05, 0.05, 0.012), [A.hand[0] + n.x * 0.046, A.hand[1], A.hand[2] + n.z * 0.046], [0, Math.atan2(n.x, n.z), 0]), 0.5);
   }
-  const nu = 30, nv = 24, pos = [], idx = [];
+  const nu = 32, nv = 24, pos = [], idx = [];
   for (let j = 0; j <= nv; j++) {
-    const v = j / nv, A = 3.25 - 0.95 * v, R = 0.205 + 0.25 * Math.pow(v, 0.85), y = Math.max(0.012, 1.53 - v * 1.56);
+    const v = j / nv, A = 3.35 - 0.6 * v, R = 0.215 + 0.25 * Math.pow(v, 0.85), y = Math.max(0.012, 1.53 - v * 1.56);
     for (let i = 0; i <= nu; i++) {
       const u = i / nu, th = Math.PI + (u - 0.5) * A;
-      const fold = (0.006 + 0.04 * v) * Math.sin(u * Math.PI * 11 + v * 2.2) + 0.012 * v * Math.sin(u * Math.PI * 4 - 1);
+      const fold = (0.007 + 0.045 * v) * Math.sin(u * Math.PI * 11 + v * 2.2) + 0.014 * v * Math.sin(u * Math.PI * 4 - 1);
       const r = R + fold, pool = Math.max(0, 1.53 - v * 1.56 - 0.012) <= 0 ? (v * 1.56 - 1.518) * 0.9 : 0;
-      pos.push(Math.sin(th) * r + 0.04 * v * v, y, Math.cos(th) * r * 0.78 - 0.035 - 0.2 * Math.pow(v, 1.6) - pool);
+      pos.push(Math.sin(th) * r + 0.04 * v * v, y, Math.cos(th) * r * 0.78 - 0.035 - 0.17 * Math.pow(v, 1.6) - pool);
     }
   }
   for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
@@ -188,36 +223,78 @@ function buildBody(M) {
   return add;
 }
 
-// Shared with the visor and slats so they sit on the helm's surface.
+// The visor dips to the middle, so the brow above it scowls.
+const visorLat = a => 0.07 + 0.2 * Math.abs(a);
+// Shared with every plate on the helm, so they all sit on its surface.
 function helmAt(v, out = 0) {
-  v.x *= 0.104 + out; v.y *= 0.142 + out; v.z *= 0.128 + out;
-  if (v.z > 0.045) v.z = 0.045 + (v.z - 0.045) * 0.55;
-  const low = Math.max(0, -v.y / 0.142), high = Math.max(0, v.y / 0.142);
-  if (v.z > 0) v.z += 0.055 * Math.max(0, 1 - Math.abs(v.x) / 0.08) * Math.min(1, low * 1.8 + 0.1);
-  if (v.z > 0.03) v.z += 0.012 * Math.exp(-(((v.y - 0.03) / 0.018) ** 2));
-  v.x *= 1 - 0.24 * low;
-  if (v.z < 0) v.y += 0.02 * high * (-v.z / 0.128);
-  if (v.y < -0.105) v.y = -0.105 + (v.y + 0.105) * 0.4;
-  return v;
+  const a = Math.atan2(v.x, v.z), l = Math.asin(THREE.MathUtils.clamp(v.y, -1, 1));
+  const low = Math.max(0, -v.y), front = Math.max(0, v.z), face = front * Math.max(0, 1 - Math.abs(a) / 1.3);
+  let x = v.x * (0.112 + out), y = v.y * (0.13 + out) * (1 - 0.1 * Math.max(0, v.y) ** 2), z = v.z * (0.128 + out);
+  z -= 0.03 * face * Math.abs(v.x);
+  z += 0.055 * front * Math.max(0, 1 - Math.abs(a) / 0.75) * Math.min(1, low * 1.8 + 0.1);
+  const dv = l - visorLat(a);
+  z += face * (0.02 * Math.exp(-(((dv - 0.13) / 0.055) ** 2)) - 0.012 * Math.exp(-((dv / 0.08) ** 2)));
+  x *= 1 - 0.2 * low;
+  if (v.z < 0) z *= 1.06;
+  if (y < -0.1) y = -0.1 + (y + 0.1) * 0.4;
+  return v.set(x, y, z);
 }
-const helmStrip = (lat, h, w, out) => sculpt(new THREE.SphereGeometry(1, 28, 2, Math.PI / 2 - w, 2 * w, Math.PI / 2 - lat - h / 2, h), v => helmAt(v, out));
+const across = (a0, a1, lat) => (u, t) => { const a = a0 + (a1 - a0) * u, l = lat(a, t); return V(Math.sin(a) * Math.cos(l), Math.sin(l), Math.cos(a) * Math.cos(l)); };
+const over = (w, p0, p1) => (u, t) => { const q = (2 * u - 1) * w, p = p0 + (p1 - p0) * t; return V(Math.sin(q), Math.cos(q) * Math.sin(p), Math.cos(q) * Math.cos(p)); };
+// A plate lying `out` off the helm, walled down to it so it reads as a thick piece.
+function helmPlate(dir, out, nu = 12, nv = 2, wall = true) {
+  const pos = [], idx = [];
+  const at = (u, t, o) => { const v = helmAt(dir(u, t).normalize(), o); pos.push(v.x, v.y, v.z); return pos.length / 3 - 1; };
+  for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) at(i / nu, j / nv, out);
+  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const p = j * (nu + 1) + i, q = p + 1, r = p + nu + 1, s = r + 1; idx.push(p, q, r, q, s, r); }
+  if (wall) {
+    const ring = [];
+    for (let i = 0; i <= nu; i++) ring.push([i, 0]);
+    for (let j = 1; j <= nv; j++) ring.push([nu, j]);
+    for (let i = nu - 1; i >= 0; i--) ring.push([i, nv]);
+    for (let j = nv - 1; j >= 1; j--) ring.push([0, j]);
+    const base = ring.map(([i, j]) => at(i / nu, j / nv, 0)), top = ring.map(([i, j]) => j * (nu + 1) + i);
+    for (let k = 0; k < ring.length; k++) { const n = (k + 1) % ring.length; idx.push(base[k], base[n], top[n], base[k], top[n], top[k]); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  return g;
+}
 
 function buildHead(M) {
   const add = bucketer();
-  const at = [0, 0.16, 0.012];
-  add('lacquer', place(sculpt(new THREE.SphereGeometry(1, 36, 26), v => helmAt(v)), at), 0.9);
-  add('dark', place(helmStrip(0.03, 0.11, 0.95, 0.002), at), 0.8);
-  add('glow', place(helmStrip(0.03, 0.03, 0.8, 0.0045), at), 0.8);
-  for (let i = 0; i < 3; i++) add('steel', place(helmStrip(-0.32 - i * 0.13, 0.04, 0.16 - i * 0.03, 0.004), at), 0.6);
-  for (const s of [-1, 1]) add('steel', place(sculpt(new THREE.SphereGeometry(1, 3, 24, s > 0 ? Math.PI / 2 - 1.15 : Math.PI / 2 + 0.95, 0.2, Math.PI / 2 + 0.25, 0.75), v => helmAt(v, 0.003)), at), 0.6);
-  const fin = new THREE.Shape();
-  fin.moveTo(0, 0); fin.absarc(0, 0, 0.142, 0.15, Math.PI - 0.35, false); fin.absarc(0, 0, 0.126, Math.PI - 0.35, 0.15, true);
-  add('steel', place(new THREE.ExtrudeGeometry(fin, { depth: 0.006, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.002, bevelSegments: 1, curveSegments: 24 }), [0.006, 0.17, 0.0], [0, -Math.PI / 2, 0]), 0.6);
-  const hood = new THREE.SphereGeometry(0.168, 28, 18, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9, 0, 2.4);
-  add('cloth', sculpt(place(hood, [0, 0.175, -0.012], [0, 0, 0], [1.04, 1.08, 1.06]), v => {
-    if (v.z < 0 && v.y > 0.2) { const k = Math.min(1, -v.z / 0.15) * (v.y - 0.2) / 0.16; v.y += 0.03 * k; v.z -= 0.04 * k; }
-    if (v.y < 0.1) v.z -= (0.1 - v.y) * 0.3;
-  }), 1.3);
+  const at = [0, 0.165, 0.015], put = g => place(g, at);
+  add('lacquer', put(sculpt(new THREE.SphereGeometry(1, 40, 28), v => helmAt(v))), 0.9);
+  add('visor', put(helmPlate(across(-1.05, 1.05, (a, t) => visorLat(a) - 0.065 + 0.13 * t), 0.002, 28, 2, false)), 0.6);
+  add('lacquer', put(helmPlate(over(0.075, 0.42, 2.55), 0.01, 2, 16)), 0.5);
+  add('steel', put(helmPlate(over(0.02, 0.95, 2.45), 0.013, 1, 12, false)), 0.5);
+  add('steel', put(helmPlate(across(-1.07, 1.07, (a, t) => visorLat(a) + 0.062 + 0.022 * t), 0.006, 28, 1)), 0.6);
+  for (const s of [-1, 1]) add('lights', put(helmPlate(across(s > 0 ? 0.12 : -0.44, s > 0 ? 0.44 : -0.12, (a, t) => visorLat(a) - 0.014 + 0.026 * t), 0.004, 6, 1, false)), 0.6, [1.4, 0.08, 0.05]);
+  const G0 = -0.76, G1 = -0.36, GA = 0.36;
+  add('dark', put(helmPlate(across(-GA, GA, (a, t) => G0 + (G1 - G0) * t), 0.002, 8, 2, false)), 0.6);
+  add('lacquer', put(helmPlate(across(-GA - 0.08, GA + 0.08, (a, t) => G1 + 0.075 * t), 0.012, 10, 1)), 0.6);
+  add('lacquer', put(helmPlate(across(-GA - 0.08, GA + 0.08, (a, t) => G0 - 0.07 + 0.07 * t), 0.012, 10, 1)), 0.6);
+  for (const s of [-1, 1]) add('lacquer', put(helmPlate(across(s > 0 ? GA : -GA - 0.08, s > 0 ? GA + 0.08 : -GA, (a, t) => G0 + (G1 - G0) * t), 0.012, 1, 3)), 0.6);
+  for (let i = 0; i < 5; i++) {
+    const l0 = G0 + 0.02 + i * 0.077;
+    add('steel', put(helmPlate(across(-GA, GA, (a, t) => l0 + 0.04 * t), 0.008, 8, 1)), 0.6);
+  }
+  for (const s of [-1, 1]) {
+    const a0 = s > 0 ? 0.56 : -1.4, a1 = s > 0 ? 1.4 : -0.56;
+    add('lacquer', put(helmPlate(across(a0, a1, (a, t) => -0.86 + (visorLat(a) - 0.09 + 0.86) * t), 0.008, 8, 4)), 0.6);
+    const e0 = s > 0 ? 0.56 : -0.6, e1 = s > 0 ? 0.6 : -0.56;
+    add('steel', put(helmPlate(across(e0, e1, (a, t) => -0.86 + (visorLat(a) - 0.09 + 0.86) * t), 0.0095, 1, 4)), 0.6);
+    const fin = new THREE.Shape();
+    fin.moveTo(0, 0); fin.quadraticCurveTo(-0.07, 0.012, -0.15, 0.085); fin.quadraticCurveTo(-0.09, 0.02, -0.045, -0.02); fin.lineTo(0, -0.014);
+    const blade = place(new THREE.ExtrudeGeometry(fin, { depth: 0.008, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.002, bevelSegments: 1, curveSegments: 8 }).translate(0, 0, -0.004), [0, 0, 0], [0, -Math.PI / 2, 0]);
+    add('lacquer', place(blade, [s * 0.106, 0.2, 0.035], [0, 0, -s * 0.22]), 0.6);
+  }
+  for (let i = 0; i < 3; i++) {
+    const y1 = 0.075 - i * 0.032, r1 = 0.1 + i * 0.011;
+    add('lacquer', band(y1 - 0.046, y1, r1 + 0.012, r1, 0.008, 3.5, 18, Math.PI), 0.7);
+    add('steel', band(y1 - 0.05, y1 - 0.044, r1 + 0.0135, r1 + 0.0125, 0.006, 3.5, 18, Math.PI), 0.7);
+  }
   return add;
 }
 
@@ -304,7 +381,7 @@ export function makeKnight(scene, meta, roots, { renderer }) {
   figure.add(head);
   const glowMat = bladeGlowMaterial();
   const saber = new THREE.Group();
-  saber.position.set(-0.12, 1.115, 0.265);
+  saber.position.set(-0.228, 1.02, 0.222);
   buildHilt(M, 14).build(saber, M);
   const blade = buildBlade(0.95, 0.011, M, glowMat);
   blade.position.y = HILT;

@@ -52,6 +52,21 @@ const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, 
       return { removed: k.removed, stray, out: k.out, figure: !!__loft.scene.getObjectByName('knight_lacquer') };
     });
     check('the stand-in is cut out of the room and the knight stands in the case', built.removed > 100 && built.stray === 0 && built.figure && !built.out, JSON.stringify(built));
+    const fits = await p.evaluate(() => {
+      const root = __saber.knight.root, v = root.position.clone(), lo = [9, 9, 9], hi = [-9, -9, -9];
+      root.updateWorldMatrix(true, true);
+      root.children[0].traverse(o => {
+        if (!o.isMesh || !o.visible) return;
+        const pos = o.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).sub(root.position);
+          [v.x, v.y, v.z].forEach((c, k) => { lo[k] = Math.min(lo[k], c); hi[k] = Math.max(hi[k], c); });
+        }
+      });
+      return [...lo, ...hi].map(c => +c.toFixed(3));
+    });
+    // The panes stand 0.33 from his middle and the lid 0.71 above his base.
+    check('the knight and his raised saber fit inside the glass', fits[1] >= 0 && fits[4] < 0.7 && Math.max(-fits[0], -fits[2], fits[3], fits[5]) < 0.32, JSON.stringify(fits));
 
     // Sound on so every sound below really runs (the test browser mutes it).
     await p.click('#snd');
