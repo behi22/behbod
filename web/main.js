@@ -395,14 +395,14 @@ const SAY = {
   albums: 'Album art from my top tracks, once Spotify is connected.',
   tea: 'Fresh tea from the samovar.',
   resume: 'My resume is coming with the LinkedIn update.',
-  secret_room: 'Locked. Three stars on every stage of the range, on Hard, opens it. The last two stages are still being built.',
+  secret_room: 'Locked. Three stars on every stage of the range, on Hard, opens it.',
   loadout: 'The gun wall. More guns hang here as you earn stars at the line.',
   projects: 'My projects, all the way up the stairs.',
   claude: 'A tribute to Claude, who helped me bring this idea to life.',
   wall: 'The weather and this month, holidays circled.',
   trophies: 'The trophy shelf.',
   collection: 'The collection case.',
-  unlocks: 'Win these at the range: the keeper kit and gold now, the red visor once its last stages are built.',
+  unlocks: 'Win these at the range: the keeper kit, the gold colourway and the red visor.',
   mirror: 'Looking good.',
 };
 // The arcade, the mini goal and the console all play the shootout; the boards play their own games.

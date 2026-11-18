@@ -63,6 +63,12 @@ const CSS = `
 .rg.rg-touch .rg-hint { display: none; } .rg.rg-touch .rg-ammo { bottom: auto; top: calc(58px + env(safe-area-inset-top, 0px)); }
 @media (max-width: 560px) { .rg.rg-touch .rg-ammo, .rg-quit { top: calc(124px + env(safe-area-inset-top, 0px)); } .rg-clock { width: 150px; } .rg-top { min-width: 150px; } }
 .rg-dim { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 40%, rgba(120, 10, 0, .5) 100%); opacity: 0; transition: opacity .5s; }
+.rg-left .rg-shields { margin-top: 7px; gap: 5px; } .rg-left .rg-shields i { width: 20px; height: 7px; border-radius: 2px; box-shadow: 0 0 7px rgba(95, 227, 208, .65); } .rg-left .rg-shields i.off { box-shadow: none; }
+.rg-alert { position: absolute; left: 50%; top: 31%; transform: translate(-50%, -50%); font-size: 17px; letter-spacing: .22em; color: #ff6f61; text-shadow: 0 2px 10px rgba(0, 0, 0, .85); opacity: 0; white-space: nowrap; }
+.rg-alert.on { animation: rg-alert 1.2s ease-out; }
+@keyframes rg-alert { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.3); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
+.rg-danger { position: absolute; inset: 0; box-shadow: inset 0 0 110px 14px rgba(255, 40, 80, .6); opacity: 0; will-change: opacity; }
+.rg-warn { position: absolute; left: 0; top: 0; width: 0; height: 0; margin: -10px 0 0 -11px; border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 19px solid #ff4f6a; filter: drop-shadow(0 0 6px rgba(255, 60, 90, .85)); display: none; }
 `;
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -138,6 +144,29 @@ export function makeHud({ coarse, onPad }) {
       return card;
     },
     el, stars,
+    // Large words over the middle for a moment (a shield lost).
+    alert(text) { const n = extra('alert', 'rg-alert'); if (!n) return; n.textContent = text; restart(n, 'on'); },
+    // A red edge round the glass, 0 to 1: a bolt is coming and you are in its way.
+    danger(k) { const n = extra('danger', 'rg-danger', k > 0); if (!n) return; const o = (Math.round(k * 20) / 20).toFixed(2); if (n.style.opacity !== o) n.style.opacity = o; },
+    // Arrows at the edge of the glass toward drones charging out of sight: [{ x, y, angle }] in pixels and radians.
+    warn(list) {
+      for (let i = 0; i < 4; i++) {
+        const n = extra('warn' + i, 'rg-warn', !!list[i]), w = list[i];
+        if (!n && !w) continue;
+        if (!n) return;
+        if (!w) { if (n.style.display !== 'none') n.style.display = 'none'; continue; }
+        n.style.display = 'block';
+        n.style.transform = `translate(${w.x.toFixed(0)}px, ${w.y.toFixed(0)}px) rotate(${w.angle.toFixed(2)}rad)`;
+      }
+    },
   };
+  // Pieces made the first time they are needed, so a run without bolts never has them.
+  const extras = {};
+  function extra(name, cls, make = true) {
+    if (!root) return null;
+    let n = extras[name];
+    if (!n || n.parentNode !== root) { if (!make) return null; n = el('div', cls); root.append(n); extras[name] = n; }
+    return n;
+  }
   return api;
 }

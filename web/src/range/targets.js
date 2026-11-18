@@ -66,7 +66,7 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
   }
   const build = { plate: buildPlate, walker: () => buildRobot('walker'), drone: () => buildRobot('drone') };
   // A few of each are built with the rooms, so their shaders are ready and nothing is made in the middle of a run.
-  for (const [kind, n] of [['plate', 3], ['walker', 2], ['drone', 4]]) for (let i = 0; i < n; i++) pools[kind].push(build[kind]());
+  for (const [kind, n] of [['plate', 3], ['walker', 3], ['drone', 4]]) for (let i = 0; i < n; i++) pools[kind].push(build[kind]());
   for (const o of pools.plate) o.rim.visible = false;
   function take(kind) {
     const pool = pools[kind];

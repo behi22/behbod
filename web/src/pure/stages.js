@@ -11,10 +11,11 @@ export const DIFFICULTIES = {
   normal: { name: 'Normal', speed: 1, life: 1, hp: 1, bolts: 0, shields: 3, score: 1 },
   hard: { name: 'Hard', speed: 1.3, life: 0.78, hp: 1.25, bolts: 1, shields: 3, score: 1.3 },
 };
-// What each kind of target is worth, how much it takes, and how its parts multiply a hit.
+// What each kind of target is worth, how much it takes, and how its parts multiply a hit. On Hard a drone fires a
+// bolt every `bolt` seconds, the first half that long after it arrives.
 export const KINDS = {
   plate: { points: 100, hp: 1, zones: { plate: 1 } },
-  walker: { points: 300, hp: 110, zones: { core: 2.5, head: 1.5, body: 1, limb: 0.6 }, weak: 'core', bolt: 4.2 },
+  walker: { points: 300, hp: 110, zones: { core: 2.5, head: 1.5, body: 1, limb: 0.6 }, weak: 'core' },
   drone: { points: 250, hp: 55, zones: { eye: 2.2, body: 1 }, weak: 'eye', bolt: 3.4 },
 };
 export const STAGES = [
@@ -49,7 +50,7 @@ export function script(stageId, difficulty = 'normal', seed = 1) {
   const add = (t, kind, o) => out.push({ t: +t.toFixed(2), kind, hp: Math.round(KINDS[kind].hp * (kind === 'plate' ? 1 : D.hp)), points: KINDS[kind].points, ...o });
   const plate = (t, d, life, o = {}) => add(t, 'plate', { x: +pick(-HALL.half + 0.6, HALL.half - 0.6).toFixed(2), d: +d.toFixed(1), h: +pick(0.9, 1.9).toFixed(2), life: +(life * D.life).toFixed(2), slide: 0, size: 1, ...o });
   const slider = (t, d, life) => plate(t, d, life, { slide: +(side() * pick(0.9, 1.6) * D.speed).toFixed(2) });
-  const far = (t, life) => plate(t, pick(...HALL.tunnel), life, { x: +pick(-HALL.tunnelHalf + 0.25, HALL.tunnelHalf - 0.25).toFixed(2), h: +pick(0.8, 1.7).toFixed(2), size: 0.7 });
+  const far = (t, life) => plate(t, pick(...HALL.tunnel), life, { x: +pick(-HALL.tunnelHalf + 0.3, HALL.tunnelHalf - 0.3).toFixed(2), h: +pick(0.8, 1.7).toFixed(2), size: 1 });
   // A walker crosses the hall in one of the lanes between `lo` and `hi` metres out, from the wing on one side to the
   // wing on the other, and is gone when it gets there.
   const walker = (t, lo, hi) => {
