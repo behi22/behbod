@@ -261,12 +261,17 @@ async function phone(b) {
   await until(p, () => __loft.range.debug.targets.some(t => t.kind === 'walker'));
   const tris = await p.evaluate(() => { const o = __loft.range.targets.live().find(x => x.kind === 'walker'); let n = 0; o.g.traverse(m => { if (m.isMesh) n += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; }); return Math.round(n); });
   check('phone: the robots are built plainer', tris < 6000, `${tris} triangles in a walker`);
-  const layout = await p.evaluate(() => {
+  const fit = () => p.evaluate(() => {
     const r = s => document.querySelector(s)?.getBoundingClientRect();
     const sh = r('.rg-shields'), quit = r('.rg-quit'), ammo = r('.rg-ammo'), over = (a, b) => a && b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
     return { shields: !!sh && sh.width > 40, clear: !over(sh, quit) && !over(sh, ammo), inside: sh && sh.left >= 0 && sh.right <= innerWidth };
   });
+  const layout = await fit();
   check('phone: the shields show on Hard, clear of the Leave button and the rounds', layout.shields && layout.clear && layout.inside, JSON.stringify(layout));
+  await p.setViewportSize({ width: 844, height: 390 }); await st(0.05, 3);
+  const side = await fit();
+  check('phone turned sideways: the shields still clear of the Leave button and the rounds', side.shields && side.clear && side.inside, JSON.stringify(side));
+  await p.setViewportSize({ width: 390, height: 844 }); await st(0.05, 3);
   await p.evaluate(() => __loft.range.film(false));
   await begin(p, 'dark', 'normal', 3);
   await st(0.1, 10);

@@ -64,6 +64,7 @@ const CSS = `
 @media (max-width: 560px) { .rg.rg-touch .rg-ammo, .rg-quit { top: calc(124px + env(safe-area-inset-top, 0px)); } .rg-clock { width: 150px; } .rg-top { min-width: 150px; } }
 .rg-dim { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 40%, rgba(120, 10, 0, .5) 100%); opacity: 0; transition: opacity .5s; }
 .rg-left .rg-shields { margin-top: 7px; gap: 5px; } .rg-left .rg-shields i { width: 20px; height: 7px; border-radius: 2px; box-shadow: 0 0 7px rgba(95, 227, 208, .65); } .rg-left .rg-shields i.off { box-shadow: none; }
+@media (min-width: 561px) { .rg.rg-touch .rg-quit { top: calc(72px + env(safe-area-inset-top, 0px)); } }
 .rg-alert { position: absolute; left: 50%; top: 31%; transform: translate(-50%, -50%); font-size: 17px; letter-spacing: .22em; color: #ff6f61; text-shadow: 0 2px 10px rgba(0, 0, 0, .85); opacity: 0; white-space: nowrap; }
 .rg-alert.on { animation: rg-alert 1.2s ease-out; }
 @keyframes rg-alert { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.3); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
