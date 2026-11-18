@@ -188,8 +188,9 @@ function askRange() {
 }
 function rangeLater() { if (!coarse) setTimeout(askRange, 12000); }
 const bookcase = b2t((meta.doors.find(d => d.id === 'secret')?.pivot || [8, 0, 0])[0] + 0.5, 0, 0);
-function enterRange() {
-  if (mode !== 'walk' || !range.enter()) return;
+// bench: from the gunsmith's bench in the loadout room, straight to it and back here after.
+function enterRange(bench = false) {
+  if (mode !== 'walk' || !range.enter(bench ? { bench: true, at: pos } : undefined)) return;
   mode = 'range'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
 }
@@ -454,6 +455,7 @@ function act(it) {
   // The TV shows the live match: join it as striker or keeper, switch to my videos (it flips through them in turn), or play my film.
   if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
   if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
+  if (it.id === 'rg_bench') return enterRange(true);
   { const said = range.poke(it.id); if (said) return toast(said); }
   toast(SAY[it.id] || it.label);
 }

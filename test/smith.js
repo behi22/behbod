@@ -13,7 +13,8 @@ const NAMES = { pistol: 'P-22', smg: 'Vesper', rifle: 'Keeper', sniper: 'Longvie
 function watch(p, errs, files) {
   p.on('pageerror', e => errs.push(e.message));
   p.on('response', r => { const m = /assets\/range\/(\w+)\.glb/.exec(r.url()); if (m) files.push(m[1]); if (r.status() >= 400) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`); });
-  p.on('requestfailed', r => { if (!/youtube|googlevideo|ytimg/.test(r.url())) errs.push(`failed ${r.url().slice(0, 140)}`); });
+  // The run's music streams, and a stream cut off by leaving or reloading the page is no fault (as test/room.js has it).
+  p.on('requestfailed', r => { if (!/youtube|googlevideo|ytimg/.test(r.url()) && !/run\.mp3/.test(r.url())) errs.push(`failed ${r.url().slice(0, 140)}`); });
   p.on('console', m => { if ((m.type() === 'error' || (m.type() === 'warning' && /\[(loft|range)\]/.test(m.text()))) && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200)); });
 }
 async function open(b, opts, query = '?auto&allguns&gunsmith') {
@@ -167,6 +168,45 @@ const onGun = p => p.evaluate(() => {
     check('the kit is still there after a reload', kept.camo === 'tidepool' && kept.att.length === 4 && kept.charm === 'rivet', JSON.stringify(kept));
     check('no errors after the reload', errs.length === 0, errs.join(' | '));
     await p.close();
+
+    // ---------- the bench in the loadout room ----------
+    const L = await open(b, { viewport: { width: 1280, height: 800 } }, '?auto&allguns');
+    await L.p.evaluate(() => { if (!__loft.world.doors.secret.open) __loft.act('secret'); });
+    await L.p.waitForTimeout(1500);
+    const spot = await L.p.evaluate(() => __loft.range.spots.find(s => s.id === 'rg_bench').at);
+    await L.p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, b2t(...spot));
+    await L.p.waitForTimeout(400);
+    check('standing at the gunsmith bench, it is the thing to press E at', await L.p.evaluate(() => __loft.near === 'rg_bench'));
+    await L.p.waitForFunction(() => __loft.range.display?.group.visible && __loft.range.display.bench?.visible, null, { timeout: 30000 });
+    const shown = await L.p.evaluate(() => ({ pieces: __loft.range.display.group.children.length, gun: __loft.range.display.bench.visible }));
+    check('the board, rack and pegs dressed, the gun in the hand on the bench', shown.pieces === 15 && shown.gun, JSON.stringify(shown));
+    const said = await L.p.evaluate(() => { __loft.act('rg_attach'); return document.getElementById('toast')?.textContent || ''; });
+    check('the board no longer promises things to come', /gunsmith bench/.test(said) && !/once|soon|go up here/i.test(said), said);
+    await L.p.evaluate(() => __loft.act('rg_bench'));
+    await L.p.waitForTimeout(1200);
+    const inBench = await L.p.evaluate(() => ({ open: __loft.range.bench?.open, state: __loft.range.state, mask: __loft.camera.layers.mask, card: !!document.querySelector('.rg-card') }));
+    check('E at the bench opens the gunsmith straight away', inBench.open && inBench.state === 'smith' && inBench.mask === 0 && !inBench.card, JSON.stringify(inBench));
+    await L.p.evaluate(() => { __loft.range.bench.put('optic', 'holo'); __loft.range.bench.put('camo', 'candy'); __loft.range.bench.put('charm', 'cat'); });
+    await L.p.waitForTimeout(1200);
+    await L.p.evaluate(() => document.querySelector('.gs-done').click());
+    await L.p.waitForTimeout(1500);
+    const backHome = await L.p.evaluate(v => ({ active: __loft.range.active, mask: __loft.camera.layers.mask, off: Math.hypot(__loft.pos.x - v.x, __loft.pos.z - v.z), near: __loft.near }), b2t(...spot));
+    check('Done brings you back to the bench, walking', !backHome.active && backHome.mask === 1 && backHome.off < 0.3, JSON.stringify(backHome));
+    await L.p.waitForTimeout(1500);
+    check('the gun on the bench now wears what was chosen', await L.p.evaluate(() => { let holo = false; __loft.range.display.bench.traverse(o => { if (o.name === 'P22_att_holo' && o.visible) holo = true; }); return holo; }));
+    // A look at the room from the firing line.
+    await L.p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, b2t(...(await L.p.evaluate(() => __loft.meta.interact.find(i => i.id === 'range').at))));
+    await L.p.waitForTimeout(400);
+    await L.p.evaluate(() => __loft.act('range'));
+    await L.p.waitForTimeout(1500);
+    const places = await L.p.evaluate(() => __loft.range.loadout.places);
+    for (const [name, at] of [['board', places.attachments[1]], ['rack', places.camos[1]], ['bench', places.bench]]) {
+      await L.p.evaluate(a => __loft.range.lookAt(a[0], a[1], a[2]), at);
+      await L.p.waitForTimeout(700);
+      await L.p.screenshot({ path: `${OUT}/loadout-${name}.png` });
+    }
+    check('no errors in the loadout room', L.errs.length === 0, L.errs.join(' | '));
+    await L.p.close();
 
     // ---------- phones, upright and sideways ----------
     for (const [w, h] of [[390, 844], [844, 390]]) {

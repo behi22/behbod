@@ -64,8 +64,8 @@ async function desktop(b) {
   const places = await p.evaluate(() => __loft.range.loadout.places);
   const inRoom = ([x, y, z]) => x > 5.2 && x < 18.2 && y > -6.7 && y < -0.2 && z > 0 && z < 3.2;
   check('the places kept for the gunsmith, the attachments, the camos and the charms are in the loadout room', JSON.stringify(places.bench) === JSON.stringify(WORLD.points.range_workbench) && places.attachments.length === 4 && places.camos.length === 6 && places.charms.length === 4 && Object.values(places).flat().every(v => Array.isArray(v) ? inRoom(v) : true) && inRoom(places.bench), JSON.stringify(places));
-  const said = await p.evaluate(() => { __loft.act('rg_bench'); return document.getElementById('toast')?.textContent || ''; });
-  check('pressing E at the bench says what it is for', /gunsmith bench/.test(said), said);
+  const bench = await p.evaluate(async () => { __loft.act('rg_bench'); await new Promise(r => setTimeout(r, 600)); const o = { open: !!__loft.range.bench?.open, state: __loft.range.state }; __loft.range.escape(); await new Promise(r => setTimeout(r, 400)); return { ...o, after: __loft.range.active }; });
+  check('pressing E at the bench opens the gunsmith, and Esc brings you back', bench.open && bench.state === 'smith' && bench.after === false, JSON.stringify(bench));
   const wave0 = await p.evaluate(() => __loft.range.loadout.rivet.part.armL.quaternion.toArray());
   await p.evaluate(() => __loft.act('rg_bot'));
   await p.waitForTimeout(600);

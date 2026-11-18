@@ -20,6 +20,8 @@ import { spring, springStep, kick, critical } from '../pure/springs.js';
 import { makeFitter } from './fittings.js';
 import { makeSmith } from './smith.js';
 import { makeScopeView } from './scopeview.js';
+import { makeDisplay } from './display.js';
+import { B } from './decor.js';
 
 // The range: its rooms (fetched after the house) and the game at the firing line. You stand at the bench, look and
 // aim with the mouse, step along the line, duck behind the bench, and shoot what the stage sends: the rules live in
@@ -139,7 +141,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   // ---------- the gunsmith: attachments, finishes and charms, kept per gun in this browser ----------
   // Shown on the stage card with ?gunsmith until the bench has its place in the loadout room.
   const smithOn = typeof location !== 'undefined' && new URLSearchParams(location.search).has('gunsmith');
-  let fitter = null, bench = null, kits = null, benchMask = 0;
+  let fitter = null, bench = null, kits = null, benchMask = 0, benchHome = null, display = null;
   const scopeView = makeScopeView(), lightTo = new THREE.Vector3();
   const between = () => !active || state === 'menu' || state === 'over' || state === 'smith';
   const fitterNow = () => (fitter ||= makeFitter({ renderer: engine.renderer, env: room.env, stars: () => totalStars(progress.rangeBest()), has: id => progress.has?.(id) }));
@@ -148,7 +150,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   function equip(g, id) {
     const k = kitOf(id);
     s = stats(id, k.att); w = newWeapon(s);
-    fitterNow().dress(g, k).then(ok => { if (ok && g === gun) fitted(); });
+    fitterNow().dress(g, k).then(ok => { if (ok && g === gun) { fitted(); display?.showGun(g); } });
     fitted();
   }
   // A rail light is the flashlight: from its lens, along the gun to where the aim meets the hall a dozen metres out.
@@ -167,7 +169,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   }
   // The bench takes the gun in the hand; the house is not drawn behind it (its camera sees nothing while it is open).
   function openBench() {
-    if (!gun || !active || !between()) return false;
+    // Between runs, or straight from the loadout room before the stage card has ever shown ('off').
+    if (!gun || !active || !(between() || state === 'off')) return false;
     bench ||= makeSmith({ engine, coarse, env: room.env, fitter: fitterNow(), onClose: closeBench,
       guns: { owned, take: id => take(id).then(ok => (ok ? gun : null)), stars: () => totalStars(progress.rangeBest()), has: id => progress.has?.(id) } });
     if (!bench.show(gun)) return false;
@@ -179,7 +182,13 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     camera.layers.mask = benchMask || 1;
     kits = null;
     if (gun) { equip(gun, held); gun.draw(); if (s.suppressed) sfx?.gunTake?.(held, true); }
-    if (active) menu();
+    // Opened from the bench in the loadout room: back to walking there; from the stage card: back to it.
+    if (active) { if (benchHome) api.exit(); else menu(); }
+  }
+  // The loadout room's board, rack, pegs and bench top, put up the first time the rooms are in view.
+  function dressRoom() {
+    display = makeDisplay({ stage: room.stage, places: loadout.places, B, fitter: fitterNow(), renderer: engine.renderer, camera, low: coarse || !engine.tier.post });
+    display.build().then(() => { if (gun) display.showGun(gun); }, () => {});
   }
 
   // ---------- the board by the line ----------
@@ -441,7 +450,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     get music() { return music; },
     get spots() { return loadout?.spots || []; },
     poke(id) { return loadout?.poke(id) ?? null; },
-    enter() {
+    // opts: { bench: true, at } from the gunsmith's bench in the loadout room (at: where I stand, to come back to).
+    enter(opts) {
       if (!gun || active) return false;
       active = true; enterK = 0; along = 0; alongV = 0; aimHeld = false; yaw = lastYaw = 0; pitch = lastPitch = 0; duck = 0; baseFov = camera.fov; hadLock = false;
       release();
@@ -452,7 +462,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       hud.show();
       equip(gun, held); gun.draw();
       listen(true);
-      menu();
+      benchHome = opts?.bench && opts.at ? opts.at.clone() : null;
+      if (!benchHome || !openBench()) { benchHome = null; menu(); }
       return true;
     },
     exit() {
@@ -470,7 +481,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       scopeView.hide(); if (bench?.open) bench.close();
       engine.showBackground(true);
       // Back on the yellow line, a step from the bench and short of the crates at the line's end.
-      onExit?.({ at: new THREE.Vector3(THREE.MathUtils.clamp(stand.x + along, R.strafe[0] + 0.5, R.strafe[1] - 0.5), stand.y, stand.z - 0.5) });
+      const home = benchHome; benchHome = null;
+      onExit?.({ at: home || new THREE.Vector3(THREE.MathUtils.clamp(stand.x + along, R.strafe[0] + 0.5, R.strafe[1] - 0.5), stand.y, stand.z - 0.5) });
     },
     // Esc: out of a run to the pause card first, then out of the range.
     escape() {
@@ -509,6 +521,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       lookAt.copy(camera.position).add(v1.set(0, 0, -3).applyQuaternion(camera.quaternion));
     },
     tick(dt, t) {
+      if (!display && loadout && visible()) dressRoom();
       if (bench?.open) { bench.tick(dt); return; }
       if (!gun) return;
       // Out of the range, what was left in the air still lands.
@@ -585,7 +598,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     get owned() { return owned(); },
     take,
     // The gunsmith's bench (open it from the stage card), the scope's picture, each gun's saved kit.
-    openBench, get bench() { return bench; }, get scopeView() { return scopeView; }, kit: id => kitOf(id),
+    openBench, get bench() { return bench; }, get display() { return display; }, get scopeView() { return scopeView; }, kit: id => kitOf(id),
   };
   return api;
 }
