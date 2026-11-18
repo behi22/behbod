@@ -3,6 +3,7 @@ import { makeMusic } from './music.js';
 import { makePiano } from './piano.js';
 import { makeSfx } from './sfx.js';
 import { makeAmbience } from './ambience.js';
+import { makeSaberAudio } from './saber.js';
 
 // Rides on the Sound's own context and master gain, and stays silent until sound.start() has made them.
 export function makeAudio(sound) {
@@ -16,10 +17,10 @@ export function makeAudio(sound) {
     },
     ready() { return sound && sound.on ? env.eng() : null; },
   };
-  const music = makeMusic(env), piano = makePiano(env), sfx = makeSfx(env), amb = makeAmbience(env);
+  const music = makeMusic(env), piano = makePiano(env), sfx = makeSfx(env), amb = makeAmbience(env), saber = makeSaberAudio(env);
 
   return {
-    music, piano, sfx,
+    music, piano, sfx, saber,
     ambience: { set: amb.set },
     setListener(pos, forward) {
       const e = env.eng(), p = vec(pos);
