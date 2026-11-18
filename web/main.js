@@ -105,7 +105,7 @@ try {
 } catch (e) { console.warn('[loft] the 3D outside could not start', e); out3d = null; }
 const outside = makeOutside(scene, meta, screens, { traffic: !out3d });
 const progress = makeProgress(store);
-world.showUnlocks(progress.unlocked());
+world.showUnlocks(progress.unlocked()); screens.showUnlocks(progress.unlocked());
 
 let savedLook = null, wardrobe = null;
 try { savedLook = JSON.parse(store.get('loft.look') || 'null'); } catch (e) { savedLook = null; }
@@ -153,7 +153,7 @@ const range = makeRange({
   // A star earns the achievement; what a run unlocks shows up on the unlock stands and in the wardrobe at once.
   onResult: (res, got) => {
     if (res.stars > 0) earn('range');
-    world.showUnlocks(progress.unlocked()); wardrobe.render();
+    world.showUnlocks(progress.unlocked()); screens.showUnlocks(progress.unlocked()); wardrobe.render();
     return got.unlocks.map(u => UNLOCK_NAMES[u]);
   },
   // Its rooms are drawn while I am in them or the bookcase door stands open.

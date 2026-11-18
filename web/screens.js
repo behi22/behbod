@@ -324,6 +324,7 @@ export function makeCanvases(meta, opts = {}) {
     holiday,
     // The 3D outside replaces the painted backdrop, so its half-minute repaint (a big upload, a stall) stops.
     stopBackdrop() { backdrop = false; },
+    showUnlocks: ids => panels.showUnlocks(ids),
     // `near`: the desk's screens are in sight; out of sight they are not repainted (each repaint is an upload).
     tick(now, dt, focused, near = true) {
       acc += dt; slow += dt;

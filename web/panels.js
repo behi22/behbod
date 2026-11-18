@@ -381,8 +381,15 @@ export function makePanels(surface, ctx) {
     }
   }, 60000);
 
-  for (const [k, label] of [['unlock_kit', 'keeper kit'], ['unlock_gold', 'gold'], ['unlock_visor', 'red visor']]) {
-    add(k, 260, 80, g => { g.fillStyle = '#05080c'; g.fillRect(0, 0, 260, 80); text(g, 'LOCKED', 130, 34, 22, '#5fd0ff', 700, MONO, 'center'); text(g, label, 130, 64, 18, '#9be3ff', 400, MONO, 'center'); });
+  let won = [];
+  const SIGNS = [['unlock_kit', 'kit', 'keeper kit'], ['unlock_gold', 'gold', 'gold'], ['unlock_visor', 'visor', 'red visor']];
+  for (const [k, id, label] of SIGNS) {
+    add(k, 260, 80, g => {
+      const got = won.includes(id);
+      g.fillStyle = got ? '#0c0904' : '#05080c'; g.fillRect(0, 0, 260, 80);
+      text(g, got ? 'UNLOCKED' : 'LOCKED', 130, 34, 22, got ? '#ffd34d' : '#5fd0ff', 700, MONO, 'center');
+      text(g, label, 130, 64, 18, got ? '#ffe9a8' : '#9be3ff', 400, MONO, 'center');
+    });
   }
   add('backgammon', 460, 320, g => {
     g.fillStyle = '#5a3a1e'; g.fillRect(0, 0, 460, 320);
@@ -414,5 +421,6 @@ export function makePanels(surface, ctx) {
     tick(now) { for (const l of live) if (now - l.last > l.every) { l.last = now; l.f(now); } },
     // Once the web fonts arrive, draw everything again so the text uses them.
     redrawAll() { for (const f of Object.values(draws)) f(Date.now()); },
+    showUnlocks(ids) { won = ids; for (const [k] of SIGNS) redraw(k); },
   };
 }
