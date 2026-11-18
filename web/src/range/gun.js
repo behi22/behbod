@@ -7,7 +7,7 @@ import { spring, springStep, kick, critical, smoother, approach } from '../pure/
 import { blend, qFrame, relaxed } from '../pure/hands.js';
 import { LOW, ELBOWS } from '../pure/handling.js';
 import { HOLDS } from './holds.js';
-import { CLIPS, sample, cues } from '../pure/clips.js';
+import { CLIPS, sample, cues, owed } from '../pure/clips.js';
 import { RIGS } from '../pure/rigs.js';
 
 // Its own scene, its camera at the eye, drawn on a fresh depth so it never pokes through the bench or a wall.
@@ -216,7 +216,10 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
         st.inspT += dt;
         const C = clipsOf(s);
         if (st.inspT >= C.inspect.T) st.inspT = -1;
-        else if (input.aim || w.phase !== 'ready') { st.outFrom = { ...sample(C.inspect, st.inspT), slide: null }; st.outK = 1; st.inspT = -1; }
+        else if (input.aim || w.phase !== 'ready') {
+          st.outFrom = { ...sample(C.inspect, st.inspT), slide: null }; st.outK = 1; st.inspT = -1;
+          if (st.clip === C.inspect) for (const name of owed(C.inspect, st.clipT)) onCue?.(name, id);
+        }
       }
       if (st.outK > 0) st.outK = Math.max(0, st.outK - dt / 0.18);
       st.drawT += dt;

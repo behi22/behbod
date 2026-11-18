@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { RIGS, partNames } from '../../web/src/pure/rigs.js';
-import { CLIPS, sample } from '../../web/src/pure/clips.js';
+import { CLIPS, sample, owed } from '../../web/src/pure/clips.js';
 import { GUN_HOLDS, solveHolds } from '../../web/src/pure/handling.js';
 import { HOLDS } from '../../web/src/range/holds.js';
 import { GUN_SOUNDS, gunSound, soundsFor } from '../../web/src/audio/pure/gunsound.js';
@@ -97,6 +97,15 @@ test('a feed cover: lifted before the box comes off, the belt hidden from the bo
     assert.equal(sample(C.reload, 0).belt, true);
     assert.equal(sample(C.reloadEmpty, 0).belt, false, `${id}: the belt shows again at the start of a reload from empty`);
   }
+});
+
+test('a look over cut short while it holds the action open owes the sound of it shutting, and only then', () => {
+  const C = id => CLIPS[id](stats(id, []));
+  assert.deepEqual(owed(C('sniper').inspect, 2.6), ['boltClose']);
+  assert.deepEqual(owed(C('lmg').inspect, 2.6), ['coverClose']);
+  for (const id of ['sniper', 'lmg']) for (const t of [0.5, 2.3, 3.2]) assert.deepEqual(owed(C(id).inspect, t), [], `${id} at ${t}`);
+  // The slide guns hear theirs from the hand letting go (gun.js), so nothing is owed twice.
+  for (const id of ['pistol', 'smg', 'rifle']) assert.deepEqual(owed(C(id).inspect, 2.6), [], id);
 });
 
 test('each gun\'s sounds are clean two-channel takes ending in silence, and the suppressed shot waits for a suppressor', () => {

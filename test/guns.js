@@ -175,6 +175,15 @@ const run = (p, sec) => p.evaluate(async n => { for (let i = 0; i < n; i++) { __
       const lmg = await p.evaluate(() => !!__loft.range.gun.part.cover);
       const [opens, shuts] = turn ? ['boltOpen', 'boltClose'] : lmg ? ['coverOpen', 'coverClose'] : ['slidePull', 'slideHome'];
       check(`${id}: F looks it over, opens the action a little and gives it back`, looking && !(await p.evaluate(() => __loft.range.gun.inspecting)) && since(h0, h1, id).includes(opens) && since(h0, h1, id).includes(shuts), JSON.stringify(since(h0, h1, id)));
+      // Cut short by the aim while the action is open, it is heard shutting, once.
+      h0 = await heard(p);
+      await p.keyboard.press('KeyF');
+      await run(p, 2.6);
+      await p.evaluate(() => __loft.range.press('aim', true)); await run(p, 0.5);
+      await p.evaluate(() => __loft.range.press('aim', false)); await run(p, 0.4);
+      h1 = await heard(p);
+      const cutSaid = since(h0, h1, id);
+      check(`${id}: a look over cut short with the action open is heard shutting it`, cutSaid.includes(opens) && cutSaid.at(-1) === shuts && cutSaid.filter(c => c === shuts).length === 1, JSON.stringify(cutSaid));
       const bank = await p.evaluate(() => __loft.audio.sfx.gunSoundStats());
       check(`${id}: only its own sounds are kept`, bank.gun === id && bank.bytes > 1e6 && bank.bytes < 6e6, JSON.stringify(bank));
       await p.evaluate(() => { __loft.range.film(false); __loft.range.escape(); });

@@ -38,6 +38,12 @@ export function sample(clip, t) {
 export function cues(clip, t0, t1) {
   return (clip.cues || []).filter(([t]) => t > t0 && t <= t1).map(([, name]) => name);
 }
+// Cut short at t (its cues heard up to t), a clip still owes the sound of an action it opened shutting.
+const SHUTS = [['boltOpen', 'boltClose'], ['coverOpen', 'coverClose']];
+export function owed(clip, t) {
+  const at = name => (clip.cues || []).find(c => c[1] === name)?.[0];
+  return SHUTS.filter(([open, shut]) => at(open) <= t && t < at(shut)).map(([, shut]) => shut);
+}
 
 // ---------- the pistol (s: its numbers from stats() in src/pure/arsenal.js) ----------
 export function pistolClips(s) {
