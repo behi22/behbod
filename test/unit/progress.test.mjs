@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeProgress } from '../../web/src/pure/progress.js';
+import { sanitizeLook } from '../../web/src/pure/look.js';
 
 const memory = (init = {}) => { const m = { ...init }; return { get: k => m[k] ?? null, set: (k, v) => { m[k] = v; }, m }; };
 
@@ -88,4 +89,47 @@ test('range stars: unknown stages and odd numbers are refused, and tampered save
 test('a score from the first range still counts for what it unlocked then', () => {
   const p = makeProgress(memory({ 'loft.progress': JSON.stringify({ best: { range: 36 } }) }));
   assert.deepEqual(p.unlocked(), ['kit', 'gold']);
+});
+
+test('the first range\'s scores keep exactly what they unlocked then, mark by mark', () => {
+  const at = score => makeProgress(memory({ 'loft.progress': JSON.stringify({ best: { range: score } }) })).unlocked();
+  assert.deepEqual(at(19), []);
+  assert.deepEqual(at(20), ['kit']);
+  assert.deepEqual(at(34), ['kit']);
+  assert.deepEqual(at(35), ['kit', 'gold']);
+  assert.deepEqual(at(49), ['kit', 'gold']);
+  assert.deepEqual(at(50), ['kit', 'gold', 'visor', 'vault']);
+});
+
+test('a save from the first range keeps its unlocks, achievement and look through runs on the new one', () => {
+  const s = memory({ 'loft.progress': JSON.stringify({ earned: ['range', 'piano'], best: { range: 22, chess: 2 }, heads: ['hood'] }) });
+  const p = makeProgress(s);
+  assert.deepEqual(p.unlocked(), ['kit'], 'the keeper kit it won then');
+  assert.deepEqual(p.rangeResult('warmup', 'easy', 3, 900).unlocks, ['gold'], 'gold is new; the kit is not won twice');
+  assert.deepEqual(p.rangeResult('walkers', 'normal', 1, 600).unlocks, [], 'a star on the walkers adds nothing it already had');
+  const again = makeProgress(s);
+  assert.equal(again.best('range'), 22, 'the old score is still saved');
+  assert.equal(again.best('chess'), 2);
+  assert.deepEqual(again.unlocked(), ['kit', 'gold']);
+  assert.deepEqual(again.list().map(a => a.id), ['range', 'piano']);
+  assert.deepEqual(again.rangeBest(), { warmup: { easy: 3 }, walkers: { normal: 1 } });
+  assert.equal(sanitizeLook({ outfit: 'kit' }, { unlocked: again.unlocked() }).outfit, 'kit', 'the keeper kit is still worn');
+  assert.equal(sanitizeLook({ outfit: 'kit' }, { unlocked: makeProgress(memory()).unlocked() }).outfit, null, 'and not by someone who never won it');
+});
+
+test('the old unlocks move to the new range as decided: the kit on the walkers, gold on any three-star stage, the visor and the vault on every stage on Hard', () => {
+  const fresh = () => makeProgress(memory());
+  const kit = fresh();
+  assert.deepEqual(kit.rangeResult('warmup', 'hard', 2, 900).unlocks, [], 'two stars on the warm-up: nothing');
+  assert.deepEqual(kit.rangeResult('walkers', 'easy', 1, 300).unlocks, ['kit'], 'clearing the walkers on any difficulty');
+  for (const stage of ['warmup', 'walkers', 'swarm', 'dark', 'long']) {
+    const p = fresh();
+    assert.deepEqual(p.rangeResult(stage, 'easy', 3, 900).unlocks, stage === 'walkers' ? ['kit', 'gold'] : ['gold'], `three stars on ${stage}`);
+  }
+  const top = fresh();
+  for (const stage of ['warmup', 'walkers', 'swarm', 'dark']) top.rangeResult(stage, 'hard', 3, 900);
+  top.rangeResult('long', 'normal', 3, 900);
+  assert.ok(!top.unlocked().includes('visor'), 'three stars on the last stage on Normal is not enough');
+  assert.deepEqual(top.rangeResult('long', 'hard', 2, 900).unlocks, [], 'nor two on Hard');
+  assert.deepEqual(top.rangeResult('long', 'hard', 3, 900).unlocks, ['visor', 'vault']);
 });

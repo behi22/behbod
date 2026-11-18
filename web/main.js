@@ -402,7 +402,7 @@ const SAY = {
   wall: 'The weather and this month, holidays circled.',
   trophies: 'The trophy shelf.',
   collection: 'The collection case.',
-  unlocks: 'Win these at the range: the keeper kit, the gold colourway and the red visor.',
+  unlocks: 'Win these at the range: the keeper kit for a star on Walkers, the gold colourway for three stars on any stage, the red visor for three stars on every stage on Hard.',
   mirror: 'Looking good.',
 };
 // The arcade, the mini goal and the console all play the shootout; the boards play their own games.
