@@ -33,7 +33,8 @@
   .tag b { color: var(--accent); font-weight: 700; }
   .stats { position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); top: calc(52px + env(safe-area-inset-top, 0px)); font-size: 11px; color: var(--dim); text-align: right; display: none; }
   .gate { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, #0d1420 0%, #05070b 70%); z-index: 5; transition: opacity .6s; }
-  .gate.gone { opacity: 0; pointer-events: none; }
+  /* Once faded the door is hidden outright, or its buttons stay clickable and reachable by Tab in the middle of the screen. */
+  .gate.gone { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .6s, visibility 0s linear .6s; }
   .gate .box { text-align: center; padding: 0 16px; }
   .gate h1 { font-size: 15px; letter-spacing: .3em; font-weight: 700; margin: 0 0 18px; color: var(--accent); }
   .bar { width: min(320px, 80vw); height: 3px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; margin: 0 auto 16px; }

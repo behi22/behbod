@@ -65,6 +65,12 @@ async function chrome() {
     await p.waitForTimeout(1500);
     const inside = await p.evaluate(() => ({ film: !!document.querySelector('.video.film'), gate: document.querySelector('#gate').classList.contains('gone'), gain: __loft.houseGain, mode: __loft.mode }));
     check(`${tag}: skipping lets you in, sound back on`, !inside.film && inside.gate && inside.gain > 0.8 && inside.mode === 'walk', JSON.stringify(inside));
+    // Regression: the faded door's buttons stayed clickable (and reachable by Tab) in the middle of the screen all visit.
+    const door = await p.evaluate(() => [...document.querySelectorAll('#gate button')].map(b => {
+      const r = b.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { id: b.id, hit: !!hit && !!hit.closest('#gate'), shown: getComputedStyle(b).visibility !== 'hidden' };
+    }));
+    check(`${tag}: once inside, the door's buttons can no longer be pressed or reached`, door.length === 2 && door.every(d => !d.hit && !d.shown), JSON.stringify(door));
     const f2 = await p.evaluate(() => __loft.renderer.info.render.frame);
     await p.waitForTimeout(500);
     const drawing = await p.evaluate(f => __loft.renderer.info.render.frame > f, f2);
