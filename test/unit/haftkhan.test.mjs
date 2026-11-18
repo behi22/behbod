@@ -27,7 +27,7 @@ function perfect(st) {
 
 test('seven labours in the order of the story, each with its words', () => {
   assert.deepEqual(LABOURS.map(l => l.id), ['lion', 'desert', 'dragon', 'sorceress', 'olad', 'arzhang', 'whitediv']);
-  for (const l of LABOURS) assert.ok(l.name && l.how && l.how.length <= 60 && l.par > 0 && !/[–—]/.test(l.name + l.how), l.id);
+  for (const l of LABOURS) assert.ok(l.name && l.how && l.how.length <= 60 && l.par > 0 && !/[\u2013\u2014]/.test(l.name + l.how), l.id);
 });
 
 test('a round starts with its words, which a press skips after a moment', () => {

@@ -12,7 +12,7 @@ const len = v => Math.hypot(...v);
 const visible = JSON.stringify([S.COUPLET, S.NOTE_SAY, S.STORIES, S.FIRESIDE, S.PLAQUES, S.ferdowsiLines()]);
 
 test('the words: no long dashes, Persian letters (not the Arabic look-alikes), the couplet as he chose it', () => {
-  assert.ok(!/[–—]/.test(visible), 'no long dashes');
+  assert.ok(!/[\u2013\u2014]/.test(visible), 'no long dashes');
   assert.ok(!/[كي]/.test(visible), 'Persian kaf and ye, not Arabic');
   assert.equal(S.COUPLET.fa.join(' · '), 'توانا بود هر که دانا بود · ز دانش دل پیر برنا بود');
   assert.equal(S.COUPLET.en, 'Whoever knows is strong; with knowledge an old heart grows young.');
@@ -105,7 +105,7 @@ test('nowruz: the countdown, the days of Nowruz, and the year after', () => {
   assert.equal(nextNowruz(new Date('2027-04-03T00:00:00Z')).getUTCFullYear(), 2028);
   assert.equal(nextNowruz(new Date('2027-03-30T00:00:00Z')).getUTCFullYear(), 2027);
   assert.equal(nextNowruz(new Date('2027-01-01T00:00:00Z')).getUTCFullYear(), 2027);
-  for (const d of ['2026-01-01', '2026-06-01', '2026-12-31', '2027-03-25']) for (const l of nowruzLines(new Date(d + 'T12:00:00Z'))) assert.ok(l.length <= 66 && !/[–—]/.test(l), l);
+  for (const d of ['2026-01-01', '2026-06-01', '2026-12-31', '2027-03-25']) for (const l of nowruzLines(new Date(d + 'T12:00:00Z'))) assert.ok(l.length <= 66 && !/[\u2013\u2014]/.test(l), l);
 });
 
 test('the reader: tabs, picture and story inside the window and apart; one page each at the size it opens', async () => {
