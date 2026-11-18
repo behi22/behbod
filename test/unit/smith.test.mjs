@@ -162,3 +162,43 @@ test('before and after: each attachment moves the bars it should, the right way'
   const r = compare('smg', [], ['mag']).find(x => x.id === 'mag');
   assert.deepEqual([r.fromText, r.toText], ['30', '45']);
 });
+
+test('the P-22\'s free hand cups the extended magazine by its own foot, into neither the magazine nor the grip', async () => {
+  const { GUN_HOLDS, solveHolds, bake } = await import('../../web/src/pure/handling.js');
+  const { HOLDS } = await import('../../web/src/range/holds.js');
+  const { digit, toOuter, palmPoints, FINGERS } = await import('../../web/src/pure/hands.js');
+  const H = GUN_HOLDS.pistol, holds = solveHolds('pistol'), C = holds.left.magX;
+  assert.deepEqual(HOLDS.pistol.left.magX, bake(holds).left.magX, 'run node blender/holds.js');
+  const magged = p => Math.min(H.long.mag(p), H.shape(p)), down = [-0.333, -0.943, 0], foot = [-0.0298, -0.1515, 0];
+  const below = palmPoints('left').map(p => toOuter(C, p)).map(p => p.reduce((s, x, i) => s + (x - foot[i]) * down[i], 0));
+  assert.ok(below.every(d => d > -0.004), `the palm is under the long foot: ${below.map(d => d.toFixed(4))}`);
+  assert.ok(Math.min(...palmPoints('left').map(p => magged(toOuter(C, p)))) < 0.002, 'and pressed to it');
+  for (const d of [...FINGERS, 'thumb']) {
+    const { pts, r } = digit('left', d, C.digits[d]);
+    for (let b = 0; b < 3; b++) for (let k = 1; k <= 16; k++) {
+      const u = k / 16, p = pts[b].map((x, i) => x + (pts[b + 1][i] - x) * u);
+      assert.ok(magged(toOuter(C, p)) - (r[b] + (r[b + 1] - r[b]) * u) > -0.0025, `${d} into the magazine or grip`);
+    }
+  }
+  // The standard magazine's cup would sit inside the long one: that is why it has its own.
+  assert.ok(Math.min(...palmPoints('left').map(p => H.long.mag(toOuter(holds.left.mag, p)))) < 0, 'the old cup is inside the long magazine');
+});
+
+test('the kit file holds every piece and mark the long guns ask for; each gun says where its charm hangs', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { RIGS } = await import('../../web/src/pure/rigs.js');
+  const b = readFileSync(new URL('../../web/assets/range/kit.glb', import.meta.url));
+  const names = new Set(JSON.parse(b.toString('utf8', 20, 20 + b.readUInt32LE(12))).nodes.map(n => n.name));
+  for (const n of ['KIT_light', 'KIT_light_lens', 'KIT_holo', 'KIT_holo_aim', 'KIT_scope', 'KIT_scope_aim', 'KIT_scope_long', 'KIT_scope_long_aim', 'KIT_riser']) assert.ok(names.has(n), n);
+  for (const id of IDS) {
+    const k = RIGS[id].kit;
+    assert.ok(k && k.hook.length === 3 && k.hook.every(Number.isFinite) && k.hook[2] < 0, `${id}: a hook on its left side`);
+    for (const n of [`KIT_sup_${id}`, `KIT_sup_${id}_end`, ...(k.own?.includes('mag') ? [] : [`KIT_mag_${id}`]), ...(k.light ? [k.light, k.light + '_lens'] : [])]) assert.ok(names.has(n), n);
+    if (k.scope) assert.ok(names.has(k.scope) && names.has(k.scope + '_aim'), k.scope);
+    if (k.optic) assert.ok(RIGS[id].parts[k.optic], `${id}: the optic rides ${k.optic}, a part`);
+  }
+  assert.ok(b.length < 600 * 1024, `kit.glb is ${b.length} bytes`);
+  // No piece packed from a mesh with a point flung far off (the packing then hides the whole piece).
+  const json = JSON.parse(b.toString('utf8', 20, 20 + b.readUInt32LE(12)));
+  for (const n of json.nodes) for (const v of [...(n.translation || []), ...(n.scale || [])]) assert.ok(Math.abs(v) < 2, `${n.name}: ${v}`);
+});

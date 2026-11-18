@@ -823,8 +823,219 @@ def gatekeeper():
     })
 
 
-FILES = {'pistol': 'p22', 'smg': 'vesper', 'rifle': 'keeper', 'sniper': 'longview', 'lmg': 'gatekeeper'}
-BUILD = {'pistol': pistol, 'smg': vesper, 'rifle': keeper, 'sniper': longview, 'lmg': gatekeeper}
+# ---------- the kit: the long guns' attachments, each built about its gun's mount (the P-22 carries its own) ----------
+def lathe(name, prof, mat, za=0.0, seg=32):
+    """A round body turned about the x axis at height za from a profile [(x, r), ...]: one closed shell, no booleans
+    (exact booleans between cylinders on one axis fling points far off). A point with r = 0 closes that end."""
+    bm = bmesh.new()
+    rings = []
+    for x, r in prof:
+        if r < 1e-7:
+            rings.append([bm.verts.new((x, 0, za))])
+        else:
+            rings.append([bm.verts.new((x, r * math.cos(2 * math.pi * k / seg), za + r * math.sin(2 * math.pi * k / seg))) for k in range(seg)])
+    for a, b in zip(rings, rings[1:]):
+        for k in range(seg):
+            j = (k + 1) % seg
+            if len(a) == 1 and len(b) > 1:
+                bm.faces.new((a[0], b[j], b[k]))
+            elif len(b) == 1 and len(a) > 1:
+                bm.faces.new((a[k], a[j], b[0]))
+            elif len(a) > 1:
+                bm.faces.new((a[k], a[j], b[j], b[k]))
+    for ring in (rings[0], rings[-1]):
+        if len(ring) > 1:
+            bm.faces.new(ring)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    o = cad.obj_from(name, bm, mat)
+    cad.smooth(o, 40)
+    cad.box_uv(o)
+    return o
+
+
+def kit_light(name='KIT_light', k=1.0):
+    """A rail light hanging under a rail whose underside is at z = 0: a clamp, a body, a ribbed head, a tail switch;
+    k sizes it (the pistol's is smaller)."""
+    clamp = cad.box('clamp', (0.032, 0.025, 0.007), (0.008, 0, -0.0035), M['dark'])
+    jaws = [cad.box('jaw', (0.03, 0.0025, 0.009), (0.008, s * 0.0118, 0.0005), M['dark']) for s in (1, -1)]
+    cad.union(clamp, jaws)
+    done(clamp, 0.0005)
+    zc = -0.0185
+    # The body and its ribbed head, the lens set into the front.
+    prof = [(-0.01, 0.0), (-0.01, 0.0102), (-0.0094, 0.0108), (0.047, 0.0108), (0.048, 0.0128)]
+    for i in range(4):
+        x = 0.0505 + i * 0.0035
+        prof += [(x, 0.0128), (x, 0.0119), (x + 0.0013, 0.0119), (x + 0.0013, 0.0128)]
+    prof += [(0.0674, 0.0128), (0.068, 0.0122), (0.068, 0.0108), (0.066, 0.0108), (0.066, 0.0)]
+    body = lathe('KIT_light', prof, M['dark'], zc, 28)
+    neck = done(cad.box('neck', (0.03, 0.012, 0.012), (0.008, 0, -0.009), M['dark']), 0.0005)
+    lens = cad.cyl('lens', 0.0104, 0.0008, (0.0664, 0, zc), M['beam'], seg=28)
+    tail = done(cad.cyl('tail', 0.0072, 0.008, (-0.013, 0, zc), M['poly'], seg=20), 0.0008, 2)
+    cad.box_uv(lens)
+    o = cad.join(name, [body, neck, clamp, lens, tail])
+    o.data.transform(Matrix.Scale(k, 4))
+    empty(name + '_lens', (0.067 * k, 0, zc * k), o)
+    return o
+
+
+def kit_suppressor(gid, r, back, length):
+    """A can that slides over the gun's muzzle device and runs on past it; the empty marks where the shot leaves."""
+    # Hollow at the back where the muzzle device goes, three grooves to grip it by, the bore out of the front.
+    prof = [(0.0, 0.0), (0.0, r - 0.0022), (-back, r - 0.0022), (-back, r - 0.0006), (-back + 0.0006, r)]
+    for i in range(3):
+        x = -back + 0.0112 + i * 0.006
+        prof += [(x, r), (x, r - 0.0008), (x + 0.0016, r - 0.0008), (x + 0.0016, r)]
+    prof += [(length - 0.0006, r), (length, r - 0.0006), (length, 0.0045), (length - 0.02, 0.0045), (length - 0.02, 0.0)]
+    can = lathe(f'KIT_sup_{gid}', prof, M['dark'], 0.0, 28)
+    cap = done(cad.tube('cap', r + 0.0006, 0.0045, 0.008, (length - 0.004, 0, 0), M['steel'], seg=24), 0.0006, 1)
+    o = cad.join(f'KIT_sup_{gid}', [can, cap])
+    empty(f'KIT_sup_{gid}_end', (length, 0, 0), o)
+    return o
+
+
+def kit_holo():
+    """A holographic sight on a rail whose top is at z = 0: a clamp, a battery body, a hood with a glass and a ring reticle."""
+    base = cad.box('KIT_holo', (0.046, 0.026, 0.007), (0.0, 0, 0.0035), M['dark'])
+    body = cad.outline('body', [(-0.024, 0.006), (0.004, 0.006), (0.004, 0.016), (-0.006, 0.019), (-0.024, 0.019)], 0.011, M['dark'])
+    hood = cad.box('hood', (0.03, 0.036, 0.032), (0.012, 0, 0.022), M['dark'])
+    cad.cut(hood, [cad.box('c', (0.04, 0.03, 0.025), (0.012, 0, 0.0225))])
+    cad.union(base, [body, hood])
+    cad.cut(base, [cad.box('c', (0.004, 0.03, 0.0025), (-0.004 + i * 0.008, 0, 0.0005)) for i in range(3)])
+    done(base, 0.0006, 2)
+    buttons = [done(cad.box('btn', (0.005, 0.002, 0.004), (-0.012 + i * 0.008, -0.0062, 0.0125), M['poly']), 0.0005, 1) for i in range(2)]
+    glass = cad.box('glass', (0.0007, 0.03, 0.025), (0.016, 0, 0.0225), M['glass'])
+    ring = cad.tube('ring', 0.0062, 0.0054, 0.0003, (0.0155, 0, 0.0225), M['reticle'], axis='X', seg=32)
+    dot = cad.cyl('dot', 0.0009, 0.0003, (0.0155, 0, 0.0225), M['reticle'], seg=14)
+    for o in [glass, ring, dot]:
+        cad.box_uv(o)
+    o = cad.join('KIT_holo', [base, glass, ring, dot] + buttons)
+    empty('KIT_holo_aim', (-0.024, 0, 0.0225), o)
+    return o
+
+
+def kit_scope(name, tube_r, x0, x1, bell_r, bell_len, eye_r, eye_len, za, rings):
+    """A scope on a rail whose top is at z = 0: tube from x0 to x1 at height za, a bell out front, an eyepiece behind."""
+    parts = []
+    fx, rx = x1 + 0.016 + bell_len, x0 - 0.012 - eye_len
+    # Eyepiece, its focus ring, the tube, the cone out to the bell; each lens set back 3 mm into its end.
+    g = rx + eye_len * 0.4
+    prof = [(rx + 0.003, 0.0), (rx + 0.003, eye_r - 0.0018), (rx, eye_r - 0.0018), (rx, eye_r - 0.0006), (rx + 0.0006, eye_r),
+            (g - 0.00075, eye_r), (g - 0.00075, eye_r - 0.0008), (g + 0.00075, eye_r - 0.0008), (g + 0.00075, eye_r),
+            (x0 - 0.012, eye_r), (x0, tube_r), (x1, tube_r), (x1 + 0.016, bell_r), (fx - 0.0006, bell_r), (fx, bell_r - 0.0006),
+            (fx, bell_r - 0.0018), (fx - 0.003, bell_r - 0.0018), (fx - 0.003, 0.0)]
+    parts.append(lathe(name, prof, M['slide'], za, 32))
+    tx = (x0 + x1) / 2
+    for ang in (0, -math.pi / 2):
+        t = cad.cyl('turret', tube_r * 0.62, tube_r * 0.95, (tx, 0, za + tube_r + tube_r * 0.45), M['dark'], axis='Z', seg=24)
+        cad.cut(t, [cad.box('c', (0.0012, 0.03, 0.006), (tx + tube_r * 0.6 * math.cos(k * math.pi / 6), tube_r * 0.6 * math.sin(k * math.pi / 6), za + tube_r * 1.6), rot=('Z', k * math.pi / 6)) for k in range(12)])
+        if ang:
+            t.data.transform(Matrix.Translation((tx, 0, za)) @ Matrix.Rotation(ang, 4, 'X') @ Matrix.Translation((-tx, 0, -za)))
+        done(t, 0.0004, 1)
+        parts.append(t)
+    for x in rings:
+        ring = cad.tube('mount', tube_r + 0.0032, tube_r - 0.0002, 0.009, (x, 0, za), M['dark'], seg=32)
+        foot = cad.box('foot', (0.012, 0.024, za - tube_r), (x, 0, (za - tube_r) / 2), M['dark'])
+        bolt_ = cad.cyl('bolt', 0.0022, 0.03, (x, 0, 0.004), M['steel'], axis='Y', seg=12)
+        cad.union(ring, [foot])
+        done(ring, 0.0005, 1)
+        cad.box_uv(bolt_)
+        parts += [ring, bolt_]
+    lens_f = cad.cyl('lensf', bell_r - 0.0018, 0.0006, (fx - 0.0026, 0, za), M['glass'], seg=32)
+    lens_r = cad.cyl('lensr', eye_r - 0.0018, 0.0006, (rx + 0.0026, 0, za), M['glass'], seg=32)
+    for o in (lens_f, lens_r):
+        cad.box_uv(o)
+    o = cad.join(name, parts + [lens_f, lens_r])
+    empty(name + '_aim', (rx, 0, za), o)
+    return o
+
+
+def kit_riser():
+    """A riser block that lifts an optic clear of the Gatekeeper's rear sight, with its own rail on top."""
+    o = cad.box('KIT_riser', (0.05, 0.022, 0.016), (0.0, 0, 0.008), M['dark'])
+    cad.cut(o, [cad.box('c', (0.0045, 0.03, 0.0035), (-0.02 + i * 0.01, 0, 0.016)) for i in range(5)] + [cad.box('c', (0.03, 0.03, 0.006), (0, 0, 0.0))])
+    return done(o, 0.0006, 1)
+
+
+def plus(objs, text, size, at, y):
+    o = cad.text('mk', text, size, (at[0], y, at[1]), M['mark'], rot_z=math.pi)
+    cad.box_uv(o)
+    objs.append(o)
+
+
+def kit_mags():
+    """The extended magazines, each about its gun's own magazine origin so it drops into the gun's magazine in place."""
+    out = []
+    # The Vesper's 45: the same stick drawn half as long again.
+    top, bot = 0.010, -0.262
+    body = cad.outline('mag', [(0.0935, top), (0.1215, top), (0.1245, bot), (0.0905, bot)], 0.0105, M['dark'])
+    cad.cut(body, [cad.box('c', (0.022, 0.03, 0.0016), (0.1075, 0, z)) for z in (-0.03, -0.075, -0.12, -0.165, -0.21)])
+    done(body, 0.0006, 2)
+    pad = done(cad.outline('pad', [(0.0885, bot + 0.003), (0.1265, bot + 0.003), (0.1285, bot - 0.011), (0.0865, bot - 0.011)], 0.0125, M['slate']), 0.0015, 3)
+    lip = done(cad.outline('lip', [(0.0945, top + 0.0005), (0.1205, top + 0.0005), (0.1205, top - 0.004), (0.0945, top - 0.004)], 0.0072, M['poly']), 0.0004)
+    parts = [body, pad, lip]
+    plus(parts, '+15', 0.0055, (0.1075, bot - 0.0085), 0.01255)
+    out.append(cad.origin(cad.join('KIT_mag_smg', parts), (0.1075, 0, -0.09)))
+    # The Keeper's 42: the curve carried on down.
+    body = cad.outline('mag', [(0.096, 0.008), (0.150, 0.008), (0.152, -0.04), (0.158, -0.09), (0.168, -0.14), (0.180, -0.178), (0.193, -0.215), (0.205, -0.245),
+                               (0.147, -0.258), (0.135, -0.228), (0.124, -0.192), (0.112, -0.145), (0.104, -0.095), (0.099, -0.045)], 0.0108, M['dark'])
+    cad.cut(body, [cad.box('c', (0.06, 0.03, 0.0018), (0.13 + k * 0.014, 0, z), rot=('Y', deg(-8 - k * 6))) for k, z in enumerate((-0.03, -0.085, -0.135, -0.19))])
+    done(body, 0.0007, 2)
+    pad = done(cad.outline('pad', [(0.146, -0.254), (0.208, -0.238), (0.214, -0.25), (0.153, -0.27), (0.143, -0.264)], 0.0128, M['poly']), 0.0015, 3)
+    parts = [body, pad]
+    plus(parts, '+12', 0.0055, (0.178, -0.257), 0.0129)
+    out.append(cad.origin(cad.join('KIT_mag_rifle', parts), (0.125, 0, -0.09)))
+    # The Longview's 8: a deeper box.
+    body = done(cad.outline('mag', [(0.097, 0.006), (0.163, 0.006), (0.163, -0.105), (0.097, -0.105)], 0.0115, M['dark']), 0.0007, 2)
+    pad = done(cad.outline('pad', [(0.094, -0.103), (0.166, -0.103), (0.166, -0.117), (0.094, -0.117)], 0.0132, M['poly']), 0.002, 3)
+    parts = [body, pad]
+    plus(parts, '+3', 0.007, (0.13, -0.112), 0.0133)
+    out.append(cad.origin(cad.join('KIT_mag_sniper', parts), (0.13, 0, -0.035)))
+    # The Gatekeeper's 150: a deeper box, the latch and carry handle where they were.
+    box_ = cad.box('box', (0.1, 0.07, 0.16), (0.155, 0.015, -0.085), M['ember'])
+    cad.cut(box_, [cad.box('c', (0.106, 0.08, 0.002), (0.155, 0.015, -0.03))] + [cad.box('c', (0.002, 0.08, 0.1), (0.12 + i * 0.023, 0.015, -0.095)) for i in range(4)])
+    done(box_, 0.003, 2)
+    latch = done(cad.box('latch', (0.02, 0.006, 0.012), (0.155, 0.0515, -0.02), M['steel']), 0.001, 1)
+    grip_ = cad.outline('carry', [(0.125, -0.06), (0.185, -0.06), (0.185, -0.09), (0.125, -0.09)], 0.004, M['dark'], y=0.053)
+    cad.cut(grip_, [cad.outline('c', [(0.133, -0.066), (0.177, -0.066), (0.177, -0.084), (0.133, -0.084)], 0.02, y=0.053)])
+    done(grip_, 0.001, 2)
+    parts = [box_, latch, grip_]
+    plus(parts, '+50', 0.009, (0.155, -0.145), 0.0505)
+    out.append(cad.origin(cad.join('KIT_mag_lmg', parts), (0.155, 0.015, -0.065)))
+    return out
+
+
+def kit():
+    root = bpy.data.objects.new('KIT', None)
+    cad.SC().objects.link(root)
+    # The P-22's own light and suppressor came out of exact booleans with points flung off; these replace them.
+    pieces = [kit_light(), kit_light('KIT_light_pistol', 0.8), kit_suppressor('pistol', 0.0165, 0.004, 0.172), kit_holo(), kit_riser(),
+              kit_scope('KIT_scope', 0.0115, -0.05, 0.07, 0.0165, 0.024, 0.0155, 0.026, 0.024, (-0.02, 0.045)),
+              kit_scope('KIT_scope_long', 0.0128, -0.07, 0.1, 0.0235, 0.045, 0.0168, 0.03, 0.03, (-0.035, 0.075)),
+              kit_suppressor('smg', 0.0155, 0.024, 0.13), kit_suppressor('rifle', 0.0165, 0.046, 0.15),
+              kit_suppressor('sniper', 0.0195, 0.05, 0.17), kit_suppressor('lmg', 0.018, 0.054, 0.15)] + kit_mags()
+    for o in pieces:
+        # An exact boolean on touching faces can fling a point far off (finish() stops the guns' builds for it): such
+        # points and the slivers through them are cut away, and the build stops if it was more than a sliver.
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        far = [v for v in bm.verts if max(abs(c) for c in v.co) > 1.0]
+        if far:
+            faces = {f for v in far for f in v.link_faces}
+            print(f'{o.name}: {len(far)} points flung off, {len(faces)} faces through them removed')
+            if len(faces) > 24:
+                raise SystemExit(f'{o.name} has {len(far)} points flung off')
+            bmesh.ops.delete(bm, geom=far, context='VERTS')
+            bm.to_mesh(o.data)
+        bm.free()
+        cad.shade([o])
+        o.parent = root
+    meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+    print('KIT:', len(meshes), 'pieces,', cad.tris(meshes), 'triangles:', ', '.join(f'{o.name} {cad.tris([o])}' for o in sorted(meshes, key=lambda o: -cad.tris([o]))))
+    return root
+
+
+FILES = {'pistol': 'p22', 'smg': 'vesper', 'rifle': 'keeper', 'sniper': 'longview', 'lmg': 'gatekeeper', 'kit': 'kit'}
+BUILD = {'pistol': pistol, 'smg': vesper, 'rifle': keeper, 'sniper': longview, 'lmg': gatekeeper, 'kit': kit}
 root = BUILD[GUN]()
 
 if PREVIEW:

@@ -9,12 +9,17 @@ import { LOW, ELBOWS } from '../pure/handling.js';
 import { HOLDS } from './holds.js';
 import { CLIPS, sample, cues, owed } from '../pure/clips.js';
 import { RIGS } from '../pure/rigs.js';
+import { newSwing, swing } from '../pure/swing.js';
 
 // Its own scene, its camera at the eye, drawn on a fresh depth so it never pokes through the bench or a wall.
 const FOV = 50;
 // A push that carries a spring `peak` away before it comes back.
 const punch = (s, peak) => kick(s, peak * Math.sqrt(s.k) * Math.E);
 const REST = { gun: [0, 0, 0, 0, 0, 0], right: { a: 'grip', b: 'grip', k: 0 }, left: { a: 'grip', b: 'grip', k: 0 }, mag: [0, 0], slide: null, bolt: [0, 0], cover: 0, belt: null };
+const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+WHITE.colorSpace = THREE.SRGBColorSpace; WHITE.needsUpdate = true;
+// How far the eye sits behind a scope's eyepiece when aimed (a holo sight keeps the eye where the iron sights had it).
+const RELIEF = 0.075;
 
 function flashTexture() {
   const c = document.createElement('canvas');
@@ -68,16 +73,47 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
   for (const [k, o] of Object.entries(part)) if (!o) throw new Error('the gun file has no ' + k);
   const home = Object.fromEntries(Object.entries(part).map(([k, o]) => [k, o.position.clone()]));
   const homeQ = Object.fromEntries(Object.entries(part).map(([k, o]) => [k, o.quaternion.clone()]));
-  const anchor = { muzzle: P('muzzle'), eject: P('eject'), iron: P('aim_iron') };
-  // Where the attachments still to come will sit (rigs.js); the pistol carries its own already.
+  const anchor = { muzzle: P('muzzle'), eject: P('eject'), iron: P('aim_iron') }, bareMuzzle = anchor.muzzle;
+  // Where the long guns' attachments sit (from the kit file, fittings.js); the pistol carries its own.
   const mounts = {};
   model.traverse(o => { if (o.name.startsWith(pre + 'mount_')) mounts[o.name.slice(pre.length + 6)] = o; });
+  // Mounts the file does not carry (the P-22's muzzle and rail), from rigs.js, in the gun's space.
+  for (const [slot, at] of Object.entries(spec.kit?.mounts || {})) if (!mounts[slot]) { const m = new THREE.Object3D(); m.name = pre + 'mount_' + slot; m.position.set(...at); (model.getObjectByName(spec.prefix) || model).add(m); mounts[slot] = m; }
   const fits = {};
-  model.traverse(o => { if (o.name.startsWith(pre + 'att_')) { fits[o.name.slice(pre.length + 4)] = o; o.visible = false; } });
+  // By exact name: the meshes inside a piece carry its name with a number after it and must stay shown.
+  for (const a of ['light', 'suppressor', 'holo', 'scope', 'mag']) { const o = P('att_' + a); if (o) { fits[a] = o; o.visible = false; } }
   if (P('round_ext')) P('round_ext').visible = false;
+  // The finishes paint these; each starts with a plain white picture so a camo later swaps a picture and builds no shader.
+  const PAINTED = ['G_Nitride', 'G_Polymer', 'G_Slate', 'G_Olive', 'G_Sand', 'G_Ember'], factory = new Map();
+  for (const name of PAINTED) for (const m of mats[name] || []) { factory.set(m, { color: m.color.clone(), rough: m.roughness, metal: m.metalness }); m.map = WHITE; m.needsUpdate = true; }
+  // The charm hangs from here, on the gun's left side.
+  const hook = new THREE.Object3D();
+  hook.position.set(...(spec.kit?.hook || [0, 0, 0]));
+  (model.getObjectByName(spec.prefix) || model).add(hook);
   part.casing.visible = false;
   // The magazine that falls out is a second one; the one in the gun is the fresh one coming in.
   const spent = part.mag.clone(true);
+  // The magazine's look (not its rounds) and the longer one put in its place, in the gun and in the one that drops.
+  const kit = { light: null, optic: null, mag: false }, pieces = {}, longs = new Map();
+  const ownLook = (holder, extra) => holder.children.filter(c => c !== extra && !c.name.startsWith(pre + 'round') && !c.name.startsWith(pre + 'belt'));
+  function setMag(src) {
+    for (const holder of [part.mag, spent]) {
+      let extra = longs.get(holder) || null;
+      if (src && extra?.userData.from !== src) {
+        if (extra) holder.remove(extra);
+        extra = new THREE.Group();
+        extra.userData.from = src;
+        // In the gun's own paint, so a finish covers the long magazine as it does the short one.
+        for (const c of src.children) if (!c.name.includes('round')) { const m = c.clone(true); m.traverse(x => { x.frustumCulled = false; x.visible = true; const own = x.isMesh && mats[x.material.name]; if (own) x.material = own.values().next().value; }); extra.add(m); }
+        holder.add(extra); longs.set(holder, extra);
+      }
+      for (const c of ownLook(holder, extra)) c.visible = !src;
+      if (extra) extra.visible = !!src;
+    }
+    kit.mag = !!src;
+  }
+  let charm = null, swingSt = null;
+  const sw = { v: new THREE.Vector3(), q: new THREE.Quaternion(), d: new THREE.Vector3() }, DOWN = new THREE.Vector3(0, -1, 0);
   spent.traverse(o => { if (o.name.startsWith(pre + 'round') || o.name.startsWith(pre + 'belt')) o.visible = false; });
   spent.visible = false;
   part.mag.parent.add(spent);
@@ -96,7 +132,15 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
 
   // Aimed: the rear sight's notch sits on the eye's line, `sight` metres ahead.
   const notch = anchor.iron.position.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
-  const ADS = { p: [-notch.x, -notch.y, -spec.sight - notch.z], r: [0, 0, 0] };
+  const IRONS = { p: [-notch.x, -notch.y, -spec.sight - notch.z], r: [0, 0, 0] };
+  let ADS = IRONS;
+  // With an optic the cheek stays put and the eye rises to its line; a scope also brings its eyepiece close to the eye.
+  function aimThrough(node, scope) {
+    if (!node) { ADS = IRONS; return; }
+    model.updateWorldMatrix(true, true);
+    const a = model.worldToLocal(node.getWorldPosition(new THREE.Vector3()));
+    ADS = { p: [-a.z, -a.y, scope ? a.x - RELIEF : anchor.iron.position.x - spec.sight], r: [0, 0, 0] };
+  }
 
   // The flash at the muzzle: a burst facing the eye and two long tongues along the barrel, and its light on the gun.
   const flashTex = flashTexture();
@@ -106,11 +150,16 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
   burst.rotation.y = Math.PI / 2;
   const tongues = [0, Math.PI / 2].map(a => { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.05), flashMat()); m.position.x = 0.06; m.rotation.x = a; return m; });
   flash.add(burst, ...tongues);
-  flash.position.copy(anchor.muzzle.position); flash.visible = false; flash.renderOrder = 5;
-  anchor.muzzle.parent.add(flash);
+  flash.visible = false; flash.renderOrder = 5;
   const glare = new THREE.PointLight(0xffc27a, 0, 2.5, 2);
-  glare.position.copy(anchor.muzzle.position).add(new THREE.Vector3(0.05, 0.02, 0));
-  anchor.muzzle.parent.add(glare);
+  // The flash and its light sit where the shot leaves: the muzzle, or a suppressor's end.
+  function placeFlash(at) {
+    anchor.muzzle = at;
+    at.parent.add(flash, glare);
+    flash.position.copy(at.position);
+    glare.position.copy(at.position).add(new THREE.Vector3(0.05, 0.02, 0));
+  }
+  placeFlash(bareMuzzle);
 
   // What moves by springs: the recoil (back, muzzle up, a twist), the lag behind the look, a bump when a magazine goes home.
   const soft = k => spring(k, critical(k) * 0.7);
@@ -150,8 +199,9 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
       q.copy(toGunQ).multiply(q2.set(...lowQ));
       return { at: arr(v2), q: [q.x, q.y, q.z, q.w], digits: lowDigits };
     }
-    const set = holds[side], on = spec.rides[side]?.[name], p = set[name] || set.grip;
-    return on && set[name] ? ride(p, on) : p;
+    // A longer magazine is held by its own foot where the hands were fitted to one (the P-22's).
+    const set = holds[side], own = name === 'mag' && kit.mag && set.magX ? 'magX' : name, on = spec.rides[side]?.[name], p = set[own] || set.grip;
+    return on && set[own] ? ride(p, on) : p;
   }
   const pick = (side, tr) => blend(named(side, tr.a), named(side, tr.b), tr.k);
 
@@ -171,7 +221,83 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
       st.inspT = 0;
       return true;
     },
-    setAttachments(list) { for (const [fid, o] of Object.entries(fits)) if (fid !== 'mag') o.visible = list.includes(fid); },
+    // The attachments on: pieces from the kit file (fittings.js) on the gun's mounts, or the P-22's own (rigs.js kit.own).
+    // Returns false if a piece it needs is not in hand (no kit file given), leaving that slot bare.
+    setAttachments(list, kitFile = null) {
+      const on = a => list.includes(a), K = spec.kit || {}, own = a => ((K.own || []).includes(a) ? fits[a] : null);
+      const NAME = { light: K.light || 'KIT_light', suppressor: `KIT_sup_${id}`, holo: 'KIT_holo', scope: K.scope || 'KIT_scope' };
+      const MOUNT = { light: 'rail', suppressor: 'muzzle', holo: 'optic', scope: 'optic' };
+      let whole = true;
+      const show = (name, mount, want) => {
+        if (!mount || (!want && !pieces[name])) return null;
+        if (!pieces[name]) {
+          const src = kitFile?.getObjectByName(name);
+          if (!src) { whole = false; return null; }
+          const o = src.clone(true);
+          o.userData.base = o.position.clone();
+          o.traverse(c => { c.frustumCulled = false; });
+          mount.add(o);
+          pieces[name] = o;
+        }
+        pieces[name].visible = want;
+        return want ? pieces[name] : null;
+      };
+      // On the Gatekeeper the optic stands on a riser and rides the feed cover as it opens.
+      if (K.riser) show('KIT_riser', mounts.optic, on('holo') || on('scope'));
+      const piece = {};
+      for (const a of ['light', 'suppressor', 'holo', 'scope']) {
+        if (own(a)) { own(a).visible = on(a); piece[a] = on(a) ? own(a) : null; continue; }
+        const o = piece[a] = show(NAME[a], mounts[MOUNT[a]], on(a));
+        if (o && K.riser && MOUNT[a] === 'optic' && o.parent === mounts.optic) o.position.copy(o.userData.base).y += K.riser;
+      }
+      if (K.optic) for (const n of ['KIT_riser', NAME.holo, NAME.scope]) if (pieces[n] && pieces[n].parent !== part[K.optic]) part[K.optic].attach(pieces[n]);
+      // A rear sight that folds away under an optic.
+      if (K.rear && P(K.rear)) P(K.rear).visible = !(on('holo') || on('scope'));
+      const mark = (a, ownName, suffix) => (!piece[a] ? null : own(a) ? P(ownName) : piece[a].getObjectByName(NAME[a] + suffix));
+      const light = mark('light', 'light_at', '_lens'), sup = mark('suppressor', 'muzzle_sup', '_end');
+      const optic = piece.scope ? mark('scope', 'aim_scope', '_aim') : piece.holo ? mark('holo', 'aim_holo', '_aim') : null;
+      // The longer magazine: the P-22's own, or the kit's, put inside the gun's magazine (and the one that drops) in place of its look.
+      const longMag = on('mag') ? (own('mag') || kitFile?.getObjectByName(`KIT_mag_${id}`) || longs.get(part.mag)?.userData.from || null) : null;
+      if (on('mag') && !longMag) whole = false;
+      setMag(longMag);
+      kit.light = light || null; kit.optic = optic ? (on('scope') ? 'scope' : 'holo') : null;
+      aimThrough(optic, kit.optic === 'scope');
+      placeFlash(sup || bareMuzzle);
+      return whole;
+    },
+    // The finish: { map, tint, rough, metal } (camos.js), or null for the gun's own.
+    setCamo(c) {
+      for (const [m, f] of factory) {
+        m.map = c ? c.map : WHITE;
+        m.color.copy(c ? c.tint : f.color); m.roughness = c ? c.rough : f.rough; m.metalness = c ? c.metal : f.metal;
+      }
+    },
+    // A charm (charms.js: { root, len }) on its chain from the hook, or null for none; it swings with the gun.
+    setCharm(c) {
+      if (charm) { hook.remove(charm.root); charm.root.traverse(o => o.geometry?.dispose()); }
+      charm = c || null;
+      swingSt = null;
+      if (charm) hook.add(charm.root);
+    },
+    // The charm's swing, from where its hook has gone since the last call (the gun in the hand, or on the bench).
+    swingCharm(dt) {
+      if (!charm) return;
+      hook.updateWorldMatrix(true, false);
+      const at = hook.getWorldPosition(sw.v).toArray();
+      swingSt ||= newSwing(at, charm.len);
+      const d = swing(swingSt, at, dt);
+      // The chain's way down, in the hook's own turn.
+      hook.getWorldQuaternion(sw.q).invert();
+      sw.d.set(d[0], d[1], d[2]).applyQuaternion(sw.q);
+      charm.root.quaternion.setFromUnitVectors(DOWN, sw.d);
+    },
+    // What is fitted that the range acts on: the light's lens, the optic, the extended magazine.
+    get lens() { return kit.light; },
+    get optic() { return kit.optic; },
+    get hook() { return hook; },
+    get charm() { return charm?.id || 'none'; },
+    // Looking through a scope, 0 to 1: the scope's own picture takes over as the gun comes all the way up.
+    get scoped() { return kit.optic === 'scope' ? smoother((st.aim - 0.72) / 0.24) : 0; },
     // The hall's lights going down dims the gun's own light too.
     setLights(k) { st.lights = k; },
     // The sleeves in the colours he is wearing.
@@ -333,6 +459,9 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
         if (back) p = blend(p, pick(side, was[side]), back);
         hands[side].pose(p, arr(eyeToGun(elbows[side], v2)));
       }
+      // The charm swings; all the way into a scope, its own picture is all there is to see.
+      api.swingCharm(dt);
+      rig.visible = api.scoped < 0.98;
     },
     // Where a point on the gun appears to be out in the room: the gun is drawn with its own lens, so the place is
     // carried over by where it falls on the screen and how far off it is.

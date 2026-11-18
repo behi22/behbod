@@ -15,6 +15,8 @@ import { newWeapon, step as stepWeapon, spreadNow, scatter } from '../pure/weapo
 import { STAGES, STAGE, DIFFICULTIES, openStages, totalStars, starScores } from '../pure/stages.js';
 import { newRun, step as stepRun, fired, hit as hitRun, quit as quitRun, parry } from '../pure/rangegame.js';
 import { spring, springStep, kick, critical } from '../pure/springs.js';
+import { makeFitter } from './fittings.js';
+import { makeScopeView } from './scopeview.js';
 
 // The range: its rooms (fetched after the house) and the game at the firing line. You stand at the bench, look and
 // aim with the mouse, step along the line, duck behind the bench, and shoot what the stage sends: the rules live in
@@ -116,16 +118,43 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   // The gun put in the hands, between runs: drawn fresh, the old one's sounds let go.
   let asked = 0;
   async function take(id) {
-    if (!RIGS[id] || !room || (active && state !== 'menu' && state !== 'over')) return false;
+    if (!RIGS[id] || !room || !between()) return false;
     // Of two guns picked while the first is still coming, the later pick wins.
     const mine = ++asked, g = guns[id] || await loadGun(id);
-    if (mine !== asked || (active && state !== 'menu' && state !== 'over')) return false;
+    if (mine !== asked || !between()) return false;
     held = id; gun = g;
-    s = stats(id, []); w = newWeapon(s);
-    g.setAttachments([]); g.setLights(lights);
+    equip(g, id); g.setLights(lights);
     if (look) g.setLook(look());
-    if (active) { g.draw(); sfx?.gunTake?.(id); }
+    if (active) { g.draw(); sfx?.gunTake?.(id, s.suppressed); }
     return true;
+  }
+
+  // ---------- the gunsmith: attachments, finishes and charms, kept per gun in this browser ----------
+  let fitter = null, kits = null;
+  const scopeView = makeScopeView(), lightTo = new THREE.Vector3();
+  const between = () => !active || state === 'menu' || state === 'over';
+  const fitterNow = () => (fitter ||= makeFitter({ renderer: engine.renderer, env: room.env, stars: () => totalStars(progress.rangeBest()), has: id => progress.has?.(id) }));
+  const kitOf = id => (kits ||= fitterNow().store.read())[id];
+  // The gun's numbers from its kit at once; its look as soon as all it needs is in hand.
+  function equip(g, id) {
+    const k = kitOf(id);
+    s = stats(id, k.att); w = newWeapon(s);
+    fitterNow().dress(g, k).then(ok => { if (ok && g === gun) fitted(); });
+    fitted();
+  }
+  // A rail light is the flashlight: from its lens, along the gun to where the aim meets the hall a dozen metres out.
+  function fitted() {
+    const g = gun;
+    flash.mount(g?.lens ? (from, dir) => { if (!g.lens) return; g.inRoom(g.lens, camera, from); dir.copy(camera.position).addScaledVector(camera.getWorldDirection(lightTo), 12).sub(from).normalize(); } : null);
+    hud?.lightPad?.(coarse && !!g?.lens, flash.on);
+    if (hud) hints();
+  }
+  const hints = () => hud.hint([['Click', 'shoot'], ['Right click', 'aim'], ['R', 'reload'], ['F', 'inspect'], ...(gun?.lens ? [['L', 'light']] : []), ['A D', 'step'], ['C', 'duck'], ['Esc', 'pause']]);
+  // The light on or off, while a run is on and one is fitted (the dark stage turns it on by itself).
+  function toggleLight() {
+    if (!gun?.lens || (state !== 'play' && state !== 'count')) return;
+    flash.set(!flash.on); sfx?.flashlight?.(flash.on);
+    hud?.lightPad?.(coarse, flash.on);
   }
 
   // ---------- the board by the line ----------
@@ -352,6 +381,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     else if (name === 'aim') { if (down && !aimHeld) input.aim = !input.aim; aimHeld = down; }
     else if (name === 'reload') input.reload = down;
     else if (name === 'inspect') { if (down) inspect(); }
+    else if (name === 'light') { if (down) toggleLight(); }
     else if (name === 'step') input.step = down ? Math.max(-1, Math.min(1, x * 1.4)) : 0;
     else if (name === 'quit') api.escape();
   }
@@ -382,11 +412,10 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       release();
       from.p.copy(camera.position); from.q.copy(camera.quaternion);
       engine.showBackground(false);
-      s = stats(held, []); w = newWeapon(s); gun.setAttachments([]); gun.draw();
       if (look) gun.setLook(look());
       hud = makeHud({ coarse, onPad });
       hud.show();
-      hud.hint([['Click', 'shoot'], ['Right click', 'aim'], ['R', 'reload'], ['F', 'inspect'], ['A D', 'step'], ['C', 'duck'], ['Esc', 'pause']]);
+      equip(gun, held); gun.draw();
       listen(true);
       menu();
       return true;
@@ -402,6 +431,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       flashRoom.intensity = flashStage.intensity = 0;
       bolts.clear(); dark(false); lights = 1; lastHurt = 0; room.setLights(1); gun.setLights(1); flash.update(1, camera, v1.set(0, 0, 1));
       camera.fov = baseFov; camera.updateProjectionMatrix();
+      scopeView.hide();
       engine.showBackground(true);
       // Back on the yellow line, a step from the bench and short of the crates at the line's end.
       onExit?.({ at: new THREE.Vector3(THREE.MathUtils.clamp(stand.x + along, R.strafe[0] + 0.5, R.strafe[1] - 0.5), stand.y, stand.z - 0.5) });
@@ -418,6 +448,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       else if (c === 'KeyC' || c === 'ShiftLeft') input.crouch = down;
       else if (c === 'Space') input.fire = down && !hud?.carded;
       else if (c === 'KeyF') { if (down && !e.repeat) inspect(); }
+      else if (c === 'KeyL') { if (down && !e.repeat) toggleLight(); }
       else return false;
       return true;
     },
@@ -489,6 +520,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       if (hud) warn();
       gun.update(state === 'paused' ? 0 : dtc, camera, w, s, { aim: input.aim && live, fire: hands.fire, turn: [yaw - lastYaw, pitch - lastPitch], strafe: live ? alongV : 0, crouch: duck });
       lastYaw = yaw; lastPitch = pitch;
+      scopeView.set(gun.scoped, gun.spec.kit?.scope === 'KIT_scope_long');
       flashT += dt;
       flashRoom.intensity = flashStage.intensity = flashT < 0.07 ? 26 * flashK * (1 - flashT / 0.07) : 0;
       if (hud) hud.set({ playing: live || state === 'paused', spread: spreadNow(w, s, gun.aim), aim: gun.aim, score: run?.score, streak: run && run.t - run.lastKill < 3.5 ? run.streak : 0,
@@ -509,6 +541,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     get held() { return held; },
     get owned() { return owned(); },
     take,
+    // The scope's picture, each gun's saved kit.
+    get scopeView() { return scopeView; }, kit: id => kitOf(id),
   };
   return api;
 }

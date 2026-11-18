@@ -21,12 +21,14 @@ function p22(p) {
   return Math.min(p22Grip(p), frame, slide, guard);
 }
 // The magazine where it sits when home: its body up the well and its wider foot.
-function p22Mag(p) {
-  const y = clamp(p[1], -0.1125, -0.0105), f = front(y);
-  const body = Math.max(Math.abs(p[0] - (f - 0.02175)) - 0.01675, Math.abs(p[2]) - 0.00525, -0.1125 - p[1], p[1] + 0.0105);
-  const foot = roundBox(p, [front(-0.1175) - 0.021, -0.1175, 0], [0.0235, 0.005, 0.0071], 0.003);
+function p22Mag(p, long = 0, pad = 0.01) {
+  const bot = -0.1125 - long, y = clamp(p[1], bot, -0.0105), f = front(y), mid = bot - pad / 2;
+  const body = Math.max(Math.abs(p[0] - (f - 0.02175)) - 0.01675, Math.abs(p[2]) - 0.00525, bot - p[1], p[1] + 0.0105);
+  const foot = roundBox(p, [front(mid) - 0.021, mid, 0], [0.0235, pad / 2, 0.0071], 0.003);
   return Math.min(body, foot);
 }
+// The extended one (blender/build_guns.py: 26 mm longer, a 13 mm foot).
+const p22MagLong = p => p22Mag(p, 0.026, 0.013);
 
 // ---------- the long guns (blender/build_guns.py): the P-22's grip and guard under each receiver ----------
 const longLower = (p, x0, x1) => Math.min(p22Grip(p), roundBox(p, [(x0 + x1) / 2, -0.0085, 0], [(x1 - x0) / 2, 0.0085, 0.0131], 0.002),
@@ -88,6 +90,8 @@ export const GUN_HOLDS = {
     left: { back: 30, droop: 0, knuckle: [0.04, -0.075, -0.04] },
     // The free hand cupping a fresh magazine's foot (palm up the well), and over the slide's back end to pull it.
     cup: { fingers: [0.943, -0.333, 0], back: DOWN, knuckle: [0.02, -0.12, 0.002], thumb: [-0.015, -0.108, -0.0149] },
+    // The same cup round the extended magazine's foot, that much further down the grip's line.
+    long: { mag: p22MagLong, cup: { fingers: [0.943, -0.333, 0], back: DOWN, knuckle: [0.0104, -0.1474, 0.002], thumb: [-0.0247, -0.1353, -0.0149] } },
     over: { fingers: [0, 0, 1], back: [0, 1, 0], knuckle: [0.004, 0.031, 0.019], thumb: [-0.016, 0.012, -0.0218] },
   },
   // The long guns share the pistol's grip, so one right hand fits all; the free hand's poses are fore, cup and extra.
@@ -219,9 +223,13 @@ export function solveLeft(H, R) {
   for (const d of FINGERS) L.digits[d] = wrap('left', d, L, both, { from: [0, -0.1, 0, 0] });
   L.digits.thumb = reach('left', 'thumb', L, H.thumbs.left, { from: [0, 0.3, 0.3, 0.2], sdf: both });
   // Cupping a magazine: solved against it sitting home, so the fingers stop where the grip begins.
-  const magged = p => Math.min(H.mag(p), shape(p)), C = place('left', H.cup, magged);
-  for (const d of FINGERS) C.digits[d] = wrap('left', d, C, magged, { from: [0, -0.1, 0, 0] });
-  C.digits.thumb = reach('left', 'thumb', C, H.cup.thumb, { from: [0, 0.3, 0.3, 0.2], sdf: magged });
+  const cupped = (mag, cup) => {
+    const M = p => Math.min(mag(p), shape(p)), C = place('left', cup, M);
+    for (const d of FINGERS) C.digits[d] = wrap('left', d, C, M, { from: [0, -0.1, 0, 0] });
+    C.digits.thumb = reach('left', 'thumb', C, cup.thumb, { from: [0, 0.3, 0.3, 0.2], sdf: M });
+    return C;
+  };
+  const magged = p => Math.min(H.mag(p), shape(p)), C = cupped(H.mag, H.cup);
   // Over the slide: open on the way in and out, closed on it.
   const P = place('left', H.over, shape);
   for (const d of FINGERS) P.digits[d] = wrap('left', d, P, shape, { from: [0, -0.1, 0, 0] });
@@ -230,6 +238,7 @@ export function solveLeft(H, R) {
     grip: L, mag: C, pinch: P,
     over: { ...P, at: add(P.at, [0, 0.014, 0]), digits: { ...relaxed(), thumb: [0, -0.1, 0.1, 0.1, 0] } },
   };
+  if (H.long) left.magX = cupped(H.long.mag, H.long.cup);
   return { left, both, magged };
 }
 
