@@ -37,6 +37,7 @@ test('tampered or broken saved progress is cleaned, not trusted', () => {
   assert.equal(p.best('chess'), 3);
   assert.deepEqual(p.unlocked(), []);
   assert.equal(makeProgress(memory({ 'loft.progress': '{not json' })).list().length, 0);
+  for (const odd of ['null', '7', '"text"', 'true']) assert.deepEqual(makeProgress(memory({ 'loft.progress': odd })).rangeBest(), {}, `a save of ${odd}`);
 });
 
 test('blocked storage never breaks the page', () => {
