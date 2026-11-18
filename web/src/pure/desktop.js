@@ -18,13 +18,16 @@ export const APPS = [
   { id: 'about', title: 'About me', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 4-6 8-6s8 2 8 6', rect: [920, 96, 560, 332] },
   { id: 'music', title: 'Music', icon: 'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z', rect: [900, 120, 590, 356] },
   { id: 'notes', title: 'Notes', icon: 'M6 3h9l4 4v14H6zM9 11h7M9 15h7M9 7h3', rect: [1010, 330, 470, 214] },
-  { id: 'settings', title: 'Settings', icon: 'M4 7h10M18 7h2M4 17h4M12 17h8M14 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0z', rect: [860, 70, 600, 290] },
+  { id: 'shahnameh', title: 'Shahnameh', icon: 'M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5zM12 6.5v13', rect: [170, 44, 1150, 532] },
+  { id: 'settings', title: 'Settings', icon: 'M4 7h10M18 7h2M4 17h4M12 17h8M14 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0z', rect: [860, 70, 600, 336] },
   { id: 'calc', title: 'Calculator', icon: 'M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM8.5 7.5h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01', rect: [1160, 56, 320, 470] },
   { id: 'browser', title: 'Browser', icon: 'M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0M3.5 9h17M3.5 15h17M12 3c-2.6 2.6-3.6 5.6-3.6 9s1 6.4 3.6 9M12 3c2.6 2.6 3.6 5.6 3.6 9s-1 6.4-3.6 9', rect: [150, 42, 1236, 528] },
-  { id: 'games', title: 'Games', icon: 'M7 8h10a4 4 0 0 1 4 4v1.5a2.5 2.5 0 0 1-4.4 1.6L15 13H9l-1.6 2.1A2.5 2.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4zM7.5 10v4M5.5 12h4M15.5 11h.01M17.5 13h.01', rect: [300, 48, 820, 520] },
+  { id: 'games', title: 'Games', icon: 'M7 8h10a4 4 0 0 1 4 4v1.5a2.5 2.5 0 0 1-4.4 1.6L15 13H9l-1.6 2.1A2.5 2.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4zM7.5 10v4M5.5 12h4M15.5 11h.01M17.5 13h.01', rect: [178, 44, 1180, 532] },
 ];
 const BY = Object.fromEntries(APPS.map(a => [a.id, a]));
 export const appById = id => BY[id];
+// The desktop's backgrounds besides the plain one, painted by src/shah/scenes.js.
+export const WALLPAPERS = ['persepolis', 'simorgh', 'isfahan'];
 
 // One-liners and links for the projects on the shelf; `site` is the live page when there is one.
 export const PROJECTS = {
@@ -167,6 +170,7 @@ export function rows(app, ctx = {}) {
     ];
     if (ctx.scenes?.length) out.push(opts('lights', ctx.scenes.slice(0, 5), ctx.scene, 'scene'));
     out.push(opts('coolant', ['teal', 'purple', 'red', 'gold', 'white'], ctx.coolant, 'coolant'));
+    out.push(opts('wallpaper', ['plain', ...WALLPAPERS], ctx.wallpaper || 'plain', 'wallpaper'));
     return out;
   }
   return [];

@@ -2,8 +2,10 @@ import { COURT, LEVELS, newDuel, step as stepDuel } from './pure/paddle.js';
 import { SKY, newOrbit, step as stepOrbit, score as orbitScore, place as orbitPlace } from './pure/orbit.js';
 import { FIELD, KINDS, newHunt, step as stepHunt, swat, left as huntLeft } from './pure/bughunt.js';
 import { GAMES, gameById, fitGame, toGame, readBest } from './pure/arcade.js';
+import { FIELD as KHAN, newQuest, step as stepQuest, status as questStatus } from './pure/haftkhan.js';
+import { paintQuest } from './shah/khan.js';
 
-// The three games on the computer, played in the Games window while you sit at the desk. The rules are in src/pure;
+// The games on the computer, played in the Games window while you sit at the desk. The rules are in src/pure;
 // this runs them, draws them on a 2D canvas, takes the mouse, a finger or the keys, and keeps the best scores.
 const INK = '#d8e0ee', DIM = '#7f8aa0', ACCENT = '#3ee6c4', WARM = '#ffb35c', BAD = '#ff6b5c', BG = '#05080d', FONT = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const KEY = 'home.games', TRAIL = 6;
@@ -45,6 +47,8 @@ function paint(g, id, st, o = {}) {
     if (o.thrust && !o.done) { g.fillStyle = WARM; g.beginPath(); g.moveTo(-3, 6); g.lineTo(0, 13 + Math.sin((o.t || 0) * 40) * 2.5); g.lineTo(3, 6); g.fill(); }
     g.fillStyle = o.done ? BAD : INK; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(-6, 7); g.closePath(); g.fill();
     g.restore();
+  } else if (id === 'haftkhan') {
+    paintQuest(g, st, o.t || 0);
   } else {
     // A page of code for the bugs to crawl on.
     for (let i = 0; i < 20; i++) { g.fillStyle = i % 5 === 0 ? 'rgba(62,230,196,.2)' : 'rgba(127,138,160,.16)'; g.fillRect(28 + (i % 4) * 14, 16 + i * 20, 90 + ((i * 53) % 420), 8); }
@@ -75,6 +79,7 @@ function paint(g, id, st, o = {}) {
 const STILLS = {
   paddle: () => { const d = newDuel('normal'); Object.assign(d, { you: 430, ai: 300, score: { you: 3, ai: 2 } }); Object.assign(d.ball, { x: 470, y: 150 }); return { st: d, trail: [[530, 252], [516, 228], [502, 204], [488, 180]] }; },
   orbit: () => { const o = newOrbit(); Object.assign(o, { a: -0.5, r: 132, vr: 30, spark: { a: 0.9, r: 150 } }); o.rocks = [{ a: 2.2, r: 110, size: 10 }, { a: 3.6, r: 170, size: 8 }, { a: -2.2, r: 90, size: 12 }]; return { st: o, thrust: true }; },
+  haftkhan: () => { const q = newQuest(3); q.phase = 'play'; Object.assign(q.r, { x: 300, wait: 0, kicks: 1 }); return { st: q, t: 0.6 }; },
   bughunt: () => { const h = newHunt(); h.bugs = [[180, 140, 1, 0.3, 'bug'], [420, 250, -1, 0.5, 'quick'], [560, 120, 0, 1, 'friend'], [300, 330, 1, -0.6, 'bug']].map(([x, y, vx, vy, kind], i) => ({ id: i, kind, x, y, vx, vy })); return { st: h, t: 0.3, pops: [{ text: '+11', at: [250, 200], t: 0.25 }] }; },
 };
 
@@ -86,7 +91,8 @@ export function makeDeskGames({ store, sfx, onEvent } = {}) {
   // What is being played: { id, st (the game's own state), level, paused, done, note, record, t }.
   let play = null;
   const held = { left: false, right: false, thrust: false }, pointer = { x: null, down: false };
-  const pops = [], trail = [];
+  // Haft Khan's strikes (a click, a tap, Space or Enter), kept until its next step.
+  const pops = [], trail = [], presses = [];
 
   function record(id, value) {
     if (!(value > (best[id] || 0))) return false;
@@ -99,7 +105,7 @@ export function makeDeskGames({ store, sfx, onEvent } = {}) {
     play.record = record(play.id, value);
     onEvent?.('over', { game: play.id, value, level: play.level, record: play.record });
   }
-  const release = () => { held.left = held.right = held.thrust = false; pointer.down = false; };
+  const release = () => { held.left = held.right = held.thrust = false; pointer.down = false; presses.length = 0; };
 
   const api = {
     GAMES,
@@ -110,7 +116,7 @@ export function makeDeskGames({ store, sfx, onEvent } = {}) {
     start(id, level = 'normal') {
       if (!gameById(id)) return false;
       const L = Object.hasOwn(LEVELS, level) ? level : 'normal';
-      play = { id, level: L, paused: false, done: false, note: '', record: false, t: 0, st: id === 'paddle' ? newDuel(L) : id === 'orbit' ? newOrbit() : newHunt() };
+      play = { id, level: L, paused: false, done: false, note: '', record: false, t: 0, st: id === 'paddle' ? newDuel(L) : id === 'orbit' ? newOrbit() : id === 'haftkhan' ? newQuest((Math.random() * 2 ** 32) >>> 0) : newHunt() };
       release(); pointer.x = null; pops.length = 0; trail.length = 0;
       return true;
     },
@@ -142,6 +148,11 @@ export function makeDeskGames({ store, sfx, onEvent } = {}) {
           if (e.type === 'spark') { sfx?.blip?.(); pops.push({ text: '+3', at: orbitPlace(st.a, st.r), t: 0 }); }
           else if (e.type === 'crash') { sfx?.miss?.(); finish(e.why === 'planet' ? 'Burned up' : e.why === 'space' ? 'Lost to space' : 'Hit a rock', orbitScore(st)); }
         }
+      } else if (play.id === 'haftkhan') {
+        for (const e of stepQuest(st, dt, { x: pointer.x, left: held.left, right: held.right, presses: presses.splice(0) })) {
+          if (e.type === 'hit') sfx?.hit?.(); else if (e.type === 'miss' || e.type === 'hurt') sfx?.miss?.(); else if (e.type === 'won' || e.type === 'dodge') sfx?.blip?.();
+          else if (e.type === 'end') finish(e.won ? 'Kay Kavus is free' : 'Rostam rests', e.score);
+        }
       } else {
         for (const e of stepHunt(st, dt)) if (e.type === 'end') finish("Time's up", st.score);
       }
@@ -151,9 +162,11 @@ export function makeDeskGames({ store, sfx, onEvent } = {}) {
     // A press or a move on the picture, in the game's own units. kind: down, move, up or leave.
     point(x, y, kind) {
       if (!play || play.done || !Number.isFinite(x) || !Number.isFinite(y)) { if (kind === 'up' || kind === 'leave') pointer.down = false; return; }
-      if (kind === 'up' || kind === 'leave') { pointer.down = false; if (kind === 'leave' || play.id !== 'paddle') pointer.x = null; return; }
+      if (kind === 'up' || kind === 'leave') { pointer.down = false; if (kind === 'leave' || (play.id !== 'paddle' && play.id !== 'haftkhan')) pointer.x = null; return; }
       if (kind === 'down') pointer.down = true;
       if (play.id === 'paddle') pointer.x = x;
+      // In Haft Khan a press strikes; one low on the field also walks Rostam there, one up high (at a beast) does not.
+      if (play.id === 'haftkhan') { if (kind !== 'down' || y > KHAN.h * 0.6) pointer.x = x; if (kind === 'down' && !play.paused) presses.push({ x, y }); }
       if (play.id === 'bughunt' && kind === 'down' && !play.paused) {
         for (const e of swat(play.st, x, y)) {
           if (e.type === 'squash') { sfx?.hit?.(); pops.push({ text: `+${e.points}${e.combo > 2 ? ' x' + e.combo : ''}`, at: [x, y], t: 0 }); }
@@ -168,7 +181,11 @@ export function makeDeskGames({ store, sfx, onEvent } = {}) {
       if (!play) return false;
       if (code === 'ArrowLeft' || code === 'KeyA') { held.left = down; if (down) pointer.x = null; return true; }
       if (code === 'ArrowRight' || code === 'KeyD') { held.right = down; if (down) pointer.x = null; return true; }
-      if (code === 'Space' || code === 'ArrowUp' || code === 'KeyW') { held.thrust = down; return true; }
+      if (code === 'Space' || code === 'ArrowUp' || code === 'KeyW' || (code === 'Enter' && play.id === 'haftkhan')) {
+        held.thrust = down;
+        if (play.id === 'haftkhan' && down && !repeat && !play.paused && (code === 'Space' || code === 'Enter')) presses.push({});
+        return true;
+      }
       if (code === 'KeyP') { if (down && !repeat) api.pause(); return true; }
       return false;
     },
@@ -178,6 +195,7 @@ export function makeDeskGames({ store, sfx, onEvent } = {}) {
       const st = play.st;
       if (play.id === 'paddle') return `you ${st.score.you} : ${st.score.ai} computer   rally ${st.rally}   ${LEVELS[play.level].name}`;
       if (play.id === 'orbit') return `score ${orbitScore(st)}   sparks ${st.sparks}   rocks ${st.rocks.length}`;
+      if (play.id === 'haftkhan') return questStatus(st);
       return `${Math.ceil(huntLeft(st))} s   score ${st.score}   squashed ${st.squashed}`;
     },
     // Paints the game being played, as big as fits and centred in the w by h box at the context's origin. It paints

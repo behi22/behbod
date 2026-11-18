@@ -5,6 +5,9 @@ import { show as calcShow, NAME as CALC_NAME } from './pure/calc.js';
 import { SANDBOX, ALLOW, allowed, siteById, browserLayout, LOCK } from './pure/browser.js';
 import { launcherLayout, playLayout, gameById } from './pure/arcade.js';
 import { homography } from './pure/homography.js';
+import { readerLayout } from './pure/reader.js';
+import { paintStory } from './shah/scenes.js';
+import { storyById } from './pure/shahnameh.js';
 
 // The seated computer: while I sit at the desk, the same desktop the monitor paints is laid out in HTML right on top
 // of the screen, so its windows can be dragged, its buttons clicked and its links followed. On a narrow screen the
@@ -151,6 +154,9 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
 
   // The game being played draws on one canvas that is carried over from redraw to redraw.
   let gameCanvas = null, gameArea = null, scoreEl = null, scoreW = 0, lastTick = 0;
+  // `readerAt`: the story and page last shown, so a new one starts at the top of a scrolled window.
+  let readerPic = null, readerAt = '', wallAt = '';
+  document.fonts?.load("500 40px 'Noto Nastaliq Urdu'", 'زال و سیمرغ').then(() => { readerPic = null; D.changed(); }).catch(() => {});
   const G = D.games;
   function gamePoint(ev, kind) {
     if (!gameArea) return;
@@ -200,7 +206,9 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
       else if (what === 'pause') G.pause();
       else if (what === 'back') G.stop();
       D.changed();
-    } else act(a);
+    } else if (a.kind === 'wallpaper') D.setWallpaper(a.arg);
+    else if (a.kind === 'read' || a.kind === 'page') D.readerGo(`${a.kind}:${a.arg}`);
+    else act(a);
   }
   // Text pieces and buttons, laid out by the pure layouts in window coordinates.
   function bits(e, L) {
@@ -314,6 +322,21 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
         }
         bits(e, L);
       }
+    } else if (w.app === 'shahnameh') {
+      // On a phone the window scrolls, so the story runs on in one piece under its picture.
+      const L = readerLayout({ x: 0, y: 0, w: r.w, h: r.h }, D.reader, { scroll: narrow }), P = L.pic;
+      const k = scale * Math.min(2, devicePixelRatio || 1), key = `${L.story} ${P.w} ${P.h} ${k}`;
+      if (!readerPic || readerPic.key !== key) {
+        const c = el('canvas', 'dt-pic');
+        c.width = Math.max(1, Math.round(P.w * k)); c.height = Math.max(1, Math.round(P.h * k));
+        const g = c.getContext('2d'); g.scale(c.width / P.w, c.height / P.h); paintStory(g, L.story, P.w, P.h);
+        c.setAttribute('role', 'img'); c.setAttribute('aria-label', storyById(L.story).pic);
+        readerPic = { key, c };
+      }
+      place(readerPic.c, P.x, P.y, P.w, P.h);
+      e.append(readerPic.c);
+      bits(e, L);
+      if (narrow) { const end = el('div'); place(end, 0, L.bottom + PAD, 1, 1); e.append(end); }
     } else bits(e, layout({ x: 0, y: 0, w: r.w, h: r.h }, rows(w.app, D.ctx)));
     e.addEventListener('pointerdown', () => { if (D.st.focus !== w.app || D.st.wins.at(-1)?.app !== w.app) { open(D.st, w.app); D.changed(); } });
     return e;
@@ -339,11 +362,15 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
     if (!list.some(w => w.app === 'notes')) notesEl = null;
     if (!list.some(w => w.app === 'games')) { gameCanvas?.remove(); gameArea = null; scoreEl = null; }
     frameAt = null;
+    const url = D.wallpaperURL() || '';
+    if (url !== wallAt) { wallAt = url; root.style.background = url ? `#070b11 url("${url}") center / cover no-repeat` : ''; }
+    const readerNow = `${D.reader.story} ${D.reader.page}`, readerKept = readerNow === readerAt;
+    readerAt = readerNow;
     list.forEach((w, i) => {
       const e = windowEl(w, w.app === top && w.app === D.st.focus);
       e.style.zIndex = 2 * i + 1;
       root.append(e);
-      if (scrolled[w.app]) e.scrollTop = scrolled[w.app];
+      if (scrolled[w.app] && (w.app !== 'shahnameh' || readerKept)) e.scrollTop = scrolled[w.app];
       if (w.app === 'browser') frameHost.style.zIndex = 2 * i + 2;
     });
     // The game's picture is drawn now it is on the page, not a frame later from an old picture.

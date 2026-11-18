@@ -93,7 +93,7 @@ test('music shows what is playing and offers a stop only then', () => {
 test('settings mark the current choice of each option', () => {
   const r = rows('settings', { quality: 'high', sound: true, hood: false, scenes: ['focus', 'party'], scene: 'party', coolant: 'gold' });
   const on = r.map(x => x.pills.filter(p => p.on).map(p => p.label));
-  assert.deepEqual(on, [['high'], ['on'], ['down'], ['party'], ['gold']]);
+  assert.deepEqual(on, [['high'], ['on'], ['down'], ['party'], ['gold'], ['plain']]);
 });
 
 test('an action keeps the colons in its argument', () => {
