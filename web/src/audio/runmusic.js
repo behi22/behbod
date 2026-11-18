@@ -6,7 +6,8 @@ export const LEVEL = 0.9;
 export function makeRunMusic(env) {
   let el = null, gain = null, on = false, timer = 0, failed = false;
   function ready() {
-    const e = env.eng();
+    // Only with the sound on: a muted visit must not stream six minutes of music it never plays.
+    const e = env.ready();
     if (!e) return null;
     if (!el) {
       el = new Audio();
