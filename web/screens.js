@@ -6,6 +6,8 @@ import { newCalc, press as calcPress, show as calcShow, fromKeyboard as calcKey 
 import { siteById, newBrowser, go as browserGo, browserLayout, LOCK } from './src/pure/browser.js';
 import { launcherLayout, playLayout, gameById } from './src/pure/arcade.js';
 import { makeDeskGames } from './src/deskgames.js';
+import { ferdowsiLines } from './src/pure/shahnameh.js';
+import { nowruzLines } from './src/pure/nowruz.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -58,7 +60,14 @@ export function makeCanvases(meta, opts = {}) {
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
   const CMDS = {
-    help: () => say('commands: whoami  projects  postit  ls  contact  clear  exit', '  ' + Object.keys(EXTRA).join('  '), 'picture quality sets itself; to change it, open Settings'),
+    // The names in rows that fit the terminal's window, the first row headed.
+    help: () => {
+      const rows = [];
+      for (const n of ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'clear', 'exit', ...Object.keys(EXTRA)]) {
+        if (rows.length && rows.at(-1).length + 2 + n.length <= 54) rows[rows.length - 1] += '  ' + n; else rows.push(n);
+      }
+      say(...rows.map((r, i) => (i ? '          ' : 'commands: ') + r), 'picture quality sets itself; to change it, open Settings');
+    },
     whoami: () => say('Behbod Babai. Engineer in Vancouver.', 'I make computers talk back.'),
     projects: () => say('meet-bex      a voice receptionist you can talk to', 'profile-art   my GitHub profile, redrawn every hour', 'aic-voice-microsite'),
     postit: () => say('the note on this monitor is my tattoo:', 'Bengar o beshno, bogzar o beh sho'),
@@ -70,6 +79,8 @@ export function makeCanvases(meta, opts = {}) {
     'hello, friend': () => say('hello, friend.'),
     sudo: () => say('behbod is not in the sudoers file. This incident will be reported.'),
     clear: () => { term.lines = []; changed(); },
+    ferdowsi: () => say(...ferdowsiLines()),
+    nowruz: () => say(...nowruzLines(new Date())),
   };
   const col = k => STYLE[k] || k;
   const icon = {};

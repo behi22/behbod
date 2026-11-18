@@ -22,6 +22,7 @@ import { makeFleet } from './src/fleet.js';
 import { makePrinter } from './src/printer.js';
 import { makeRubik } from './src/rubik.js';
 import { makeAria } from './src/aria.js';
+import { makeShahnameh } from './src/shah/index.js';
 import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
 import { makeFilm } from './src/film.js';
@@ -175,6 +176,7 @@ const fleet = makeFleet(scene, meta, { sound });
 const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
+const shah = makeShahnameh(scene, meta);
 world.retireFighters();
 const tvMatch = meta.screens.tv ? makeTvMatch({ texture: screens.textures.tv, at: b2t(...meta.screens.tv.center).toArray(), normal: [1, 0, 0], fps: () => (tierName === 'low' ? 5 : 10) }) : null;
 // The range is fetched behind the scenes, with no click: as soon as I head for the library, where its door is, or
@@ -281,6 +283,7 @@ let yaw = meta.spawn?.yaw ?? 0, pitch = meta.spawn?.pitch ?? 0.3, dist = coarse 
 // Where click-to-walk is heading: the waypoints still to reach, and what to do on arrival.
 let route = null;
 const things = makeInteract(meta.interact || []);
+things.items.push(...shah.spots);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
@@ -464,6 +467,7 @@ function act(it) {
   if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
   if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
   if (it.id === 'rg_bench') return enterRange(true);
+  { const read = shah.read(it.id); if (read) return toast(read); }
   { const said = range.poke(it.id); if (said) return toast(said); }
   toast(SAY[it.id] || it.label);
 }
@@ -579,8 +583,8 @@ canvas.addEventListener('pointerup', e => {
   // Only the finger that started the drag counts, so a second finger never turns into a tap.
   if (!dragging || e.pointerId !== dragging.id) return;
   if (dragging.moved < 6 && mode === 'walk') tapMove(e);
-  // At the desk a click on Pishi shoos her off the keyboard, and Aria answers a click on her.
-  else if (dragging.moved < 6 && mode === 'desk') { aim(e); if (creatures.hit(ray) === 'pishi') creatures.shoo(); else if (aria?.hit(ray)) toast(aria.say()); }
+  // At the desk a click on Pishi shoos her off the keyboard, Aria answers a click on her, and Ferdowsi's note gives its line in English.
+  else if (dragging.moved < 6 && mode === 'desk') { aim(e); if (creatures.hit(ray) === 'pishi') creatures.shoo(); else if (aria?.hit(ray)) toast(aria.say()); else if (shah.noteHit(ray)) toast(shah.noteSay); }
   dragging = null;
 });
 canvas.addEventListener('pointercancel', e => { if (dragging && e.pointerId === dragging.id) dragging = null; });
@@ -647,6 +651,7 @@ const aim = e => ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 
 function tapMove(e) {
   aim(e);
   if (aria?.hit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(aria.say()); }); return; }
+  if (shah.noteHit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(shah.noteSay); }); return; }
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
   // Clicking a resident walks me over to them and says hello on arrival.
   const who = creatures.hit(ray);
