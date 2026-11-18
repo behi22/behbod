@@ -202,7 +202,7 @@ export function lmgClips(s) {
         [2.32, 'mag'], [2.48, 'belt'], [inn, 'belt'], [inn + 0.15, 'cover'], [inn + 0.48, 'cover']],
       mag: [[out + 0.55, [0.3, 1]], [2.0, [0.1, 0]], [2.22, [0.02, 0]], [2.3, [0, 0]]],
       cover: [[0.3, [0]], [0.62, [1]], [inn + 0.2, [1]], [inn + 0.45, [0]]],
-      beltOff: out, beltOn: 2.55,
+      beltOff: empty ? 0 : out, beltOn: 2.55,
       cues: [[0.02, 'cloth'], [0.32, 'coverOpen'], [out - 0.05, 'magRelease'], [out, 'magOut'], [out + 0.45, 'magDrop'], [2.3, 'magIn'], [2.55, 'beltIn'], [inn + 0.45, 'coverClose']],
     };
     if (!empty) {

@@ -92,8 +92,10 @@ test('a feed cover: lifted before the box comes off, the belt hidden from the bo
       assert.equal(sample(c, s.reload.out + 0.01).belt, false);
       assert.equal(sample(c, s.reload.in).belt, true);
       assert.equal(sample(c, c.T).cover, 0);
-      assert.equal(sample(c, 0).belt, true);
     }
+    // A gun fired dry has no belt left to show until the fresh one is laid.
+    assert.equal(sample(C.reload, 0).belt, true);
+    assert.equal(sample(C.reloadEmpty, 0).belt, false, `${id}: the belt shows again at the start of a reload from empty`);
   }
 });
 
