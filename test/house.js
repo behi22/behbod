@@ -1,6 +1,6 @@
 // House-wide checks, computer and phones: a hidden tab goes quiet and pauses a run; the wardrobe closes when something
-// else takes the screen.
-//   LOFT_URL=http://127.0.0.1:8815 node test/house.js [hidden|wardrobe|all]
+// else takes the screen; the calculator's keys are big enough for a finger on a phone held sideways.
+//   LOFT_URL=http://127.0.0.1:8815 node test/house.js [hidden|wardrobe|calc|all]
 // Headless browsers never hide a page, so the test says it is hidden itself (document.hidden and a visibilitychange).
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -14,12 +14,14 @@ const DESK = { viewport: { width: 1280, height: 800 } };
 const UPRIGHT = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
 const SIDEWAYS = { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true };
 
+// Other people's services the house reaches (YouTube's player and its pictures, the weather), whose own hiccups are not the house's.
+const OUTSIDE = /youtube|google|gstatic|ytimg|ggpht|doubleclick|open-meteo/;
 function watch(p, errs) {
   p.on('pageerror', e => errs.push(e.message));
-  p.on('response', r => { if (r.status() >= 400) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`); });
-  p.on('requestfailed', r => { if (!/youtube|googlevideo|ytimg|doubleclick|google\.com/.test(r.url()) && !/run\.mp3|\.mp4/.test(r.url())) errs.push(`failed ${r.url().slice(0, 140)}`); });
+  p.on('response', r => { if (r.status() >= 400 && !OUTSIDE.test(r.url())) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`); });
+  p.on('requestfailed', r => { if (!OUTSIDE.test(r.url()) && !/run\.mp3|\.mp4/.test(r.url())) errs.push(`failed ${r.url().slice(0, 140)}`); });
   p.on('console', m => {
-    if (m.type() === 'error' && !/favicon/.test(m.text()) && !/youtube|google/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200));
+    if (m.type() === 'error' && !/favicon/.test(m.text()) && !OUTSIDE.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200));
     if (m.type() === 'warning' && /\[(loft|range)\]/.test(m.text())) errs.push(m.text().slice(0, 200));
   });
 }
@@ -185,6 +187,50 @@ async function wardrobePhone(b, opts, label) {
   await ctx.close();
 }
 
+// ---------- the calculator ----------
+// The keys as laid out (desktop pixels, from their style) and as seen (CSS pixels on the screen).
+const keys = p => p.evaluate(() => [...document.querySelectorAll('.dt-win[data-app="calc"] .dt-key')].map(k => {
+  const r = k.getBoundingClientRect();
+  return { label: k.getAttribute('aria-label'), style: [k.style.left, k.style.top, k.style.width, k.style.height].join(' '), x: r.left, y: r.top, w: r.width, h: r.height };
+}));
+const sig = ks => { let h = 2166136261; for (const c of ks.map(k => k.style).join(';')) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return h.toString(16); };
+async function atCalc(b, opts) {
+  const { ctx, p, errs } = await open(b, opts);
+  await p.evaluate(() => __loft.useDesk());
+  await p.waitForFunction(() => document.querySelector('.dt.on'), null, { timeout: 15000 });
+  await p.waitForTimeout(1500);
+  const icon = '.dt-icon[aria-label="Open Calculator"]';
+  if (opts.hasTouch) await p.tap(icon); else await p.click(icon);
+  await p.waitForSelector('.dt-win[data-app="calc"] .dt-key', { timeout: 5000 });
+  await p.waitForTimeout(400);
+  return { ctx, p, errs };
+}
+// Pinned before the change: the computer's and the upright phone's calculator are laid out exactly as they were.
+const BEFORE = { desk: process.env.CALC_DESK || '83ba8f9d', upright: process.env.CALC_UPRIGHT || '8975349f' };
+async function calc(b) {
+  for (const [label, opts, pin] of [['desktop', DESK, BEFORE.desk], ['phone upright', UPRIGHT, BEFORE.upright]]) {
+    const { ctx, p, errs } = await atCalc(b, opts);
+    const ks = await keys(p), s = sig(ks);
+    console.log(`  ${label}: keys ${Math.round(Math.min(...ks.map(k => k.w)))} by ${Math.round(Math.min(...ks.map(k => k.h)))} at the smallest, layout ${s}`);
+    check(`${label}: the calculator is laid out as it was`, ks.length === 20 && s === pin, s);
+    check(`${label}: no page errors, console errors or failed requests`, errs.length === 0, errs.slice(0, 6).join(' | '));
+    await ctx.close();
+  }
+  const { ctx, p, errs } = await atCalc(b, SIDEWAYS);
+  const ks = await keys(p);
+  const minW = Math.min(...ks.map(k => k.w)), minH = Math.min(...ks.map(k => k.h));
+  const onScreen = ks.every(k => k.x >= 0 && k.y >= 0 && k.x + k.w <= 844 && k.y + k.h <= 390);
+  const apart = ks.every(a => ks.every(c => a === c || a.x + a.w <= c.x + 0.5 || c.x + c.w <= a.x + 0.5 || a.y + a.h <= c.y + 0.5 || c.y + c.h <= a.y + 0.5));
+  check('phone sideways: every key is at least 44 by 44 on the screen, all on the screen, none touching', ks.length === 20 && minW >= 44 && minH >= 44 && onScreen && apart, JSON.stringify({ minW: +minW.toFixed(1), minH: +minH.toFixed(1), onScreen, apart }));
+  for (const k of ['Clear', '7', 'Times', '6', 'Equals']) { await p.tap(`.dt-win[data-app="calc"] .dt-key[aria-label="${k}"]`); await p.waitForTimeout(150); }
+  const shown = await p.evaluate(() => [document.querySelector('.dt-calc-main')?.textContent, document.querySelector('.dt-calc-top')?.textContent]);
+  check('phone sideways: 7 x 6 tapped on its keys reads 42', shown[0] === '42', JSON.stringify(shown));
+  const disp = await p.evaluate(() => { const r = document.querySelector('.dt-calc').getBoundingClientRect(); return { w: r.width, h: r.height }; });
+  check('phone sideways: the display beside the keys stays readable', disp.w >= 150 && disp.h >= 80, JSON.stringify(disp));
+  check('phone sideways: no page errors, console errors or failed requests', errs.length === 0, errs.slice(0, 6).join(' | '));
+  await ctx.close();
+}
+
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
@@ -199,6 +245,7 @@ async function wardrobePhone(b, opts, label) {
       await wardrobePhone(b, UPRIGHT, 'phone upright');
       await wardrobePhone(b, SIDEWAYS, 'phone sideways');
     }
+    if (ONLY === 'all' || ONLY === 'calc') await calc(b);
   } finally { await b.close(); }
   console.log(fails ? `${fails} FAILED` : 'ALL PASS');
   process.exit(fails ? 1 : 0);

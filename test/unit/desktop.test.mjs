@@ -191,6 +191,49 @@ test('the calculator fits its window: a display and twenty keys, none touching, 
   assert.equal(tail('abc', 15, 5), '');
 });
 
+// The seated view on a phone: the desktop is laid out at least 540 by 360 and scaled to the 200 pixels or more left
+// between the corner's buttons and the command box (src/desktop.js fitView); the window in front fills it under the bar.
+const phoneWindow = (vw, vh) => {
+  const top = 60, w = vw - 20, h = Math.max(200, vh - top - 150), scale = Math.min(w / 540, h / 360);
+  return { scale, win: { x: 0, y: BAR, w: w / scale, h: h / scale - BAR - DOCK } };
+};
+// calcLayout as it was before the two long rows, to prove the computer's and the upright phone's are untouched.
+async function calcBefore(w, mainLen) {
+  const { KEYS, LABEL } = await import('../../web/src/pure/calc.js');
+  const { TITLE, STYLE } = await import('../../web/src/pure/desktop.js');
+  const pad = 14, gap = 8, x = w.x + pad, y = w.y + TITLE + 12, width = w.w - 2 * pad, height = w.y + w.h - pad - y;
+  const wide = w.w > w.h * 1.5;
+  const display = wide ? { x, y, w: Math.round(width * 0.4), h: height } : { x, y, w: width, h: Math.min(104, Math.max(64, (w.h - TITLE) * 0.24)) };
+  const kx = wide ? display.x + display.w + 12 : x, ky = wide ? y : y + display.h + 12, area = { w: x + width - kx, h: y + height - ky };
+  const kh = (area.h - gap * 4) / 5, kw = (area.w - gap * 3) / 4, keys = [];
+  KEYS.forEach((row, r) => row.forEach((key, c) => keys.push({ key, label: LABEL[key] || key, kind: key === '=' ? 'go' : /^[0-9.]$/.test(key) ? 'num' : 'op',
+    x: kx + c * (kw + gap), y: ky + r * (kh + gap), w: kw, h: kh })));
+  const topPx = display.h < 84 ? 12 : STYLE.small;
+  const mainPx = Math.max(12, Math.min(44, display.h - topPx - 26, Math.floor((display.w - 28) / (Math.max(1, mainLen) * 0.6))));
+  return { display, keys, mainPx, topPx, keyPx: Math.max(10, Math.min(22, Math.floor(kh * 0.6))) };
+}
+
+test('on a phone held sideways the keys of the calculator lie in two long rows, each at least 44 pixels both ways on the glass', async () => {
+  const { calcLayout } = await import('../../web/src/pure/desktop.js');
+  for (const [vw, vh] of [[844, 390], [800, 360], [932, 430], [667, 375]]) {
+    const { scale, win } = phoneWindow(vw, vh), L = calcLayout(win, 1);
+    const tops = new Set(L.keys.map(k => k.y)), small = Math.min(L.keys[0].w, L.keys[0].h) * scale;
+    assert.equal(tops.size, 2, `${vw} by ${vh}: two rows`);
+    assert.ok(small >= 44, `${vw} by ${vh}: keys ${(L.keys[0].w * scale).toFixed(0)} by ${(L.keys[0].h * scale).toFixed(0)}`);
+    assert.ok(L.keyPx * scale >= 12, `${vw} by ${vh}: labels ${(L.keyPx * scale).toFixed(1)} pixels`);
+    assert.ok(L.display.w * scale >= 130 && calcLayout(win, 21).mainPx * 0.6 * 21 <= L.display.w - 28, `${vw} by ${vh}: the display beside them still holds a long answer`);
+    assert.deepEqual(L.keys.slice(0, 10).map(k => k.key), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
+  }
+});
+
+test('the calculator on the computer and on an upright phone is laid out exactly as before', async () => {
+  const { calcLayout, appById } = await import('../../web/src/pure/desktop.js');
+  const [x, y, w, h] = appById('calc').rect;
+  const wins = [{ x, y, w, h }, { x: 0, y: 0, w, h }, { x: 0, y: 34, w: 540, h: 256 }, { x: 0, y: 34, w: 300, h: 420 }];
+  for (const [vw, vh] of [[390, 844], [360, 800], [430, 932], [375, 667]]) wins.push(phoneWindow(vw, vh).win);
+  for (const win of wins) for (const n of [1, 12, 21]) assert.deepEqual(calcLayout(win, n), await calcBefore(win, n), `${win.w.toFixed(0)} by ${win.h.toFixed(0)}`);
+});
+
 test('the dock holds every app, on the monitor and on a narrow phone', () => {
   for (const width of [W, 900, 540, 360]) {
     const icons = dock(width, H);
