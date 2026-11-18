@@ -472,11 +472,16 @@ function playVideo(i) {
   const close = document.createElement('button');
   close.className = 'chip'; close.textContent = 'Close';
   liveVideo.pause();
-  const shut = () => { box.remove(); removeEventListener('keydown', onKey, true); liveVideo.resume(); };
+  box.tabIndex = -1; box.style.outline = 'none';
+  let tabbed = false;
+  const shut = () => { box.remove(); removeEventListener('keydown', onKey, true); removeEventListener('blur', onBlur); liveVideo.resume(); };
   // While it plays, keys stay with the player (no walking about behind it); Esc closes it.
-  const onKey = e => { if (!box.isConnected) { removeEventListener('keydown', onKey, true); return; } e.stopPropagation(); if (e.key === 'Escape') shut(); };
+  const onKey = e => { if (!box.isConnected) { removeEventListener('keydown', onKey, true); return; } e.stopPropagation(); tabbed = e.key === 'Tab'; if (e.key === 'Escape') shut(); };
+  // YouTube's player can take the keyboard on its own, and keys inside it never reach Esc above; only a Tab may keep it there.
+  const onBlur = () => setTimeout(() => { if (!box.isConnected) removeEventListener('blur', onBlur); else if (document.activeElement === frame && !tabbed) box.focus({ preventScroll: true }); });
   close.addEventListener('click', shut);
   addEventListener('keydown', onKey, true);
+  addEventListener('blur', onBlur);
   box.append(frame, close);
   document.body.append(box);
 }

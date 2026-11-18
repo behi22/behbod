@@ -68,6 +68,14 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   const i0 = vids.indexOf(tv[0]);
   const vidOk = frame === vids[0] && i0 >= 0 && tv.every((id, k) => id === vids[(i0 + k) % vids.length]);
   console.log('videos: frame', frame, '| tv', tv.join(' '), vidOk ? 'PASS' : 'FAIL');
+  // Regression: YouTube's player can take the keyboard by itself and then Esc never closed it; here it is handed it on purpose.
+  await p.evaluate(() => __loft.act('video0')); await p.waitForTimeout(300);
+  await p.evaluate(() => document.querySelector('.video iframe').focus()); await p.waitForTimeout(200);
+  const vidFocus = await p.evaluate(() => document.activeElement?.tagName);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+  const vidShut = await p.evaluate(() => !document.querySelector('.video'));
+  if (!vidShut) await p.evaluate(() => document.querySelector('.video .chip')?.click());
+  console.log('Esc closes a video even after its player takes the keyboard: keyboard on', vidFocus, '| closed', vidShut, vidShut && vidFocus !== 'IFRAME' ? 'PASS' : 'FAIL');
   // The big frame goes live (YouTube's player seen through the screen) when you walk up, and stops when you leave.
   await p.evaluate(q => { __loft.pos.set(q.x, q.y + 0.05, q.z); __loft.yaw = -Math.PI / 2; }, b2t(19.4, 7.65, 0));
   await p.waitForFunction(() => __loft.liveVideo.live, null, { timeout: 8000 }).catch(() => {});
