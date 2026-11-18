@@ -6,6 +6,8 @@ import { nowruz, EVENTS } from '../../web/src/pure/calendar.js';
 import { makeInteract } from '../../web/src/pure/interact.js';
 import { makeCollision } from '../../web/src/pure/collide.js';
 import { CHARMS, CHARM, isOpen, readKit } from '../../web/src/pure/smith.js';
+import { checkLayout } from '../../web/src/pure/layoutcheck.js';
+import { makeNav } from '../../web/src/pure/nav.js';
 
 const WORLD = JSON.parse(readFileSync(new URL('../../web/assets/world.json', import.meta.url), 'utf8'));
 const fresh = () => JSON.parse(JSON.stringify(WORLD));
@@ -87,6 +89,22 @@ test('the shelf fits its corner: between the bookcase and the partition, under t
   const shelfE = meta.colliders.find(c => c.name === 'bookshelf_e'), part = meta.colliders.find(c => c.name === 'wall_partition');
   assert.ok(x0 >= shelfE.max[0] && x1 <= part.min[0], 'beside the bookcase, short of the partition');
   assert.ok(y0 >= 0 && y1 <= shelfE.max[1], 'no deeper than the bookcase');
+});
+
+test('with the pieces in, the house still passes its layout check and every old E spot is reached the same way', () => {
+  for (const feast of [null, 'haftsin', 'yalda']) { const meta = fresh(); addPersia(meta, feast); assert.deepEqual(checkLayout(meta), [], String(feast)); }
+  const before = fresh(), after = fresh();
+  addPersia(after, null);
+  const length = p => p.reduce((s, q, i) => (i ? s + Math.hypot(q[0] - p[i - 1][0], q[1] - p[i - 1][1]) : 0), 0);
+  for (const open of [false, true]) {
+    const off = n => n === 'slider_slide' || (open && n === 'secret_door');
+    const A = makeNav(before, { off }), B = makeNav(after, { off }), from = [4, 7, 0];
+    for (const it of before.interact) {
+      const a = A.path(from, it.at), b = B.path(from, it.at);
+      assert.equal(!!b, !!a, it.id);
+      if (a) assert.ok(Math.abs(length(b) - length(a)) < 0.3, `${it.id}: ${length(a).toFixed(2)} m before, ${length(b).toFixed(2)} m after`);
+    }
+  }
 });
 
 test('the Simorgh stays on the stair wall: clear of the frames, the chimney, the mezzanine slab and the ceiling', () => {
