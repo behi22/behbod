@@ -1,9 +1,4 @@
-// The hands every gun at the range shares: a toy hand of rounded pieces on a skeleton, posed by angles, and the
-// solvers that close it on a gun (each finger bends at each joint until it touches, a fingertip goes to a point).
-// Pure: arrays in, arrays out. Vectors are [x, y, z], turns are quaternions [x, y, z, w].
-// Hand space: the wrist at the origin, x toward the fingers, y the back of the hand, z = x cross y (toward the little
-// finger on a right hand, toward the thumb on a left). A finger's angles are [spread, knuckle, middle joint, end
-// joint], a thumb's [swing, lift, middle joint, end joint]; positive bends close the hand.
+// The shared toy hand and its solvers. Hand space: x to the fingers, y the back; angles [spread, knuckle, middle, end].
 
 export const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -50,8 +45,7 @@ const X = [1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
 export const FINGERS = ['index', 'middle', 'ring', 'pinky'];
 export const DIGITS = [...FINGERS, 'thumb'];
 
-// A chunky toy hand of about a grown man's size. Places are for a right hand: a left hand is its mirror across z.
-// `at` the knuckle, `len` the three bones, `r` the radius at each joint and at the tip, `spread` how the finger sits.
+// About a grown man's hand; places are for a right hand, and a left hand mirrors them across z.
 export const HAND = {
   palm: { centre: [0.045, -0.0008, 0.0035], half: [0.046, 0.0122, 0.0345], wrist: 0.74 },
   fingers: {
@@ -69,8 +63,7 @@ export const limits = d => (d === 'thumb' ? LIMITS.thumb : LIMITS.finger);
 const sideOf = side => (side === 'left' ? -1 : 1);
 const mirror = (v, s) => [v[0], v[1], v[2] * s];
 
-// The rest turn of a digit's first bone in hand space: a finger points along x (turned by its spread), the thumb
-// along its own line with its nail outward.
+// A digit's first bone at rest: a finger along x turned by its spread, the thumb along its own line, nail out.
 export function restTurn(side, d) {
   const s = sideOf(side);
   if (d === 'thumb') return qFrame(mirror(HAND.thumb.dir, s), mirror(HAND.thumb.nail, s));
@@ -79,8 +72,7 @@ export function restTurn(side, d) {
 export const digitDef = d => (d === 'thumb' ? HAND.thumb : HAND.fingers[d]);
 export const baseOf = (side, d) => mirror(digitDef(d).at, sideOf(side));
 
-// The turn of each bone against its parent, for a digit's angles: [first, second, third]. A thumb's fifth angle
-// rolls it about its own length, which turns the way its joints bend.
+// Each bone's turn against its parent; a thumb's fifth angle rolls it, which turns the way its joints bend.
 export function boneTurns(side, d, a) {
   const s = sideOf(side);
   let first = qMul(restTurn(side, d), qMul(qAxis(Y, s * a[0]), qAxis(Z, -a[1])));
@@ -88,8 +80,7 @@ export function boneTurns(side, d, a) {
   return [first, qAxis(Z, -a[2]), qAxis(Z, -a[3])];
 }
 
-// Where a digit's joints are in hand space: [base, second joint, third joint, the middle of the tip], and the turn
-// of each bone in hand space.
+// A digit's joints and each bone's turn, in hand space.
 export function digit(side, d, a) {
   const def = digitDef(d), t = boneTurns(side, d, a), pts = [baseOf(side, d)], turns = [];
   let q = [0, 0, 0, 1];
@@ -107,13 +98,11 @@ export function palmPoints(side) {
   return out;
 }
 
-// ---------- a hand placed on something ----------
-// A pose: { at: the wrist, q: the hand's turn, both in the space of whatever it holds; digits: angles per digit }.
+// ---------- a hand placed on something: { at, q } in its space, digits as angles ----------
 export const toOuter = (pose, p) => add(pose.at, qRot(pose.q, p));
 export const toHand = (pose, p) => qRot(qConj(pose.q), sub(p, pose.at));
 
-// How deep a digit's bone goes into a shape (`sdf`: signed distance in the pose's outer space), worst point first;
-// `upto` looks along only the first part of the bone.
+// How deep a digit's bone goes into a shape (signed distance), worst point first; `upto` keeps to the bone's start.
 function sink(side, d, a, bone, pose, sdf, upto = 1) {
   const { pts, r } = digit(side, d, a);
   let worst = Infinity;
@@ -124,9 +113,7 @@ function sink(side, d, a, bone, pose, sdf, upto = 1) {
   return worst;
 }
 
-// Closes a digit on a shape: each joint in turn bends until its bone touches (or the joint's end is reached, as a
-// finger with nothing to hold curls in), short of where the next bone, opened as far as it goes, would be pressed
-// into the shape. Starts from `from` (the spread and any joint not asked for are kept).
+// Closes a digit joint by joint, each short of pressing the next bone in (a finger on nothing curls right in).
 export function wrap(side, d, pose, sdf, { from = [0, 0, 0, 0], joints = [1, 2, 3], squash = 0.0006 } = {}) {
   const a = from.slice(), L = limits(d);
   for (const j of joints) {
@@ -146,9 +133,7 @@ export function wrap(side, d, pose, sdf, { from = [0, 0, 0, 0], joints = [1, 2, 
   return a;
 }
 
-// A small, sure search for the angles that put a digit's tip on a point (in the pose's outer space), kept out of
-// `sdf` when one is given. The end joint follows the middle one as a real finger's does; a thumb may also roll.
-// It starts from `from` and from a few turns round it, and keeps the best.
+// A small, sure search for the angles that put a tip on a point, kept out of `sdf`, started round `from`.
 export function reach(side, d, pose, target, { from = [0, 0, 0.3, 0.25, 0], follow = d === 'thumb' ? 0.8 : 0.75, sdf = null } = {}) {
   const t = toHand(pose, target), L = limits(d), thumb = d === 'thumb', free = thumb ? [0, 1, 2, 4] : [0, 1, 2];
   const angles = x => { const a = [x[0], x[1], x[2], clamp(x[2] * follow, L.lo[3], L.hi[3])]; if (thumb) a.push(x[4]); return a; };
@@ -176,8 +161,7 @@ export function reach(side, d, pose, target, { from = [0, 0, 0.3, 0.25, 0], foll
   };
   const start = [from[0] || 0, from[1] || 0, from[2] || 0, 0, from[4] || 0];
   const starts = [start];
-  // With a shape in the way, also start from the answer that ignores it: a finger threading a narrow gap (a trigger
-  // guard) is found by easing that answer out of the shape, not by searching in from outside.
+  // Also start from the answer that ignores the shape: a finger threading a narrow gap is found by easing that out.
   if (sdf) { const a = reach(side, d, pose, target, { from, follow }); starts.push([a[0], a[1], a[2], 0, a[4] || 0]); }
   if (sdf) for (const k of thumb ? [[0.5, 0, -0.9], [-0.5, 0, 0.9], [0, 0.6, 0], [0.5, -0.4, 0.9], [-0.5, -0.4, -0.9]] : [[0.25, 0.4, 0], [-0.25, -0.2, 0]]) {
     starts.push([clamp(start[0] + k[0], L.lo[0], L.hi[0]), clamp(start[1] + k[1], L.lo[1], L.hi[1]), start[2], 0, thumb ? clamp(start[4] + k[2], L.lo[4], L.hi[4]) : 0]);
@@ -219,8 +203,7 @@ export function blend(a, b, k) {
 // A hand at rest, slightly closed, the way a hand hangs.
 export const relaxed = () => ({ index: [0, 0.25, 0.35, 0.25], middle: [0, 0.32, 0.42, 0.3], ring: [0, 0.38, 0.48, 0.32], pinky: [0, 0.45, 0.5, 0.35], thumb: [0, 0.1, 0.2, 0.15, 0] });
 
-// ---------- shapes, for grips ----------
-// A box with rounded edges (centre, half sizes, edge radius): negative inside.
+// ---------- shapes for grips: a rounded box (centre, half sizes, edge radius), negative inside ----------
 export function roundBox(p, c, h, r = 0) {
   const q = [Math.abs(p[0] - c[0]) - h[0] + r, Math.abs(p[1] - c[1]) - h[1] + r, Math.abs(p[2] - c[2]) - h[2] + r];
   return Math.hypot(Math.max(q[0], 0), Math.max(q[1], 0), Math.max(q[2], 0)) + Math.min(Math.max(q[0], q[1], q[2]), 0) - r;

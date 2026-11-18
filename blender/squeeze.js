@@ -1,9 +1,5 @@
-// Squeezes a gun built by blender/build_guns.py for the page: the same pieces, much smaller on the wire. Every mesh
-// moves onto a node of its own under its named part, so the part's own place stays its pivot (the trigger, the slide
-// stop and the barrel turn about it); then repeats are merged, the numbers stored in fewer bits, and the whole packed
-// with meshopt (three's GLTFLoader reads it with its MeshoptDecoder).
-//   GLTF_TRANSFORM=<a node_modules with @gltf-transform/core, extensions, functions and meshoptimizer>
-//   node blender/squeeze.js [in: blender/build/p22.glb] [out: web/assets/range/p22.glb]
+// Packs a gun from build_guns.py with meshopt, each mesh on a child node of its own so the parts keep their pivots.
+//   GLTF_TRANSFORM=<node_modules with @gltf-transform/core, extensions, functions 4.5.1 and meshoptimizer 0.22.0> node blender/squeeze.js [in] [out]
 const path = require('path');
 const M = process.env.GLTF_TRANSFORM;
 if (!M) { console.error('Set GLTF_TRANSFORM to a node_modules folder holding @gltf-transform/* and meshoptimizer.'); process.exit(1); }

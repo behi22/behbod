@@ -1,6 +1,4 @@
-// Solves how the hands hold each gun (web/src/pure/handling.js) and writes the poses into web/src/range/holds.js, so
-// the page only reads them: solving takes most of a second, too long to do on a phone while the range loads.
-// Run it after changing the hand (web/src/pure/hands.js) or a gun's hold; test/unit/handling.test.mjs says when it is due.
+// Solves the holds ahead of time into web/src/range/holds.js, too slow for a phone; test/unit/handling.test.mjs says when.
 //   node blender/holds.js
 const path = require('path'), fs = require('fs');
 const OUT = path.join(__dirname, '..', 'web/src/range/holds.js');

@@ -1,9 +1,6 @@
 import { makeRng } from './rng.js';
 
-// The guns' sounds, made sample by sample (nothing recorded, nothing downloaded), with the hall they are heard in
-// already in them: the near walls answering first, the backstop thirty metres off a beat later, then the long
-// concrete tail. Pure: a name, a gun's recipe and a seed in, two channels of samples out. Each gun describes its
-// own sound in GUN_SOUNDS; the parts (the crack, the blast, the thump, the action's clacks, the hall) are shared.
+// Made sample by sample, nothing recorded, with the hall already in them; each gun sets its own in GUN_SOUNDS.
 export const SR = 48000;
 
 // The P-22: a 9 mm-ish crack and blast, a light slide. The other guns give their own numbers here.
@@ -71,8 +68,7 @@ function crack(width = 0.00035) {
 }
 const mix = (out, x, start, gain = 1) => { const o = at(start); for (let i = 0; i < x.length && o + i < out.length; i++) if (o + i >= 0) out[o + i] += x[i] * gain; return out; };
 
-// The hall: the side walls and the low ceiling close by, the backstop down the hall, then the tail. Two channels,
-// alike at first and drifting apart in the tail, so the room is all round.
+// Near walls and ceiling first, the backstop a beat later, then a tail whose two channels drift apart.
 function hall(rng, dry, { rt, level, slap }) {
   const n = dry.length + at(rt * 1.1), L = new Float32Array(n), R = new Float32Array(n);
   L.set(dry); R.set(dry);

@@ -9,11 +9,7 @@ import { LOW, ELBOWS } from '../pure/handling.js';
 import { HOLDS } from './holds.js';
 import { CLIPS, sample, cues } from '../pure/clips.js';
 
-// The gun in the hand. It is a scene of its own with its own camera, drawn over everything on a fresh depth, so it
-// never pokes through the bench or a wall; its camera sits exactly where the eye is, so the room's light and
-// reflections fall on it the right way round. Every part that moves on a real pistol moves: the slide, the barrel's
-// tilt, the trigger, the magazine and the round on top of it, the slide stop, the magazine release, and the hands,
-// which are posed from the gun's own description (src/pure/handling.js) and move by its clips (src/pure/clips.js).
+// Its own scene, its camera at the eye, drawn on a fresh depth so it never pokes through the bench or a wall.
 const FOV = 50, SLIDE = 0.042, LOCK = 0.9;
 // Where the gun sits in the eye's space (x right, y up, -z ahead), at the hip and aimed down the sights.
 const HIP = { p: [0.085, -0.072, -0.33], r: [0.02, 0.07, -0.04] };
@@ -132,8 +128,7 @@ export async function makeGun({ env, id = 'pistol', file = 'assets/range/p22.glb
     return [null, 0];
   }
 
-  // A named pose this frame, in the gun's space: some ride on the moving magazine or slide, the waiting one is held
-  // in the eye's space.
+  // A named pose this frame in the gun's space; some ride the moving magazine or slide, 'low' is held in the eye's space.
   function named(side, name, magOff, slideX) {
     if (side === 'right') {
       if (name === 'grip') return blend(holds.right.grip, holds.right.pull, st.trig);
@@ -229,8 +224,7 @@ export async function makeGun({ env, id = 'pistol', file = 'assets/range/p22.glb
       const now = clip ? sample(clip, ct) : REST, back = st.outK > 0 && st.outFrom ? smoother(st.outK) : 0, was = st.outFrom;
       const G = back ? now.gun.map((x, i) => x + (was.gun[i] - x) * back) : now.gun;
 
-      // The slide: back hard on a shot and home again, held back on an empty gun until it is let go, or eased back by a
-      // hand (and let go to fly home when the hand lets go).
+      // The slide: kicked back by a shot, locked back when empty until let go, or held back by a hand.
       st.shotT += dt; st.freeT += dt;
       // A look into the chamber cut short never reaches its own slideHome cue.
       if (st.held !== null && now.slide === null) { st.freeT = 0; st.freeFrom = st.held; st.lock = false; if (cut) onCue?.('slideHome', id); }

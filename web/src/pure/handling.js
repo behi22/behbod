@@ -1,8 +1,6 @@
 import { roundBox, qFrame, qRot as rotate, norm, add, sub, scale, cross, seat, wrap, reach, digit, relaxed, FINGERS, DIGITS, rod } from './hands.js';
 
-// How each gun is held: its shape as the hands feel it, where the hands go on it, and the places a thumb or a
-// finger presses. The view solves the hands' poses from this once, when the gun is loaded. Every place is in the
-// gun's own space with three's axes (x to the muzzle, y up, z to the shooter's right), the gun file's own.
+// How each gun is held: its shape, where the hands go, what a thumb presses; gun space (x muzzle, y up, z right).
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 // ---------- the P-22 (blender/build_guns.py: the same lines, turned into three's axes) ----------
@@ -56,8 +54,7 @@ export const GUN_HOLDS = {
 export const LOW = { at: [-0.17, -0.4, -0.2], fingers: [0.1, 0.55, -1], back: [-1, 0.1, 0] };
 export const ELBOWS = { right: [0.17, -0.5, -0.06], left: [-0.17, -0.5, -0.08] };
 
-// A hand's turn from its settings: the back of the hand faces out from the grip's side, turned toward the back of
-// the gun by `back` degrees, the fingers tipped down by `droop`.
+// The back of the hand faces out from the grip, turned back by `back` degrees and tipped down by `droop`.
 function gripTurn(side, set) {
   const out = side === 'right' ? [0, 0, 1] : [0, 0, -1];
   const backv = turned({ u: out, v: AFT }, set.back);
@@ -84,8 +81,7 @@ export function fingersShape(side, pose) {
   return p => { let d = Infinity; for (const [a, b, r] of world) d = Math.min(d, rod(p, a, b, r)); return d; };
 }
 
-// Every pose a gun's clips ask for, solved once: the right hand on the grip with its finger on the trigger, pulled,
-// straight, and its thumb resting or pressing; the left hand wrapped over it, cupping a magazine, and over the slide.
+// Every pose a gun's clips ask for, both hands, solved ahead of time by blender/holds.js.
 export function solveHolds(gunId) {
   const H = GUN_HOLDS[gunId];
   if (!H) return null;
@@ -93,8 +89,7 @@ export function solveHolds(gunId) {
   return { right, left, shape: H.shape, both, magged };
 }
 
-// The right hand on the grip: three fingers closed round it, the first on the trigger (or pulled, or laid straight),
-// the thumb resting, or pressing the magazine release or the slide stop.
+// The right hand: three fingers round the grip, the first on the trigger (or pulled, or straight), the thumb resting or pressing.
 export function solveRight(H) {
   const shape = H.shape;
   let R = place('right', H.right, shape);

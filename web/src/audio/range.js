@@ -1,10 +1,7 @@
 import { tone, noisy } from './drums.js';
 import { gunSound, SOUND_NAMES, TAKES, SR } from './pure/gunsound.js';
 
-// The range's sounds. The gun's own (the shot with the hall answering, the trigger, the magazine, the slide, the
-// hands) are made sample by sample in src/audio/pure/gunsound.js, the first time the range is used, and played as
-// recordings; the rest (brass on the floor, steel ringing, machines coming apart) are made live here.
-// How loud each of the gun's sounds goes in, against the shot.
+// The gun's sounds are made in pure/gunsound.js and played as samples at these levels against the shot; the rest are live.
 const LEVEL = { shot: 0.8, shotQuiet: 0.8, dry: 0.9, magRelease: 0.8, magOut: 0.9, magDrop: 0.7, magIn: 1, slideRelease: 1, slideHome: 0.9, slidePull: 0.9, grab: 0.8, handle: 0.8, cloth: 0.7, draw: 0.8 };
 
 // `go(pos, wet)` starts a sound at a place in the room (or in the head when pos is null) with some of it sent to the reverb.

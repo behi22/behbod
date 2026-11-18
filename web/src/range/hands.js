@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { HAND, DIGITS, boneTurns, baseOf, digitDef, digit, qFrame, qConj, qMul, qRot, sub, norm } from '../pure/hands.js';
 
-// The hands in the view: each a toy hand in a hoodie sleeve, built here from rounded pieces (nothing to download) on
-// a skeleton the pure rig poses. One skinned mesh for the hand and one for the sleeve, so a hand is a few draws.
+// Built here, nothing to download: one skinned mesh for the hand and one for the sleeve, so a hand is a few draws.
 const RADIAL = 14;
 
 // A rounded rod along x from 0 to L, radius r0 at its start and r1 at its end, its ends closed by half balls.
@@ -111,8 +110,7 @@ export function makeHandMaterials(prepare = m => m) {
   };
 }
 
-// One hand ('right' or 'left'): its group, its bones, and `pose(p, elbow)` to put it in a pose (wrist and turn in
-// the group's parent space, the elbow it hangs from in that same space).
+// One hand: its group, its bones, and pose(p, elbow), both given in the group's parent space.
 export function makeHand(side, mats) {
   const root = new THREE.Group();
   root.name = 'hand_' + side;

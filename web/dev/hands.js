@@ -5,9 +5,7 @@ import { stats } from '../src/pure/arsenal.js';
 import { newWeapon, step } from '../src/pure/weapon.js';
 import { CLIPS } from '../src/pure/clips.js';
 
-// A bench for the hands at the range: the gun in the hand seen from the eye and from round about, at any moment of
-// any clip. ?gun=pistol&file=<a gun file>&hands=0. A hold is changed in src/pure/handling.js, then node blender/holds.js.
-// window.__bench drives it for the checks.
+// Bench for the range's hands at any moment of any clip: ?gun=pistol&file=<gun file>&hands=0; window.__bench drives it.
 const params = new URLSearchParams(location.search), gunId = params.get('gun') || 'pistol', file = params.get('file') || '../assets/range/p22.glb';
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));

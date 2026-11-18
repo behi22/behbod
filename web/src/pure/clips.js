@@ -1,14 +1,6 @@
 import { track, smoother } from './springs.js';
 
-// The hands' moves as clips: each a few tracks of keys over time, eased from one key to the next. The view reads
-// a clip at a time and poses the gun and the hands from it; the weapon's own rules (src/pure/weapon.js) still say
-// when the magazine is out and in, and a clip is built from the same numbers so the two never drift apart.
-//   gun:   [x, y, z, pitch, yaw, roll], the gun moved from where it is held (metres and radians, the eye's axes,
-//          turned about the grip)
-//   right, left: the pose each hand is in, by name, eased from each to the next
-//   mag:   [down the well, toward the pouch 0..1] for the fresh magazine (0, 0 is home)
-//   slide: how far back a hand holds the slide (0 home, 1 right back), and `held` the times it is in a hand
-//   cues:  sounds, by name, at their moments
+// Keyed tracks built from the weapon's own times: gun [x, y, z, pitch, yaw, roll] about the grip, hand poses, mag, slide, cues.
 
 // A track of names: the two poses either side of t and how far from the first to the second.
 export function between(keys, t) {
@@ -40,8 +32,7 @@ export function cues(clip, t0, t1) {
   return (clip.cues || []).filter(([t]) => t > t0 && t <= t1).map(([, name]) => name);
 }
 
-// ---------- the pistol ----------
-// s: the gun's numbers as stats() gives them (src/pure/arsenal.js).
+// ---------- the pistol (s: its numbers from stats() in src/pure/arsenal.js) ----------
 export function pistolClips(s) {
   const R = s.reload, out = R.out, inn = R.in, rack = R.rack;
   // The gun turned up and over so the magazine well faces the eye.
@@ -62,8 +53,7 @@ export function pistolClips(s) {
       c.left.push([inn + 0.3, 'grip']);
       c.right.push([end - 0.18, 'straight'], [end - 0.04, 'grip']);
     } else {
-      // From empty the slide is locked back: the free hand goes back to the grip, the gun turns to show its left
-      // side, and the shooting hand's thumb presses the slide stop down to let the slide fly home.
+      // From empty the thumb presses the slide stop to let the locked slide fly home, the gun turned to show it.
       c.gun.push([inn + 0.3, SHOW], [rack + 0.08, SHOW], [end - 0.02, [0, 0, 0, 0, 0, 0]]);
       c.left.push([inn + 0.3, 'grip']);
       c.right.push([rack - 0.16, 'straight'], [rack - 0.03, 'stop'], [rack + 0.06, 'stop'], [end - 0.12, 'straight'], [end - 0.02, 'grip']);
@@ -71,8 +61,7 @@ export function pistolClips(s) {
     }
     return c;
   };
-  // The look over: the free hand lets go, the gun turns to show its left side, then over to its right, then the free
-  // hand eases the slide back for a look into the chamber, and it all comes home.
+  // The look over: its left side, its right, then the free hand eases the slide back to show the chamber.
   const LEFT = [-0.08, 0.06, 0.0, 0.2, 1.15, 0.2], RIGHT = [-0.04, 0.06, 0.0, 0.15, -0.9, -0.3], ZERO = [0, 0, 0, 0, 0, 0];
   // For the look into the chamber: muzzle up a little, the top rolled toward the eye, the port showing.
   const PRESS = [-0.06, 0.06, 0.0, 0.35, 0.2, 0.9];
