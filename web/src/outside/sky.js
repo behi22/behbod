@@ -39,7 +39,8 @@ export function makeSky(U, q) {
         vec3 col = skyBase(d);
         if (uAurora > 0.001 && d.y > 0.0) col += aurora(d);
         float mm = max(dot(d, uMoonDir), 0.0);
-        col += uMoonAmb * (pow(mm, 3000.0) * 4.0 + pow(mm, 90.0) * 0.6 + pow(mm, 12.0) * 0.15) * (1.0 + uCloud * 2.0);
+        // Through the telescope the glow round the moon is mostly gone: the eyepiece sees the dark sky beside it.
+        col += uMoonAmb * (pow(mm, 3000.0) * 4.0 * (1.0 - 0.95 * uScope) + pow(mm, 90.0) * 0.6 * (1.0 - 0.7 * uScope) + pow(mm, 12.0) * 0.15) * (1.0 + uCloud * 2.0);
         float mu = dot(d, uSunDir);
         col += uSunDisc * smoothstep(0.999945, 0.999965, mu);
         float c = cloudAt(d);

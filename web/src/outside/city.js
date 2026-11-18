@@ -75,6 +75,25 @@ const FACADE_F = /* glsl */ `
       vec3 wall = st == 2 ? tint * 0.6 + refl * reflK * 0.5 : alb * diffuse;
       col = mix(wall, pane, win * (1.0 - slab));
       if (band > 0.0) col = mix(col, alb * diffuse * 1.1, slab + aa * band);
+      if (uScope > 0.5) {
+        // Close up only: blinds and curtains, lit rooms, mullions, and the balcony rails on the glass towers.
+        float k = 1.0 - aa, wy = clamp((f.y - 0.55) / open.y + 0.5, 0.0, 1.0);
+        float h3 = hash13(vec3(unit, vSeed * 23.0 + 2.0));
+        float blind = step(h3, 0.22) * step(0.55 - 0.4 * fract(h3 * 7.0), wy);
+        float curtain = step(0.8, h3) * step(0.55 + 0.3 * (fract(h3 * 13.0) - 0.5), mix(f.x, 1.0 - f.x, step(0.5, fract(h3 * 31.0))));
+        float cover = max(blind, curtain) * win * k;
+        col = mix(col, (alb * 1.3 + 0.04) * diffuse * (0.9 + 0.1 * step(0.5, fract(f.y * 40.0)) * blind), cover * 0.8);
+        float room = mix(0.4, 1.2, smoothstep(0.15, 0.95, wy)) * mix(1.0, 0.25, step(wy, 0.2 + 0.12 * hash13(vec3(cell, 4.4))));
+        wcol *= mix(1.0, room * mix(1.0, 0.4, max(blind, curtain)), k);
+        if (st == 0 || st == 2) col *= 1.0 - 0.55 * k * win * (1.0 - smoothstep(0.012, 0.03, abs(f.x - 0.5)));
+        // The glass towers given balcony slabs (scopecity.js picks the same ones by their seed).
+        if (st == 0 && vSeed < 0.85) {
+          float rail = (1.0 - smoothstep(0.33, 0.35, f.y)) * k;
+          col = mix(col, col * 0.72 + vec3(0.03, 0.045, 0.042) * (diffuse + uAmbient), rail * 0.55);
+          col += alb * diffuse * 0.6 * (smoothstep(0.33, 0.345, f.y) - smoothstep(0.355, 0.37, f.y)) * k;
+          col *= 1.0 - 0.3 * smoothstep(0.5, 0.84, f.y) * (1.0 - step(0.84, f.y)) * k;
+        }
+      }
       col += wcol * lit * win * mix(0.05, 1.0, uNight) * 0.9;
     }
     gl_FragColor = vec4(applyHaze(col, vWp), 1.0);

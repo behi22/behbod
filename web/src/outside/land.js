@@ -85,6 +85,17 @@ export function makeTerrain(U, q) {
         float snow = smoothstep(sl, sl + 140.0, alt) * smoothstep(0.42, 0.62, n.y + 0.2 * smoothstep(sl + 250.0, sl + 650.0, alt));
         alb = mix(alb, vec3(0.8, 0.82, 0.86), snow * (0.85 + 0.15 * nf.g));
         alb = mix(alb, vec3(0.12, 0.115, 0.105), smoothstep(2.2, 0.8, alt) * smoothstep(-4.0, -1.0, alt));
+        if (uScope > 0.5) {
+          // Close up only: the forest breaks into lit crowns and the town's ground into gardens.
+          vec2 cp = vWp.xz / 230.0;
+          float c0 = texture2D(uNoise, cp).a, cx = texture2D(uNoise, cp + vec2(0.004, 0.0)).a, cz = texture2D(uNoise, cp + vec2(0.0, 0.004)).a;
+          float vis = smoothstep(3.0, 0.8, fwidth(cp.x) * 256.0) * smoothstep(26000.0, 5000.0, dist) * (1.0 - snow);
+          float crown = smoothstep(0.28, 0.78, c0);
+          float wood = (1.0 - vKind.x) * vis;
+          alb = mix(alb, alb * mix(0.4, 1.3, crown), wood);
+          n = normalize(n + vec3(c0 - cx, 0.0, c0 - cz) * 5.0 * wood);
+          alb = mix(alb, mix(vec3(0.035, 0.055, 0.025), vec3(0.06, 0.07, 0.035), crown), vKind.x * vis * 0.55 * (1.0 - street));
+        }
         float sun = max(dot(n, uSunDir), 0.0);
         vec3 col = alb * (uSunCol * sun + uAmbient * (0.5 + 0.5 * n.y) + uMoonAmb * (0.3 + max(dot(n, uMoonDir), 0.0)));
         col += vec3(0.022, 0.013, 0.006) * vKind.x * uNight * smoothstep(-2.0, 20.0, alt) * smoothstep(7000.0, 1500.0, dist) * (0.6 + 0.8 * nf.a);

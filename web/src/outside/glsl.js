@@ -18,13 +18,15 @@ export function makeUniforms() {
     uNoise: { value: null }, uWave: { value: null }, uSil: { value: null },
     uVessel: { value: [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()] }, uVesselOn: { value: [0, 0, 0] },
     uWake: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+    // 1 while someone looks through the telescope: the facades and the slopes draw their close-up detail.
+    uScope: { value: 0 },
   };
 }
 
 export const COMMON = /* glsl */ `
 #define WATER_Y ${f(WATER_Y)}
 #define LAT ${f(LAT * Math.PI / 180)}
-uniform float uLow, uTime, uRes, uPx, uCloud, uNight, uStars, uMoonK, uHazeD, uFog, uRain, uSnow, uRough, uAurora, uWinFrac, uOffFrac, uSnowLine, uSki, uLst, uSeason;
+uniform float uScope, uLow, uTime, uRes, uPx, uCloud, uNight, uStars, uMoonK, uHazeD, uFog, uRain, uSnow, uRough, uAurora, uWinFrac, uOffFrac, uSnowLine, uSki, uLst, uSeason;
 uniform vec3 uSunDir, uSunCol, uSunDisc, uZenith, uHorizon, uHorizonSun, uGlow, uAmbient, uCloudLit, uCloudDark, uMoonDir, uMoonLight, uMoonAmb, uFlashCol;
 uniform vec2 uCloudOff;
 uniform vec4 uFlash;

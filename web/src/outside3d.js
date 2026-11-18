@@ -41,6 +41,9 @@ export function makeOutside3d(opts = {}) {
   const towers = P.towerLayout(7);
   const light = { dayK: 0, sunDir: new THREE.Vector3(0, 1, 0), phase: 'day' };
   const deathStar = new THREE.Vector3(0, 0.4, -1).normalize();
+  // What the telescope adds to the world outside (its planets, its close-up city): kept through a rebuild, theirs to dispose.
+  const extras = new THREE.Group();
+  scene.add(extras);
 
   let parts = null, quality = null;
   function build(q) {
@@ -67,12 +70,14 @@ export function makeOutside3d(opts = {}) {
   }
   function teardown() {
     if (!parts) return;
+    scene.remove(extras);
     const geos = new Set(), mats = new Set();
     scene.traverse(o => { if (o.geometry) geos.add(o.geometry); if (o.material) mats.add(o.material); if (o.isInstancedMesh) o.dispose(); });
     geos.forEach(g => g.dispose());
     mats.forEach(m => m.dispose());
     parts.sil.dispose();
     scene.clear();
+    scene.add(extras);
     parts = null;
   }
 
@@ -271,5 +276,5 @@ export function makeOutside3d(opts = {}) {
   }
 
   rebuild(tier());
-  return { scene, camera, tick, light, deathStar, dispose };
+  return { scene, camera, tick, light, deathStar, dispose, U, extras, clock, towers, vessels: VS, get parts() { return parts; }, get quality() { return quality; } };
 }
