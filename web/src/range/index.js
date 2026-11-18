@@ -8,6 +8,8 @@ import { makeTargets } from './targets.js';
 import { makeHud } from './hud.js';
 import { makeFlashlight } from './flashlight.js';
 import { makeBolts } from './bolts.js';
+import { makeHall } from './hall.js';
+import { makeLoadout } from './loadout.js';
 import { BOLT, boltAt, reach, strikes } from '../pure/bolts.js';
 import { stats, damageAt, nextGun, gunsFor, GUN } from '../pure/arsenal.js';
 import { RIGS } from '../pure/rigs.js';
@@ -22,7 +24,7 @@ import { spring, springStep, kick, critical } from '../pure/springs.js';
 const EYE = 1.56, DUCK = 0.52, YAW_MAX = 1.2, PITCH_MAX = 0.62, LOOK = 0.0021, TOUCH_LOOK = 0.0052, STEP = 2.6, COUNT = 0.62;
 const rad = THREE.MathUtils.degToRad;
 
-export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, progress, look, onReady, onExit, onResult }) {
+export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, music, progress, look, onReady, onExit, onResult }) {
   // A world file from before these rooms were built has none of this: the house opens as ever and the range is not offered.
   const built = !!(meta.range?.stand && meta.range.line && meta.range.strafe && meta.zones.some(z => z.id === 'range' && z.light));
   const R = built ? meta.range : { stand: [0, 0, 0], line: [0, 0], strafe: [0, 0], bench: 1 }, stand = b2t(...R.stand);
@@ -39,6 +41,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   let flashRoom = null, flashStage = null, flashT = 9, flashK = 0;
   // The flashlight and the drones' bolts; the hall's lights (1 on, 0 out) and where they are heading; how long ago a bolt struck.
   let flash = null, bolts = null, lights = 1, lightsTo = 1, struckT = 9;
+  // The hall dressed for the stage, and the loadout room's pieces to poke at.
+  let hall = null, loadout = null;
   const cx = R.line[0], z0 = -R.line[1], toRoom = (x, d, h, out) => out.set(cx + x, h, z0 + d), eyeR = { x: 0, d: 0, h: 0 }, ndc = new THREE.Vector3(), warnings = [];
   // For the checks: with a film on, time moves only by what `advance` hands out, so a shot can be looked at frame by frame.
   let film = null;
@@ -58,6 +62,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       r.scene.add(flashRoom); r.stage.add(flashStage);
       flash = makeFlashlight(r.scene, r.stage);
       bolts = makeBolts(r.stage, fx, toRoom, { sfx });
+      hall = makeHall(r, meta, { coarse, fancy: () => engine.tier.post && !coarse });
+      loadout = makeLoadout(r.stage, meta, { coarse, low: coarse || !engine.tier.post, sfx, hall });
       // The pistol hangs on the gun wall's first mount, side on (the other mounts fill as the guns are built).
       if (R.mounts?.[0]) {
         const show = g.model.clone(true), drop = [];
@@ -69,7 +75,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       // A spent case waits out of sight in the room, so the first one thrown costs nothing to prepare.
       const first = g.newCasing();
       first.visible = false; r.stage.add(first);
-      await r.warmUp(camera);
+      await hall.ready(() => r.warmUp(camera), breathe);
       await breathe();
       await prepare(engine.renderer, g.scene, g.camera);
       room = r; gun = g;
@@ -161,6 +167,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     targets.clear(); bolts.clear(); dark(false);
     const best = progress.rangeBest(), open = openStages(best), { el } = hud;
     if (!open.includes(pick.stage)) pick.stage = 'warmup';
+    hall.want(pick.stage); music?.prepare();
     const list = el('div', 'rg-list');
     for (const st of STAGES) {
       const b = best[st.id] || {}, n = Math.max(b.easy | 0, b.normal | 0, b.hard | 0), ok = open.includes(st.id);
@@ -188,6 +195,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     w = newWeapon(s); gun.draw(); targets.clear(); fx.clear();
     hud.stage(STAGE[stage].name, DIFFICULTIES[difficulty].name);
     bolts.clear(); dark(!!STAGE[stage].dark);
+    hall.want(stage); music?.play();
     state = 'count'; countT = 0; countN = 3; hud.big('3'); sfx?.beep(false);
     lock();
   }
@@ -195,11 +203,13 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     if (state !== 'play' && state !== 'count') return;
     const was = state;
     state = 'paused'; unlock(); release();
+    music?.stop(0.5);
     const { el } = hud;
-    hud.card([el('h2', '', 'PAUSED'), el('h3', '', STAGE[run.stage].name)], [['Resume', () => { hud.closeCard(); release(); state = was; lock(); }, true], ['Stages', () => { quitRun(run); menu(); }], ['Leave', () => api.exit()]]);
+    hud.card([el('h2', '', 'PAUSED'), el('h3', '', STAGE[run.stage].name)], [['Resume', () => { hud.closeCard(); release(); state = was; lock(); music?.play(); }, true], ['Stages', () => { quitRun(run); menu(); }], ['Leave', () => api.exit()]]);
   }
   function finish(res) {
     state = 'over'; unlock(); release(); dark(false);
+    music?.stop();
     const got = progress.rangeResult(res.stage, res.difficulty, res.stars, res.score), { el } = hud;
     drawBoard();
     const more = onResult?.(res, got) || [];
@@ -376,6 +386,12 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     get lights() { return lights; },
     get bolts() { return bolts; },
     get targets() { return targets; },
+    // The hall's stage dressing, the loadout room's pieces, and the run's music.
+    get hall() { return hall; },
+    get loadout() { return loadout; },
+    get music() { return music; },
+    get spots() { return loadout?.spots || []; },
+    poke(id) { return loadout?.poke(id) ?? null; },
     enter() {
       if (!gun || active) return false;
       active = true; enterK = 0; along = 0; alongV = 0; aimHeld = false; yaw = lastYaw = 0; pitch = lastPitch = 0; duck = 0; baseFov = camera.fov; hadLock = false;
@@ -400,6 +416,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       targets.clear(); fx.clear();
       hud.hide(); hud = null;
       flashRoom.intensity = flashStage.intensity = 0;
+      music?.stop(1);
       bolts.clear(); dark(false); lights = 1; lastHurt = 0; room.setLights(1); gun.setLights(1); flash.update(1, camera, v1.set(0, 0, 1));
       camera.fov = baseFov; camera.updateProjectionMatrix();
       engine.showBackground(true);
@@ -439,7 +456,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     tick(dt, t) {
       if (!gun) return;
       // Out of the range, what was left in the air still lands.
-      if (!active) { if (visible()) fx.tick(dt); return; }
+      if (!active) { if (visible()) { fx.tick(dt); hall.update(dt, t); loadout.update(dt, t); } else loadout.rest(); return; }
       if (film) dt = film.step;
       const live = state === 'play' || state === 'count', dtc = film ? dt : Math.min(dt, 0.05);
       if (live) {
@@ -484,6 +501,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       lights += (lightsTo - lights) * Math.min(1, dt * (lightsTo < lights ? 7 : 3));
       if (Math.abs(lightsTo - lights) < 0.002) lights = lightsTo;
       room.setLights(lights); gun.setLights(Math.max(lights, 0.14 * flash.level));
+      hall.update(dt, t); loadout.update(dt, t);
       flash.update(dt, camera, camera.getWorldDirection(v3));
       struckT += dt;
       if (hud) warn();

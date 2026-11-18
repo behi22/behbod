@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from '../engine.js';
 import { U, lit, makeDetail } from './lit.js';
+import { MOODS } from '../pure/moods.js';
 
 // The range's rooms. Unlike the house, whose zones are baked pictures, these are real materials: each surface's own
 // colour and finish, lit by a lightmap that holds the light alone, with the room reflected in the floor and the
@@ -12,6 +13,22 @@ const GLOW = { E_range_white: [0.82, 0.9, 1.0, 3.2], E_range_panel: [1.0, 0.93, 
 const SURFACE = { r_floor: ['floor', 0.05], r_wall: ['mottle', 0.15], r_panel: ['mottle', 0.3], r_steel: ['brushed', 0.25], r_dark: ['mottle', 0.1],
   r_rubber: ['mottle', 0.5], r_yellow: ['mottle', 0.2], r_bench: ['brushed', 0.3], r_line: ['mottle', 0.2], r_crate: ['mottle', 0.3] };
 const BOARD = [1024, 602];
+// How far each glow goes down when the lights go out (the rest are lamps of their own), and which of a mood's
+// colours the hall's take.
+const DIM = { E_range_white: 0.02, E_range_panel: 0.05, E_teal: 0.3 }, TONE = { E_range_white: 'strip', E_teal: 'accent' };
+
+// A glow that a band of light can run along, down the hall and away from the line (some stages' strips chase).
+export function pulsing(material, P) {
+  material.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, P);
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vRangeZ;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvRangeZ = (modelMatrix * vec4(transformed, 1.0)).z;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRangeZ; uniform float uTime, uPulse, uSpeed;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  float band = pow(0.5 + 0.5 * sin((vRangeZ - uTime * uSpeed) * 0.34), 6.0);\n  diffuseColor.rgb *= mix(1.0, 0.22 + 2.2 * band, uPulse);');
+  };
+  material.customProgramCacheKey = () => 'range-pulse';
+  return material;
+}
 
 // The rooms are made ready while the visitor is walking about the house, so the work is done a piece at a time with
 // a breath between the pieces: a frame or two gets drawn, and nothing is felt.
@@ -83,18 +100,27 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
     }
   });
   if (loose.length) console.warn('[range] pieces without a baked surface:', loose.join(', '));
-  // Every light of one colour is one mesh: a few draw calls for all the strips, rings and lamps.
-  const glow = {};
+  // Every light of one colour is one mesh per room: a few draw calls for all the strips, rings and lamps. The hall's
+  // take on the stage's colours and pulse; the loadout room's stay as they are.
+  const R = meta.range, benchZ = -(R.line[1] - 0.3);
+  U.hallZ.value.set(benchZ, benchZ + 1.7);
+  const glow = {}, pulse = { uTime: { value: 0 }, uPulse: { value: 0 }, uSpeed: { value: 0 } };
+  const centreZ = o => new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).z;
   for (const [name, list] of Object.entries(glowing)) {
     const [r, g, b, k] = GLOW[name], base = new THREE.Color(r * k, g * k, b * k);
-    const material = new THREE.MeshBasicMaterial({ color: base.clone(), fog: false });
-    const geos = list.map(o => { const q = o.geometry.clone().applyMatrix4(o.matrixWorld); for (const a of Object.keys(q.attributes)) if (a !== 'position') q.deleteAttribute(a); return q; });
-    const mesh = new THREE.Mesh(mergeGeometries(geos), material);
-    mesh.name = 'glow_' + name;
-    scene.add(mesh);
+    for (const hall of [false, true]) {
+      const part = list.filter(o => (centreZ(o) > benchZ) === hall);
+      if (!part.length) continue;
+      const material = new THREE.MeshBasicMaterial({ color: base.clone(), fog: false });
+      if (hall) pulsing(material, pulse);
+      const geos = part.map(o => { const q = o.geometry.clone().applyMatrix4(o.matrixWorld); for (const a of Object.keys(q.attributes)) if (a !== 'position') q.deleteAttribute(a); return q; });
+      const mesh = new THREE.Mesh(mergeGeometries(geos), material);
+      mesh.name = 'glow_' + name + (hall ? '_hall' : '');
+      scene.add(mesh);
+      for (const q of geos) q.dispose();
+      glow[name + (hall ? '@hall' : '')] = { name, material, base, hall, k };
+    }
     for (const o of list) { o.parent.remove(o); o.geometry.dispose(); }
-    for (const q of geos) q.dispose();
-    glow[name] = { material, base };
   }
   scene.traverse(o => { o.updateMatrix(); o.matrixAutoUpdate = false; });
   scene.matrixWorldAutoUpdate = true;
@@ -103,7 +129,7 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
   // Without float pictures to draw into (some phones), plain ones do, and the reflections are only a little flatter.
   // (Taken from open floor short of the first cover: right behind a barrier, its lit yellow cap filled the picture
   // and every piece of steel came out gold.)
-  const R = meta.range, eye = b2t(R.line[0], R.line[1] - 4.5, 2.4);
+  const eye = b2t(R.line[0], R.line[1] - 4.5, 2.4);
   if (R.box) {
     const a = b2t(...R.box[0]), b = b2t(...R.box[1]);
     U.boxMin.value.copy(a).min(b); U.boxMax.value.copy(a).max(b); U.probe.value.copy(eye);
@@ -136,23 +162,42 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
   reflect();
   await breathe();
 
-  let lightsK = 1;
+  let lightsK = 1, mood = MOODS.warmup, dip = 1;
+  const skyBase = sky.color.clone(), keyBase = key.color.clone(), c = new THREE.Color();
+  function apply() {
+    const k = lightsK, b = mood.bright * dip;
+    for (const m of Object.values(surfaces)) m.lightMapIntensity = Math.PI * (0.035 + 0.965 * k);
+    // The room's reflection is of the hall lit up, so it goes down with the lights; the teal strips stay as a faint guide.
+    scene.environmentIntensity = stage.environmentIntensity = 0.03 + 0.97 * k;
+    U.hallTint.value.setRGB(mood.tint[0] * b, mood.tint[1] * b, mood.tint[2] * b);
+    U.haze.value.setRGB(...mood.haze); U.hazeK.value = mood.hazeK;
+    for (const g of Object.values(glow)) {
+      const tone = g.hall && TONE[g.name] ? mood[TONE[g.name]] : null;
+      if (tone) g.material.color.setRGB(tone[0] * g.k, tone[1] * g.k, tone[2] * g.k); else g.material.color.copy(g.base);
+      g.material.color.multiplyScalar((DIM[g.name] ?? 1) + (1 - (DIM[g.name] ?? 1)) * k).multiplyScalar(g.hall ? dip : 1);
+    }
+    // What moves in the hall takes a little of its colour, never its brightness: the targets are as easy to see in every mood.
+    c.setRGB(0.7 + 0.3 * mood.tint[0], 0.7 + 0.3 * mood.tint[1], 0.7 + 0.3 * mood.tint[2]);
+    sky.color.copy(skyBase).multiply(c); key.color.copy(keyBase).multiply(c);
+    sky.intensity = 0.9 * (0.04 + 0.96 * k); key.intensity = 2.2 * (0.02 + 0.98 * k);
+  }
   return {
-    scene, stage, group, light, detail, surfaces, glow, eye,
+    scene, stage, group, light, detail, surfaces, glow, eye, pulse,
     board: { canvas: board, texture: boardTex },
     get env() { return scene.environment; },
     // The hall's lights: 1 is on; toward 0 the baked light fades to a trace and the strips go out (the dark stage).
     setLights(k) {
       if (Math.abs(k - lightsK) < 1e-3) return;
       lightsK = k;
-      for (const m of Object.values(surfaces)) m.lightMapIntensity = Math.PI * (0.035 + 0.965 * k);
-      // The room's reflection is of the hall lit up, so it goes down with the lights; the teal strips stay as a faint guide.
-      scene.environmentIntensity = stage.environmentIntensity = 0.03 + 0.97 * k;
-      glow.E_range_white?.material.color.copy(glow.E_range_white.base).multiplyScalar(0.02 + 0.98 * k);
-      glow.E_range_panel?.material.color.copy(glow.E_range_panel.base).multiplyScalar(0.05 + 0.95 * k);
-      glow.E_teal?.material.color.copy(glow.E_teal.base).multiplyScalar(0.3 + 0.7 * k);
-      sky.intensity = 0.9 * (0.04 + 0.96 * k); key.intensity = 2.2 * (0.02 + 0.98 * k);
+      apply();
     },
+    // The stage's look in the hall (see pure/moods.js), and how far its lights have dipped while it changes.
+    setMood(m, d = 1) {
+      if (m === mood && d === dip) return;
+      mood = m; dip = d;
+      apply();
+    },
+    get mood() { return mood; },
     get lights() { return lightsK; },
     // Builds every shader and sends every picture to the graphics card now, so the first look inside never stalls.
     async warmUp(camera) {

@@ -7,10 +7,12 @@ export const U = {
   haze: { value: new THREE.Color(0.012, 0.016, 0.024) }, hazeK: { value: 0.011 },
   // The hall as a box and where its reflection was taken from (see rangeProject); an empty box leaves reflections as they are.
   boxMin: { value: new THREE.Vector3(1, 1, 1) }, boxMax: { value: new THREE.Vector3(-1, -1, -1) }, probe: { value: new THREE.Vector3() },
+  // The stage's colour on the hall's baked light, fading in past the bench (three's z, from x to y): the loadout room keeps its own.
+  hallTint: { value: new THREE.Color(1, 1, 1) }, hallZ: { value: new THREE.Vector2(1e5, 1e5 + 1) },
 };
 
 const HEAD = `
-uniform float uExposure, uTone, uHazeK; uniform vec3 uHaze, uBoxMin, uBoxMax, uProbe;
+uniform float uExposure, uTone, uHazeK; uniform vec3 uHaze, uBoxMin, uBoxMax, uProbe, uHallTint; uniform vec2 uHallZ;
 // The room's reflection is one look around from the firing line. Used as it is, a patch of floor far down the hall
 // would mirror what is over the firing line; this follows the reflected ray to the hall's wall or ceiling and looks
 // that way from where the picture was taken, so the floor mirrors the lights that are really above it.
@@ -31,7 +33,12 @@ const MAPS = THREE.ShaderChunk.lights_fragment_maps, ENV = THREE.ShaderChunk.env
 const TURNED = 'reflectVec = inverseTransformDirection( reflectVec, viewMatrix );';
 const BOXED_ENV = ENV.replace(TURNED, TURNED + ' reflectVec = rangeProject( reflectVec );');
 const SQUEEZED = 'lightMapTexel.rgb * lightMapIntensity', TWICE = 'iblIrradiance += getIBLIrradiance( geometryNormal );';
-const BAKED_MAPS = MAPS.replace(SQUEEZED, '( lightMapTexel.rgb / max( 1.0 - lightMapTexel.rgb, 0.02 ) ) * lightMapIntensity').replace(TWICE, '');
+const HALL_TINT = `
+#if defined( RE_IndirectDiffuse ) && defined( RE_IndirectSpecular )
+  { vec3 wp = cameraPosition + (vec4(-vViewPosition, 0.0) * viewMatrix).xyz, hallTint = mix(vec3(1.0), uHallTint, smoothstep(uHallZ.x, uHallZ.y, wp.z));
+    irradiance *= hallTint; iblIrradiance *= hallTint; radiance *= hallTint; }
+#endif`;
+const BAKED_MAPS = MAPS.replace(SQUEEZED, '( lightMapTexel.rgb / max( 1.0 - lightMapTexel.rgb, 0.02 ) ) * lightMapIntensity').replace(TWICE, '') + HALL_TINT;
 // If a newer three words these lines differently the look would change without a sound; say so instead.
 export const patched = MAPS.includes(SQUEEZED) && MAPS.includes(TWICE) && ENV.includes(TURNED);
 if (!patched) console.warn('[range] three\'s lighting shaders have changed; the range will look wrong');
@@ -41,7 +48,7 @@ if (!patched) console.warn('[range] three\'s lighting shaders have changed; the 
 export function lit(material, baked = false) {
   material.fog = false;
   material.onBeforeCompile = shader => {
-    Object.assign(shader.uniforms, { uExposure: U.exposure, uTone: U.tone, uHaze: U.haze, uHazeK: U.hazeK, uBoxMin: U.boxMin, uBoxMax: U.boxMax, uProbe: U.probe });
+    Object.assign(shader.uniforms, { uExposure: U.exposure, uTone: U.tone, uHaze: U.haze, uHazeK: U.hazeK, uBoxMin: U.boxMin, uBoxMax: U.boxMax, uProbe: U.probe, uHallTint: U.hallTint, uHallZ: U.hallZ });
     let fs = shader.fragmentShader.replace('#include <common>', '#include <common>' + HEAD).replace('#include <tonemapping_fragment>', TAIL)
       .replace('#include <envmap_physical_pars_fragment>', BOXED_ENV);
     if (baked) fs = fs.replace('#include <lights_fragment_maps>', BAKED_MAPS);
