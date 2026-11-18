@@ -25,7 +25,7 @@ export const STORIES = [
   { id: 'labours', tab: 'Seven Labours', title: 'The Seven Labours of Rostam', fa: 'هفت‌خوان رستم', pic: "A painting: Rostam on Rakhsh before the White Div's cave.", text: [
     'King Kay Kavus marched into Mazandaran, the land of the divs. With his sorcery the White Div struck the king and his army blind and held them captive.',
     'Rostam rode out alone on Rakhsh by the short and dangerous road, and faced seven trials on the way.',
-    'A lion came for him while he slept, and Rakhsh fought it off alone. In a burning desert, close to dying of thirst, he followed a ram to a spring. A dragon came in the night and twice hid in the dark before Rostam saw it; he and Rakhsh killed it together. A sorceress came to him as a lovely young woman, and he saw through her. He caught Olad with his lasso and made him show the way. He beat the div Arzhang and scattered his army.',
+    'A lion came for him while he slept, and Rakhsh fought it alone and killed it. In a burning desert, close to dying of thirst, he followed a ram to a spring. A dragon came in the night and twice hid in the dark before Rostam saw it; he and Rakhsh killed it together. A sorceress came to him as a lovely young woman, and he saw through her. He caught Olad with his lasso and made him show the way. He beat the div Arzhang and scattered his army.',
     "Last, in a dark cave behind seven mountains, he fought the White Div and won, and the div's blood gave the king and his men their sight back.",
   ] },
   { id: 'siavash', tab: 'Siavash', title: 'Siavash and the Fire', fa: 'گذر سیاوش از آتش', pic: 'A painting: Siavash riding his black horse through the fire.', text: [

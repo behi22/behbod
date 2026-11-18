@@ -4,7 +4,7 @@ import { FIELD, LABOURS, LION, DRAGON, CUPS, OLAD, WHITE, cupX } from '../pure/h
 // Haft Khan's pictures: each labour's scene in field units (720 by 420), with its words between rounds.
 const SERIF = "Georgia, 'Times New Roman', serif";
 const ORDINAL = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh'];
-const DONE = ['Rakhsh drives off the lion.', 'The ram leads him to a spring.', 'The dragon is slain.', 'He sees through her.', 'Olad is caught.', 'Arzhang is beaten.', 'The White Div falls.'];
+const DONE = ['Rakhsh kills the lion.', 'The ram leads him to a spring.', 'The dragon is slain.', 'He sees through her.', 'Olad is caught.', 'Arzhang is beaten.', 'The White Div falls.'];
 const G = FIELD.ground;
 
 function text(g, s, x, y, px, colour, weight = 400, align = 'center') {
