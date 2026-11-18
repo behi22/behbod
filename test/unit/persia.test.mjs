@@ -5,6 +5,7 @@ import { PLACES, SPOTS, FEAST_SPOTS, SAYS, FEASTS, feastAt, addPersia, makeSayer
 import { nowruz, EVENTS } from '../../web/src/pure/calendar.js';
 import { makeInteract } from '../../web/src/pure/interact.js';
 import { makeCollision } from '../../web/src/pure/collide.js';
+import { CHARMS, CHARM, isOpen, readKit } from '../../web/src/pure/smith.js';
 
 const WORLD = JSON.parse(readFileSync(new URL('../../web/assets/world.json', import.meta.url), 'utf8'));
 const fresh = () => JSON.parse(JSON.stringify(WORLD));
@@ -135,3 +136,12 @@ test('pressing E: the shelf gives its two cards in turn, the others the same lin
   for (const id of ['tv', 'desk', 'holiday', '__proto__', 'constructor', 'toString', undefined]) assert.equal(say(id), null, String(id));
 });
 
+test('the Simorgh feather: a charm anyone can hang, which says where it comes from', () => {
+  const f = CHARM.feather;
+  assert.equal(CHARMS.at(-1), f);
+  assert.ok(isOpen(f, 0) && !f.unlock, 'free');
+  assert.match(f.about, /Simorgh/); assert.match(f.about, /Zal/);
+  assert.ok(!/[\u2013\u2014]/.test(f.about + f.name));
+  assert.equal(readKit({ charm: 'feather' }).charm, 'feather', 'a saved feather comes back');
+  assert.ok(CHARMS.filter(c => c.about).every(c => c.id === 'feather'), 'only the feather carries a line of its own');
+});

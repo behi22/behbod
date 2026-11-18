@@ -12,6 +12,7 @@ function materials() {
     steel: mk(0xb9bec4, 0.3, 1), vinyl: mk(0xf2efe8, 0.45), orange: mk(0xff7a2e, 0.45), dark: mk(0x15191e, 0.4), teal: mk(0x5fe3d0, 0.35, 0, 0x2fb8a6),
     red: mk(0xa8182a, 0.38), crown: mk(0x6e1a1f, 0.6), leaf: mk(0x3c6b2a, 0.6), gold: mk(0xe0ab3c, 0.22, 1), grey: mk(0x8b9097, 0.62), white: mk(0xf4f1ea, 0.55),
     amber: mk(0xffb347, 0.3, 0, 0xff8a1a), green: mk(0x9ccf4a, 0.3, 0, 0x5a8a1a), pink: mk(0xe58f9a, 0.5), plate: mk(0x5fe3d0, 0.35, 0.2),
+    plume: mk(0x23857b, 0.42), saffron: mk(0xe2a238, 0.4), lapis: mk(0x23357a, 0.45),
   };
   return M;
 }
@@ -103,6 +104,32 @@ const PENDANTS = {
     const g = new THREE.Group();
     g.add(mesh(geo, m.gold));
     return [g, 0.0072];
+  },
+  // A Simorgh feather: in the Shahnameh she gives Zal one to burn when he needs her. Teal, a saffron tip, a red eye.
+  feather(m) {
+    const leaf = (w, y0, y1, bend) => {
+      const s = new THREE.Shape(), l = y0 - y1;
+      s.moveTo(0, y0);
+      s.quadraticCurveTo(w * 0.62, y0 - l * 0.18, w * 0.52 + bend, y0 - l * 0.55);
+      s.quadraticCurveTo(w * 0.36 + bend, y0 - l * 0.86, bend * 1.6, y1);
+      s.quadraticCurveTo(-w * 0.42 + bend, y0 - l * 0.8, -w * 0.5 + bend * 0.5, y0 - l * 0.5);
+      s.quadraticCurveTo(-w * 0.55, y0 - l * 0.15, 0, y0);
+      return new THREE.ExtrudeGeometry(s, { depth: 0.0006, bevelEnabled: false, curveSegments: 6 });
+    };
+    const g = new THREE.Group();
+    const vane = mesh(leaf(0.0078, -0.0016, -0.0225, 0.0006), m.plume, 0, 0, -0.0003);
+    const tip = mesh(leaf(0.0052, -0.0135, -0.0228, 0.0009), m.saffron, 0, 0, -0.0007);
+    const eye = mesh(new THREE.CircleGeometry(0.0019, 14), m.red, 0.0004, -0.0098, -0.00105);
+    eye.scale.set(0.8, 1.15, 1); eye.rotation.y = Math.PI;
+    const ring = mesh(new THREE.RingGeometry(0.0019, 0.0025, 16), m.gold, 0.0004, -0.0098, -0.001);
+    ring.scale.set(0.8, 1.15, 1); ring.rotation.y = Math.PI;
+    const dot = mesh(new THREE.CircleGeometry(0.0008, 10), m.lapis, 0.0004, -0.0098, -0.0011);
+    dot.rotation.y = Math.PI;
+    const quill = mesh(new THREE.CylinderGeometry(0.00028, 0.00042, 0.0205, 5), m.gold, 0.0002, -0.0112, -0.0006);
+    quill.rotation.z = 0.03;
+    g.add(vane, tip, ring, eye, dot, quill);
+    g.rotation.z = 0.06;
+    return [g, 0.012];
   },
 };
 

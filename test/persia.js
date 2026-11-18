@@ -1,5 +1,5 @@
 // The Shahnameh pieces: the Simorgh over the stairs, the library shelf, the painting on the mezzanine, the haft-sin and
-// Yalda tables on their days; on a computer and on phones both ways up.
+// Yalda tables on their days, and the Simorgh feather at the gunsmith's bench; on a computer and on phones both ways up.
 //   LOFT_URL=http://127.0.0.1:8815 node test/persia.js [outdir]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
@@ -55,6 +55,7 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
 
 (async () => {
   const P = await import('../web/src/pure/persia.js');
+  const { CHARM } = await import('../web/src/pure/smith.js');
   const today = P.feastAt(new Date());
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
@@ -117,7 +118,13 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
     // ---------- the two holidays, previewed ----------
     for (const [h, feast] of [['nowruz', 'haftsin'], ['sizdah', 'haftsin'], ['yalda', 'yalda'], ['halloween', null]]) {
       const { p, errs, got } = await open(b, DESK, `&holiday=${h}`);
-      const t = await p.evaluate(async () => { const t = await __persia.tableReady; return t ? { id: t.id, children: t.group.children.length } : null; });
+      const t = await p.evaluate(async () => {
+        const t = await __persia.tableReady;
+        if (!t) return null;
+        let meshes = 0, tris = 0;
+        t.group.traverse(o => { if (o.isMesh) { meshes++; tris += o.geometry.attributes.position.count / 3; } });
+        return { id: t.id, meshes, tris: Math.round(tris) };
+      });
       check(`?holiday=${h}: ${feast || 'no table'}`, (t?.id ?? null) === feast && got.includes('feasts.js') === !!feast, JSON.stringify(t));
       if (feast) {
         const spot = P.FEAST_SPOTS[feast];
@@ -152,6 +159,31 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
         await p.screenshot({ path: path.join(OUT, `phone-${name}-${id}.png`) });
       }
       check(`${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
+    // ---------- the Simorgh feather on the gunsmith's bench ----------
+    {
+      const { p, errs } = await open(b, DESK, '&allguns&gunsmith');
+      await p.evaluate(() => __loft.range.load());
+      await p.waitForFunction(() => __loft.range.ready, null, { timeout: 60000 });
+      await p.evaluate(() => { if (!__loft.world.doors.secret.open) __loft.act('secret'); });
+      await p.waitForTimeout(1500);
+      const at = await p.evaluate(() => __loft.meta.interact.find(i => i.id === 'range').at);
+      await standAt(p, at);
+      await p.evaluate(() => __loft.act('range'));
+      await p.waitForTimeout(1200);
+      await p.evaluate(() => [...document.querySelectorAll('.rg-acts button')].find(x => x.textContent === 'Gunsmith')?.click());
+      await p.waitForFunction(() => __loft.range.bench?.open, null, { timeout: 40000 });
+      await p.evaluate(() => { __loft.range.bench.pick('charm'); });
+      const listed = await p.evaluate(() => [...document.querySelectorAll('.gs-opt')].map(x => [x.querySelector('span')?.textContent, x.disabled]));
+      check('the bench lists the Simorgh feather among the charms, free', listed.some(([n, off]) => n === 'Simorgh feather' && !off), listed.map(x => x[0]).join(', '));
+      await p.evaluate(() => __loft.range.bench.put('charm', 'feather'));
+      await p.waitForFunction(() => __loft.range.bench.gun?.charm === 'feather', null, { timeout: 20000 }).catch(() => {});
+      const on = await p.evaluate(() => ({ charm: __loft.range.bench.gun?.charm, blurb: document.querySelector('.gs-blurb')?.textContent || '' }));
+      check('the feather hangs on the gun and the bench says what it is', on.charm === 'feather' && on.blurb.includes(CHARM.feather.about), JSON.stringify(on).slice(0, 160));
+      await p.waitForTimeout(800);
+      await p.screenshot({ path: path.join(OUT, 'bench-feather.png') });
+      check('the bench: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
   } finally {

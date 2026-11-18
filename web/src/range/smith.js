@@ -191,7 +191,7 @@ export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
       row.append(el('span', '', r.name), value, bar);
       return row;
     }));
-    const about = note && note !== 'none' && ATTACHMENTS[note] ? [ATTACHMENTS[note].name, BLURBS[note]] : slot === 'camo' ? ['Camo', 'A finish for this gun. Some are earned with stars at the range.'] : slot === 'charm' ? ['Charm', 'A little something on a chain. It swings as the gun moves.'] : null;
+    const about = note && note !== 'none' && ATTACHMENTS[note] ? [ATTACHMENTS[note].name, BLURBS[note]] : slot === 'camo' ? ['Camo', 'A finish for this gun. Some are earned with stars at the range.'] : slot === 'charm' ? (CHARM[kit.charm]?.about ? [CHARM[kit.charm].name, CHARM[kit.charm].about] : ['Charm', 'A little something on a chain. It swings as the gun moves.']) : null;
     nodes.blurb.replaceChildren(...(about ? [el('b', '', about[0]), document.createTextNode(about[1])] : [document.createTextNode('Every change goes on at once and is kept for this gun in this browser.')]));
   }
   function redraw() { drawHead(); drawSlots(); drawOpts(); drawStats(); }

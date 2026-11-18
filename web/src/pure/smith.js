@@ -43,6 +43,7 @@ export const CHARMS = [
   { id: 'cat', name: 'Grey cat' },
   { id: 'tag', name: '22 tag' },
   { id: 'star', name: 'Gold star', unlock: { stars: 5 } },
+  { id: 'feather', name: 'Simorgh feather', about: 'In the Shahnameh the Simorgh gives Zal one of her feathers: burn it, and she will come.' },
 ];
 export const CAMO = Object.fromEntries(CAMOS.map(c => [c.id, c]));
 export const CHARM = Object.fromEntries(CHARMS.map(c => [c.id, c]));
