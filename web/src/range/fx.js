@@ -4,7 +4,7 @@ import { lit } from './lit.js';
 // What a shot leaves behind: the streak of the bullet, sparks and a mark where it lands, a puff of dust off concrete,
 // the spent case tumbling away, and the pieces of a target that has been shot apart. Everything comes from a pool made
 // once, so a long burst never makes the page pause to tidy up.
-const TRACERS = 10, SPARKS = 220, MARKS = 56, PUFFS = 14, CASINGS = 22, BITS = 70, G = 9.81;
+const TRACERS = 10, SPARKS = 220, MARKS = 56, PUFFS = 14, CASINGS = 22, BITS = 70, SMOKES = 28, G = 9.81;
 
 function softDot(size = 64, inner = 'rgba(255,255,255,1)', mid = 'rgba(255,255,255,0.35)') {
   const c = document.createElement('canvas');
@@ -60,6 +60,14 @@ export function makeFx(stage, { tops = [], onCasing } = {}) {
     return { s, t: 9, v: new THREE.Vector3() };
   });
   let pNext = 0;
+
+  // Smoke from a hurt or broken robot: darker than the dust, slower, and it rises.
+  const smokes = Array.from({ length: SMOKES }, () => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: 0x3b3d42, transparent: true, depthWrite: false, opacity: 0, fog: false }));
+    s.visible = false; stage.add(s);
+    return { s, t: 9, life: 1, size: 1, v: new THREE.Vector3() };
+  });
+  let kNext = 0;
 
   // Spent cases and the pieces of broken targets fall, bounce and spin the same way.
   const bodies = [];
@@ -125,6 +133,12 @@ export function makeFx(stage, { tops = [], onCasing } = {}) {
         body(m, point, a, b, 2.6 + Math.random(), 0.35);
       }
     },
+    // A wisp of smoke at `point`; k scales it (about 0.5 for a wisp, 2 for the cloud of a robot coming apart).
+    smoke(point, k = 1) {
+      const p = smokes[kNext]; kNext = (kNext + 1) % SMOKES;
+      p.s.position.copy(point); p.t = 0; p.life = 0.9 + 0.5 * k; p.size = 0.25 * k; p.s.visible = true;
+      p.v.set((Math.random() - 0.5) * 0.3 * k, 0.5 + 0.4 * Math.random(), (Math.random() - 0.5) * 0.3 * k);
+    },
     // A loose part (an arm, a rotor) thrown as it is: the caller's mesh, already in the scene.
     toss(mesh, vel, spin, life = 3) { return body(mesh, mesh.position, vel, spin, life, 0.3); },
     casing(mesh, pos, vel, spin) {
@@ -164,6 +178,14 @@ export function makeFx(stage, { tops = [], onCasing } = {}) {
         p.s.scale.setScalar(0.12 + 0.55 * Math.sqrt(f));
         p.s.material.opacity = 0.42 * (1 - f) * (1 - f);
       }
+      for (const p of smokes) {
+        if (p.t > p.life) { if (p.s.visible) p.s.visible = false; continue; }
+        p.t += dt;
+        const f = Math.min(1, p.t / p.life);
+        p.s.position.addScaledVector(p.v, dt);
+        p.s.scale.setScalar(p.size * (0.6 + 1.8 * Math.sqrt(f)));
+        p.s.material.opacity = 0.55 * Math.min(1, f * 6) * (1 - f) * (1 - f);
+      }
       for (let i = bodies.length - 1; i >= 0; i--) {
         const o = bodies[i], m = o.mesh;
         o.t += dt;
@@ -192,6 +214,7 @@ export function makeFx(stage, { tops = [], onCasing } = {}) {
       bodies.length = 0; casings.length = 0;
       sLife.fill(0); sPos.fill(-999);
       for (const t of tracers) { t.on = false; t.m.visible = false; }
+      for (const p of smokes) { p.t = 9; p.s.visible = false; }
     },
     get counts() { return { bodies: bodies.length, casings: casings.length }; },
   };

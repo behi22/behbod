@@ -1,17 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { STAGES, STAGE, DIFFICULTIES, KINDS, HALL, MAX_STARS, script, place, par, starsFor, starScores, totalStars, openStages, legend, seeded, starsToOwnEverything } from '../../web/src/pure/stages.js';
-import { newRun, step, fired, hit, struck, quit, result, where } from '../../web/src/pure/rangegame.js';
+import { newRun, step, fired, hit, struck, quit, result, where, STAND } from '../../web/src/pure/rangegame.js';
 import { stats, damageAt } from '../../web/src/pure/arsenal.js';
+import { boltAt, reach, strikes } from '../../web/src/pure/bolts.js';
 
 const DT = 1 / 30;
+// A player who is never where a bolt in flight will cross: the nearest spot along the line, upright or ducked.
+function dodger(run, eye) {
+  const flying = [...run.bolts.values()].filter(b => b.phase === 'fly');
+  const safe = e => flying.every(b => !strikes(boltAt(b, reach(b, e.d)), e));
+  for (const dx of [0, 0.8, -0.8, 1.6, -1.6, 2.4, -2.4]) for (const dh of [0, -0.52]) {
+    const e = { ...STAND, x: Math.max(-5, Math.min(5, eye.x + dx)), h: STAND.h + dh };
+    if (safe(e)) return e;
+  }
+  return eye;
+}
 // Plays a whole stage: `plan(target, age)` returns the zone to shoot the target in once it is `age` seconds old, or
-// null to hold fire; `misses` is how many wasted shots go with each one that lands.
+// null to hold fire; `misses` is how many wasted shots go with each one that lands. On Hard the player dodges.
 function play(stageId, difficulty, plan, { gun = 'pistol', misses = 0, seed = 3 } = {}) {
   const run = newRun(stageId, difficulty, seed), s = stats(gun);
-  let guard = 0;
+  let guard = 0, eye = STAND;
   while (!run.over && guard++ < 1e5) {
-    step(run, DT);
+    step(run, DT, eye);
+    eye = dodger(run, eye);
     for (const g of [...run.live.values()]) {
       const zone = plan(g, run.t - g.born);
       if (!zone) continue;
@@ -164,7 +176,7 @@ test('accuracy counts shots that hit something, once each', () => {
 });
 
 test('on Hard things shoot back: three hits end the run with no stars; Easy and Normal never shoot', () => {
-  const bolts = d => { const run = newRun('swarm', d, 2); let n = 0; while (!run.over) n += step(run, DT).filter(e => e.type === 'bolt').length; return n; };
+  const bolts = d => { const run = newRun('swarm', d, 2); let n = 0, eye = STAND; while (!run.over) { n += step(run, DT, eye).filter(e => e.type === 'charge').length; eye = dodger(run, eye); } return n; };
   assert.equal(bolts('easy'), 0); assert.equal(bolts('normal'), 0);
   assert.ok(bolts('hard') >= 10);
   const run = newRun('swarm', 'hard', 2);
