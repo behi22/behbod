@@ -62,6 +62,31 @@ test('hidden and shown again within a moment: the fade turns round and the sound
   } finally { mock.timers.reset(); }
 });
 
+// Regression: an iPhone can refuse to restart the sound when the page comes back, and nothing ever woke it again.
+test('a phone that will not restart the sound on its own gets it back on the next touch or key', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  const was = { document: globalThis.document, add: globalThis.addEventListener, remove: globalThis.removeEventListener };
+  const on = {};
+  globalThis.document = { hidden: false };
+  globalThis.addEventListener = (type, f) => { on[type] = f; };
+  globalThis.removeEventListener = (type, f) => { if (on[type] === f) delete on[type]; };
+  try {
+    const { s, ctx, calls } = fake();
+    ctx.resume = () => { calls.push('resume'); return Promise.resolve(); };
+    s.setHidden(true); mock.timers.tick(250);
+    s.setHidden(false); mock.timers.tick(400);
+    assert.equal(ctx.state, 'suspended', 'the phone kept it stopped');
+    assert.ok(on.pointerdown && on.keydown, 'so the next touch or key is waited for');
+    ctx.resume = () => { calls.push('resume'); ctx.state = 'running'; return Promise.resolve(); };
+    on.pointerdown();
+    assert.equal(ctx.state, 'running');
+    assert.ok(!on.pointerdown && !on.keydown, 'and both are let go once it plays');
+  } finally {
+    mock.timers.reset();
+    Object.assign(globalThis, { document: was.document, addEventListener: was.add, removeEventListener: was.remove });
+  }
+});
+
 test('before the sound has ever started, hiding the page does nothing', () => {
   const s = new Sound();
   assert.doesNotThrow(() => { s.setHidden(true); s.setHidden(false); });

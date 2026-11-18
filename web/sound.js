@@ -37,12 +37,27 @@ export class Sound {
   setHidden(hidden) {
     const ctx = this.ctx;
     if (!ctx) return;
-    clearTimeout(this.hideT);
+    clearTimeout(this.hideT); clearTimeout(this.wakeT);
     const g = this.shown.gain, t = ctx.currentTime;
     g.cancelScheduledValues(t);
     g.setValueAtTime(g.value, t);
     if (hidden) { g.setTargetAtTime(0, t, 0.03); this.hideT = setTimeout(() => ctx.suspend().catch(() => {}), 200); }
-    else { ctx.resume().catch(() => {}); g.setTargetAtTime(1, t, 0.08); }
+    else {
+      ctx.resume().catch(() => {}); g.setTargetAtTime(1, t, 0.08);
+      this.wakeT = setTimeout(() => { if (ctx.state !== 'running' && !document.hidden) this.wakeOnInput(); }, 300);
+    }
+  }
+  // Some phones restart the sound only from a touch or a key, so the next one wakes it.
+  wakeOnInput() {
+    if (this.waking) return;
+    this.waking = true;
+    const wake = () => {
+      if (document.hidden) return;
+      this.ctx.resume().catch(() => {});
+      this.waking = false;
+      removeEventListener('pointerdown', wake, true); removeEventListener('keydown', wake, true);
+    };
+    addEventListener('pointerdown', wake, true); addEventListener('keydown', wake, true);
   }
   burst(freq, q, dur, gain, delay = 0) {
     if (!this.ctx || !this.on) return;
