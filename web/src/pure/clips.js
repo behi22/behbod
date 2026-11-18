@@ -199,17 +199,19 @@ export function lmgClips(s) {
   const R = s.reload, out = R.out, inn = R.in, rack = R.rack, end = R.empty;
   // The cover is near the eye: the gun goes out and down a little while a hand works it.
   const TURN = [-0.02, 0.03, -0.02, 0.1, 0.18, -0.3], OPEN = [-0.02, -0.03, -0.1, 0.1, 0.1, 0.25];
+  // The box goes home and the belt is laid in a set time before the rounds count, so a slower (bigger) box keeps them in step.
+  const seat = inn - 0.6, laid = inn - 0.35;
   const reload = empty => {
     const c = {
       T: empty ? R.empty : R.partial,
       gun: [[0, Z], [0.3, OPEN], [0.75, OPEN], [out * 0.95, TURN], [inn - 0.45, TURN], [inn - 0.1, OPEN], [inn + 0.5, OPEN]],
-      right: [[0, 'grip'], [0.12, 'straight'], [3.6, 'straight']],
+      right: [[0, 'grip'], [0.12, 'straight'], [rack - 0.2, 'straight']],
       left: [[0, 'grip'], [0.25, 'cover'], [0.66, 'cover'], [0.82, 'mag'], [out + 0.02, 'mag'], [out + 0.25, 'low'], [out + 0.45, 'low'], [out + 0.6, 'mag'],
-        [2.32, 'mag'], [2.48, 'belt'], [inn, 'belt'], [inn + 0.15, 'cover'], [inn + 0.48, 'cover']],
-      mag: [[out + 0.55, [0.3, 1]], [2.0, [0.1, 0]], [2.22, [0.02, 0]], [2.3, [0, 0]]],
+        [seat + 0.02, 'mag'], [seat + 0.18, 'belt'], [inn, 'belt'], [inn + 0.15, 'cover'], [inn + 0.48, 'cover']],
+      mag: [[out + 0.55, [0.3, 1]], [seat - 0.3, [0.1, 0]], [seat - 0.08, [0.02, 0]], [seat, [0, 0]]],
       cover: [[0.3, [0]], [0.62, [1]], [inn + 0.2, [1]], [inn + 0.45, [0]]],
-      beltOff: empty ? 0 : out, beltOn: 2.55,
-      cues: [[0.02, 'cloth'], [0.32, 'coverOpen'], [out - 0.05, 'magRelease'], [out, 'magOut'], [out + 0.45, 'magDrop'], [2.3, 'magIn'], [2.55, 'beltIn'], [inn + 0.45, 'coverClose']],
+      beltOff: empty ? 0 : out, beltOn: laid,
+      cues: [[0.02, 'cloth'], [0.32, 'coverOpen'], [out - 0.05, 'magRelease'], [out, 'magOut'], [out + 0.45, 'magDrop'], [seat, 'magIn'], [laid, 'beltIn'], [inn + 0.45, 'coverClose']],
     };
     if (!empty) {
       c.gun.push([inn + 0.85, Z]);

@@ -71,6 +71,8 @@ const CSS = `
 .rg-alert.on { animation: rg-alert 1.2s ease-out; }
 @keyframes rg-alert { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.3); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
 .rg-danger { position: absolute; inset: 0; box-shadow: inset 0 0 110px 14px rgba(255, 40, 80, .6); opacity: 0; will-change: opacity; }
+.rg-lite { right: calc(104px + env(safe-area-inset-right, 0px)); bottom: calc(240px + env(safe-area-inset-bottom, 0px)); width: 66px; height: 36px; border-radius: 18px; font-size: 9px; }
+.rg-lite.on { background: rgba(255, 236, 170, .32); border-color: rgba(255, 236, 170, .7); }
 .rg-warn { position: absolute; left: 0; top: 0; width: 0; height: 0; margin: -10px 0 0 -11px; border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 19px solid #ff4f6a; filter: drop-shadow(0 0 6px rgba(255, 60, 90, .85)); display: none; }
 `;
 
@@ -151,6 +153,17 @@ export function makeHud({ coarse, onPad }) {
     alert(text) { const n = extra('alert', 'rg-alert'); if (!n) return; n.textContent = text; restart(n, 'on'); },
     // A red edge round the glass, 0 to 1: a bolt is coming and you are in its way.
     danger(k) { const n = extra('danger', 'rg-danger', k > 0); if (!n) return; const o = (Math.round(k * 20) / 20).toFixed(2); if (n.style.opacity !== o) n.style.opacity = o; },
+    // A LIGHT pad on a phone while a rail light is fitted; lit while the light is on.
+    lightPad(show, on = false) {
+      const n = extra('lite', 'rg-pad rg-lite', show);
+      if (!n) return;
+      if (!show) { n.remove(); delete extras.lite; return; }
+      if (!n.dataset.wired) {
+        n.dataset.wired = '1'; n.textContent = 'LIGHT';
+        n.addEventListener('pointerdown', e => { e.preventDefault(); onPad?.('light', true, 0); });
+      }
+      n.classList.toggle('on', on);
+    },
     // Arrows at the edge of the glass toward drones charging out of sight: [{ x, y, angle }] in pixels and radians.
     warn(list) {
       for (let i = 0; i < 4; i++) {

@@ -141,9 +141,9 @@ export function makeLoadout(stage, meta, { coarse = false, low = false, sfx, hal
   const RIVET = ['Rivet, the range mascot. Off duty today.', 'Rivet beeps back. It sounds like a yes.', 'Rivet waves. The walkers in the hall are its cousins.'];
 
   function poke(id) {
-    if (id === 'rg_bench') return 'The gunsmith bench. Soon a gun goes on it, and you choose what is fitted.';
-    if (id === 'rg_attach') return 'The attachment board: a light, a suppressor, an optic and a longer magazine go up here.';
-    if (id === 'rg_camo') return 'Camos and charms for the guns hang here once they are made.';
+    if (id === 'rg_bench') return 'The gunsmith bench: choose what each gun carries.';
+    if (id === 'rg_attach') return 'A light, a suppressor, an optic and a longer magazine for every gun. Fit them at the gunsmith bench.';
+    if (id === 'rg_camo') return 'Camos and charms for the guns. Choose them at the gunsmith bench; a few are earned with stars.';
     if (id === 'rg_lights') {
       const at = STAGES.findIndex(s => s.id === (hall?.wanted || 'warmup')), next = STAGES[(at + 1) % STAGES.length];
       hall?.want(next.id);
