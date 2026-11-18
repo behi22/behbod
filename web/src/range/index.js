@@ -10,8 +10,10 @@ import { makeFlashlight } from './flashlight.js';
 import { makeBolts } from './bolts.js';
 import { makeHall } from './hall.js';
 import { makeLoadout } from './loadout.js';
+import { makeWall } from './wall.js';
+import { ownedGuns } from '../pure/gunwall.js';
 import { BOLT, boltAt, reach, strikes } from '../pure/bolts.js';
-import { stats, damageAt, nextGun, gunsFor, GUN } from '../pure/arsenal.js';
+import { stats, damageAt, nextGun, GUN } from '../pure/arsenal.js';
 import { RIGS } from '../pure/rigs.js';
 import { newWeapon, step as stepWeapon, spreadNow, scatter } from '../pure/weapon.js';
 import { STAGES, STAGE, DIFFICULTIES, openStages, totalStars, starScores } from '../pure/stages.js';
@@ -29,7 +31,7 @@ import { B } from './decor.js';
 const EYE = 1.56, DUCK = 0.52, YAW_MAX = 1.2, PITCH_MAX = 0.62, LOOK = 0.0021, TOUCH_LOOK = 0.0052, STEP = 2.6, COUNT = 0.62;
 const rad = THREE.MathUtils.degToRad;
 
-export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, music, progress, look, onReady, onExit, onResult }) {
+export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, music, progress, look, player, onReady, onExit, onResult }) {
   // A world file from before these rooms were built has none of this: the house opens as ever and the range is not offered.
   const built = !!(meta.range?.stand && meta.range.line && meta.range.strafe && meta.zones.some(z => z.id === 'range' && z.light));
   const R = built ? meta.range : { stand: [0, 0, 0], line: [0, 0], strafe: [0, 0], bench: 1 }, stand = b2t(...R.stand);
@@ -47,7 +49,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   // The flashlight and the drones' bolts; the hall's lights (1 on, 0 out) and where they are heading; how long ago a bolt struck.
   let flash = null, bolts = null, lights = 1, lightsTo = 1, struckT = 9;
   // The hall dressed for the stage, and the loadout room's pieces to poke at.
-  let hall = null, loadout = null;
+  let hall = null, loadout = null, wall = null;
   const cx = R.line[0], z0 = -R.line[1], toRoom = (x, d, h, out) => out.set(cx + x, h, z0 + d), eyeR = { x: 0, d: 0, h: 0 }, ndc = new THREE.Vector3(), warnings = [];
   // For the checks: with a film on, time moves only by what `advance` hands out, so a shot can be looked at frame by frame.
   let film = null;
@@ -69,14 +71,9 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       bolts = makeBolts(r.stage, fx, toRoom, { sfx });
       hall = makeHall(r, meta, { coarse, fancy: () => engine.tier.post && !coarse });
       loadout = makeLoadout(r.stage, meta, { coarse, low: coarse || !engine.tier.post, sfx, hall });
-      // The pistol hangs on the gun wall's first mount, side on (the other mounts fill as the guns are built).
-      if (R.mounts?.[0]) {
-        const show = g.model.clone(true), drop = [];
-        show.traverse(o => { if (o.isLight) drop.push(o); else if (/hand|_att_|casing|round_ext/.test(o.name)) o.visible = false; o.frustumCulled = true; });
-        for (const o of drop) o.parent.remove(o);
-        show.position.copy(b2t(...R.mounts[0])).add(v1.set(0, 0.05, -0.08)); show.rotation.y = -Math.PI / 2; show.scale.setScalar(1.25);
-        r.stage.add(show);
-      }
+      // The gun wall: the guns earned hang on its mounts, the rest wait as outlines.
+      wall = makeWall(r.stage, meta, { renderer: engine.renderer, camera, player, best: () => progress.rangeBest(), held: () => held, all: allGuns, take, fetch: loadGun, sfx, seen: visible });
+      wall.hang('pistol', g.model);
       // A spent case waits out of sight in the room, so the first one thrown costs nothing to prepare.
       const first = g.newCasing();
       first.visible = false; r.stage.add(first);
@@ -87,7 +84,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       engine.addLayer({ scene: r.scene, under: true, on: () => active || visible() });
       engine.addLayer({ scene: r.stage, under: true, on: () => active || visible() });
       layer(guns.pistol = g);
-      drawBoard();
+      drawBoard(); wall.sync();
       onReady?.(r);
       return r;
     })();
@@ -116,14 +113,15 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       await breathe();
       await prepare(engine.renderer, g.scene, g.camera);
       layer(guns[id] = g);
+      wall.hang(id, g.model);
       return g;
     })();
     fetching[id].catch(e => { delete fetching[id]; console.warn('[range] gun not loaded', id, e); });
     return fetching[id];
   }
-  // The guns the stars have earned (every built one with ?allguns, for trying them), until item 16's gun wall takes this over.
+  // The guns the stars have earned, as the gun wall shows them (every one with ?allguns, for trying them).
   const allGuns = typeof location !== 'undefined' && new URLSearchParams(location.search).has('allguns');
-  const owned = () => (allGuns ? Object.keys(GUN) : gunsFor(totalStars(progress.rangeBest()))).filter(id => RIGS[id]);
+  const owned = () => ownedGuns(progress.rangeBest(), allGuns).filter(id => RIGS[id]);
   // The gun put in the hands, between runs: drawn fresh, the old one's sounds let go.
   let asked = 0;
   async function take(id) {
@@ -269,6 +267,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     music?.stop();
     const got = progress.rangeResult(res.stage, res.difficulty, res.stars, res.score), { el } = hud;
     drawBoard();
+    wall.sync();
     const more = onResult?.(res, got) || [];
     sfx?.stars(res.stars);
     const marks = starScores(run.par * run.scale), rows = el('div', 'rg-rows');
@@ -279,7 +278,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     const B = res.bolts;
     if (B?.launched) lines.push(`Bolts: ${B.dodged} dodged, ${B.parried} shot down, ${B.taken} took a shield.`);
     if (got.best) lines.push('A new best.');
-    for (const name of got.guns) lines.push(`Unlocked: the ${name}. Pick it on the stage card.`);
+    for (const name of got.guns) lines.push(`Unlocked: the ${name}. Pick it here, or take it from the gun wall.`);
     for (const name of more) lines.push(`Unlocked: ${name}.`);
     const nextStage = STAGES[STAGES.findIndex(x => x.id === res.stage) + 1];
     const canNext = res.stars > 0 && nextStage && openStages(progress.rangeBest()).includes(nextStage.id);
@@ -449,7 +448,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     get loadout() { return loadout; },
     get music() { return music; },
     get spots() { return loadout?.spots || []; },
-    poke(id) { return loadout?.poke(id) ?? null; },
+    poke(id) { return loadout?.poke(id) ?? wall?.poke(id) ?? null; },
+    get wall() { return wall; },
     // opts: { bench: true, at, look } from the gunsmith's bench in the loadout room (where I stand and look, to come back to).
     enter(opts) {
       if (!gun || active) return false;
@@ -525,7 +525,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       if (bench?.open) { bench.tick(dt); return; }
       if (!gun) return;
       // Out of the range, what was left in the air still lands.
-      if (!active) { if (visible()) { fx.tick(dt); hall.update(dt, t); loadout.update(dt, t); } else loadout.rest(); return; }
+      if (!active) { if (visible()) { fx.tick(dt); hall.update(dt, t); loadout.update(dt, t); wall.update(); } else loadout.rest(); return; }
       if (film) dt = film.step;
       const live = state === 'play' || state === 'count', dtc = film ? dt : Math.min(dt, 0.05);
       if (live) {

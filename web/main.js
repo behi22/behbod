@@ -147,7 +147,7 @@ function earn(id) {
 // ---------- the range, the telescope and the piano ----------
 const UNLOCK_NAMES = { kit: 'the keeper kit', gold: 'the gold colourway', visor: 'the red visor', vault: 'the secret room' };
 const range = makeRange({
-  engine, camera, meta, canvas, coarse, sfx: audio.sfx, music: audio.runMusic, progress,
+  engine, camera, meta, canvas, coarse, sfx: audio.sfx, music: audio.runMusic, progress, player: () => pos,
   // The sleeves in the hand are the hoodie I am wearing.
   look: () => { const c = wornColours(me.look); return { M_Hoodie: c.hoodie, M_Hoodie_Rib: c.rib }; },
   // A star earns the achievement; what a run unlocks shows up on the unlock stands and in the wardrobe at once.
@@ -158,7 +158,7 @@ const range = makeRange({
   },
   // Its rooms are drawn while I am in them or the bookcase door stands open.
   visible: () => pos.z > 0.05 || (world.doors.secret?.k || 0) > 0.002,
-  onReady: room => { walkable.push(room.group); things.items.push(...range.spots); },
+  onReady: room => { walkable.push(room.group); things.items.push(...range.spots, ...range.wall.spots); },
   // Back to walking, at the line, with the camera behind me.
   onExit: ({ at, look }) => { mode = 'walk'; pos.copy(at); vel.set(0, 0, 0); [facing, yaw, pitch] = look || [0, Math.PI, 0.2]; prevFacing = facing; lastLook = performance.now(); me.root.visible = true; me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos); },
 });
@@ -403,7 +403,7 @@ const SAY = {
   wall: 'The weather and this month, holidays circled.',
   trophies: 'The trophy shelf.',
   collection: 'The collection case.',
-  unlocks: 'Win these at the range: the keeper kit, the gold colourway and the red visor.',
+  unlocks: 'Win these at the range: the keeper kit for a star on Walkers, the gold colourway for three stars on any stage, the red visor for three stars on every stage on Hard.',
   mirror: 'Looking good.',
 };
 // The arcade, the mini goal and the console all play the shootout; the boards play their own games.
@@ -644,6 +644,10 @@ function tapMove(e) {
     walkTo(a.pos.clone(), () => { const it = creatures.nearest(pos); if (it && it.id === who) act(it); });
     return;
   }
+  // A gun on the range's wall, or its plaque: walk over and take it.
+  const gun = range.wall?.hit(ray, walkable);
+  // In reach is enough: on arrival the loadout room's own spot can still be nearer than the middle gun's.
+  if (gun) { walkTo(b2t(...gun.at), () => { if (Math.hypot(pos.x - gun.x, pos.z - gun.z) <= gun.r) act(gun); }); return; }
   // Aim at whatever floor the click lands on, then walk there along a path.
   const hits = ray.intersectObjects(walkable, true).filter(h => h.face && h.face.normal.y > 0.7);
   const hit = hits[0]?.point;

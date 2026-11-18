@@ -27,6 +27,7 @@ const KEY = 'loft.progress';
 export function makeProgress(storage) {
   let raw = {};
   try { raw = JSON.parse(storage.get(KEY) || '{}'); } catch (e) { raw = {}; }
+  if (!raw || typeof raw !== 'object') raw = {};
   const state = {
     earned: Array.isArray(raw.earned) ? raw.earned.filter(id => Object.hasOwn(ACHIEVEMENTS, id)) : [],
     best: {},

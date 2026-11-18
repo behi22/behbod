@@ -38,14 +38,15 @@ export const breathe = () => new Promise(done => setTimeout(done, 30));
 // around the room), and three decides which by what is being drawn into at the moment it is asked. So it is asked
 // twice, once with each in place; the building itself goes on off the frame.
 let linear = null;
-export async function prepare(renderer, scene, camera, { screen = true, picture = true } = {}) {
+// `into`: the scene a piece added later will be drawn in, whose lights its shaders are built for.
+export async function prepare(renderer, scene, camera, { screen = true, picture = true, into = null } = {}) {
   // One kind at a time, each waited for: three only watches the programs it was last asked for.
   for (const target of [picture ? (linear ||= new THREE.WebGLRenderTarget(1, 1)) : undefined, screen ? null : undefined]) {
     if (target === undefined) continue;
     const was = renderer.getRenderTarget();
     let job = null;
     // The target is in place only while three decides what to build, and is put back whatever happens.
-    try { renderer.setRenderTarget(target); if (renderer.compileAsync) job = renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); }
+    try { renderer.setRenderTarget(target); if (renderer.compileAsync) job = renderer.compileAsync(scene, camera, into); else renderer.compile(scene, camera, into); }
     finally { renderer.setRenderTarget(was); }
     await job;
   }
