@@ -73,6 +73,8 @@ function haftsin(table) {
   const ring = new THREE.TorusGeometry(1, 0.08, 6, 28);
   kit.add(ring, '#d1a64a', { at: P(mx, cy, top + 0.17), rot: [0, Math.PI / 2, 0], scale: [0.105, 0.145, 0.105] });
   kit.add(new THREE.CircleGeometry(1, 28), (n, p) => { const k = (p.y - top - 0.03) / 0.28; return new THREE.Color().setRGB(0.18 + 0.3 * k, 0.24 + 0.32 * k, 0.32 + 0.3 * k); }, { at: P(mx + 0.003, cy, top + 0.17), rot: [0, Math.PI / 2, 0], scale: [0.1, 0.14, 1], light: () => 1 });
+  // Its back as well: the E spot is on this side.
+  kit.add(new THREE.CircleGeometry(1, 28), '#b98f3e', { at: P(mx - 0.003, cy, top + 0.17), rot: [0, -Math.PI / 2, 0], scale: [0.1, 0.14, 1] });
   kit.box(0.012, 0.11, 0.012, '#b98f3e', { at: P(mx - 0.03, cy, top + 0.07), rot: [0, 0, 0.35] });
   const wicks = [candle(kit, cx - 0.21, cy - 0.27, top), candle(kit, cx - 0.21, cy + 0.27, top)];
   // Sabzeh: wheat sprouts thick in a dish, tied with a red ribbon.

@@ -36,6 +36,13 @@ async function standAt(p, at) {
   await p.waitForTimeout(450);
 }
 const toast = p => p.evaluate(() => document.getElementById('toast').textContent);
+// A ray from the west, where the E spot is, through the upper half of the mirror: where it first meets the table.
+async function mirrorFromSpot() {
+  const THREE = await import('three');
+  const from = new THREE.Vector3(3.0, 0.55, -10.5), to = new THREE.Vector3(4.27, 0.19, -10.5);
+  const hit = new THREE.Raycaster(from, to.sub(from).normalize()).intersectObject(__persia.table.group, true)[0];
+  return hit ? +hit.point.x.toFixed(3) : null;
+}
 const shot = async (p, name, eye, at, w = 960, h = 600) => {
   const url = await p.evaluate(async ([e, a, w, h]) => {
     const L = __loft, c = L.camera.clone(), r = L.renderer, THREE = await import('three');
@@ -137,6 +144,10 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
           return [a, [f?.rotation.y, fl.children[0].scale.y]];
         });
         check(`?holiday=${h}: the candles flicker${feast === 'haftsin' ? ' and the goldfish swim' : ''}`, moves[0][1] !== moves[1][1] && (feast !== 'haftsin' || moves[0][0] !== moves[1][0]), JSON.stringify(moves));
+        if (feast === 'haftsin') {
+          const hitX = await p.evaluate(mirrorFromSpot);
+          check(`?holiday=${h}: from the E spot the mirror shows its back, not a hole`, hitX !== null && Math.abs(hitX - 4.267) < 0.01, `first hit at x ${hitX}`);
+        }
         await shot(p, `table-${h}`, [5.4, 10.2, 0.75], [4.45, 10.5, -0.05]);
       }
       check(`?holiday=${h}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
