@@ -8,6 +8,11 @@ export const KEYS = [
   ['1', '2', '3', '+'],
   ['0', '.', 'back', '='],
 ];
+// On a phone held sideways the same keys lie in two long rows: the figures in a line, then the rest.
+export const KEYS_WIDE = [
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+  ['C', 'neg', '%', '/', '*', '-', '+', '.', 'back', '='],
+];
 export const LABEL = { '/': '÷', '*': '×', '-': '−', '+': '+', neg: '±', back: '⌫', C: 'C', '=': '=', '%': '%', '.': '.' };
 // What each key is called, for a screen reader (a digit is its own name).
 export const NAME = { '/': 'Divide', '*': 'Times', '-': 'Minus', '+': 'Plus', neg: 'Change sign', back: 'Rub out', C: 'Clear', '=': 'Equals', '%': 'Percent', '.': 'Point' };

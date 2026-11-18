@@ -193,6 +193,7 @@ const bookcase = b2t((meta.doors.find(d => d.id === 'secret')?.pivot || [8, 0, 0
 // bench: from the gunsmith's bench in the loadout room, straight to it and back here after, facing as before.
 function enterRange(bench = false) {
   if (mode !== 'walk' || !range.enter(bench ? { bench: true, at: pos, look: [facing, yaw, pitch] } : undefined)) return;
+  wardrobe.hide();
   mode = 'range'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
 }
@@ -200,6 +201,7 @@ function enterRange(bench = false) {
 const pens = makePenalties(scene, meta, { creatures, sfx: audio.sfx, toast, onGoal: () => earn('goal'), onExit: () => { mode = 'walk'; me.root.visible = true; } });
 function enterPens() {
   if (mode !== 'walk' || !pens) return;
+  wardrobe.hide();
   mode = 'pens'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
   pens.enter();
@@ -212,11 +214,13 @@ window.__saber = saber;
 if (saber) { const vi = meta.interact.find(i => i.id === 'vader'); if (vi) vi.label = 'Take the saber'; }
 function enterSaber() {
   if (mode !== 'walk' || !saber?.enter()) return;
+  wardrobe.hide();
   mode = 'saber'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
 }
 function enterScope() {
   if (mode !== 'walk') return;
+  wardrobe.hide();
   mode = 'scope'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
   scope.enter();
@@ -311,6 +315,7 @@ function deskAct({ kind, arg }) {
 
 function useDesk() {
   if (mode !== 'walk') return;
+  wardrobe.hide();
   mode = 'desk';
   route = null;
   sound.chair();
@@ -412,6 +417,7 @@ const SAY = {
 const GAME_AT = { arcade: 'arcade', console: 'striker', holochess: 'holochess', backgammon: 'backgammon' };
 const GAME_WIN = { striker: 'striker', holochess: 'chess', backgammon: 'backgammon' };
 function playGame(name, actions) {
+  wardrobe.hide();
   keys.clear(); route = null;
   openGame(name, {
     actions,
@@ -465,6 +471,7 @@ function act(it) {
 function playVideo(i) {
   const v = videos()[i];
   if (!v) return toast('Videos are coming soon.');
+  wardrobe.hide();
   // One player at a time: a new one replaces the old.
   document.querySelector('.video')?.remove();
   const box = document.createElement('div');
@@ -495,6 +502,7 @@ function playVideo(i) {
 const film = makeFilm();
 function playFilm(closeLabel, muted = !sound.on) {
   if (film.playing) return Promise.resolve();
+  wardrobe.hide();
   keys.clear(); route = null;
   liveVideo.pause(); hush(true);
   return film.open({ closeLabel, muted }).then(() => { hush(false); liveVideo.resume(); });

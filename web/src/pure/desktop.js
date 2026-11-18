@@ -1,6 +1,6 @@
 // The computer's desktop: its apps, where their windows sit, and what each window shows. The 3D monitor paints it on
 // a canvas and the seated view lays the same thing out in HTML, both from this one model, so the two match.
-import { KEYS, LABEL as KEY_LABEL } from './calc.js';
+import { KEYS, KEYS_WIDE, LABEL as KEY_LABEL } from './calc.js';
 
 export const W = 1536, H = 646, BAR = 34, DOCK = 70, TITLE = 34, ROW = 46, PAD = 18;
 
@@ -100,20 +100,29 @@ export function dock(width = W, height = H) {
 }
 
 // The calculator's face inside its window: the display over five rows of four keys, or, in a window much wider than
-// it is tall (a phone on its side), the display beside them, so the keys keep a height a finger can find.
+// it is tall (a phone on its side), the display beside them, so the keys keep a height a finger can find. Beside it
+// they lie in two long rows of ten instead whenever that leaves the shorter side of a key longer.
 // `mainLen` is how many characters the big line holds: a long answer is written smaller rather than running off.
 // The sizes of the three kinds of lettering come back too, so the monitor and the seated view write them alike.
 export function calcLayout(w, mainLen = 1) {
   const pad = 14, gap = 8, x = w.x + pad, y = w.y + TITLE + 12, width = w.w - 2 * pad, height = w.y + w.h - pad - y;
   const wide = w.w > w.h * 1.5;
-  const display = wide ? { x, y, w: Math.round(width * 0.4), h: height } : { x, y, w: width, h: Math.min(104, Math.max(64, (w.h - TITLE) * 0.24)) };
+  const shorter = (rows, share) => {
+    const cols = 20 / rows, aw = width - Math.round(width * share) - 12;
+    return Math.min((aw - gap * (cols - 1)) / cols, (height - gap * (rows - 1)) / rows);
+  };
+  // In two rows the keys are made square where there is room, and the display takes what is left.
+  const share = Math.min(0.4, Math.max(0.22, 1 - (12 + 5 * (height - gap) + 9 * gap) / width));
+  const long = wide && shorter(2, share) > shorter(5, 0.4), grid = long ? KEYS_WIDE : KEYS, rows = grid.length, cols = grid[0].length;
+  const display = wide ? { x, y, w: Math.round(width * (long ? share : 0.4)), h: height } : { x, y, w: width, h: Math.min(104, Math.max(64, (w.h - TITLE) * 0.24)) };
   const kx = wide ? display.x + display.w + 12 : x, ky = wide ? y : y + display.h + 12, area = { w: x + width - kx, h: y + height - ky };
-  const kh = (area.h - gap * 4) / 5, kw = (area.w - gap * 3) / 4, keys = [];
-  KEYS.forEach((row, r) => row.forEach((key, c) => keys.push({ key, label: KEY_LABEL[key] || key, kind: key === '=' ? 'go' : /^[0-9.]$/.test(key) ? 'num' : 'op',
+  const kh = (area.h - gap * (rows - 1)) / rows, kw = (area.w - gap * (cols - 1)) / cols, keys = [];
+  grid.forEach((row, r) => row.forEach((key, c) => keys.push({ key, label: KEY_LABEL[key] || key, kind: key === '=' ? 'go' : /^[0-9.]$/.test(key) ? 'num' : 'op',
     x: kx + c * (kw + gap), y: ky + r * (kh + gap), w: kw, h: kh })));
   const topPx = display.h < 84 ? 12 : STYLE.small;
   const mainPx = Math.max(12, Math.min(44, display.h - topPx - 26, Math.floor((display.w - 28) / (Math.max(1, mainLen) * 0.6))));
-  return { display, keys, mainPx, topPx, keyPx: Math.max(10, Math.min(22, Math.floor(kh * 0.6))) };
+  const keyPx = long ? Math.min(30, Math.floor(Math.min(kw, kh) * 0.6)) : Math.min(22, Math.floor(kh * 0.6));
+  return { display, keys, mainPx, topPx, keyPx: Math.max(10, keyPx) };
 }
 // The end of a line that is too long for its place: the newest part is the part that matters.
 export function tail(s, px, maxW) {

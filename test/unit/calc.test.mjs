@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newCalc, press, show, format, work, fromKeyboard, KEYS, LABEL } from '../../web/src/pure/calc.js';
+import { newCalc, press, show, format, work, fromKeyboard, KEYS, KEYS_WIDE, LABEL } from '../../web/src/pure/calc.js';
 
 // Types a string of keys ('neg', 'back' and 'C' as words between spaces, everything else a key each).
 const run = keys => { const c = newCalc(); for (const k of keys.split(' ')) press(c, k); return c; };
@@ -250,4 +250,11 @@ test('a half rounds away from nothing whichever sign it has', () => {
   // The same for a sum with figures after the point, which is rounded on the other path.
   assert.equal(main('1 0 0 0 0 0 0 0 0 0 0 . 5 + . 2 5 ='), '10000000000.8');
   assert.equal(main('1 0 0 0 0 0 0 0 0 0 0 . 5 neg - . 2 5 ='), '\u221210000000000.8');
+});
+
+test('the two long rows for a phone held sideways hold the same twenty keys, each once', () => {
+  assert.deepEqual(KEYS_WIDE.map(r => r.length), [10, 10]);
+  assert.deepEqual(KEYS_WIDE.flat().sort(), KEYS.flat().sort());
+  assert.deepEqual(KEYS_WIDE[0], ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'], 'the figures in order along the top');
+  assert.equal(KEYS_WIDE[1].at(-1), '=', 'equals at the end, where the eye ends');
 });

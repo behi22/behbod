@@ -403,6 +403,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     if (active && hadLock && !has && playing()) pause();
     hadLock = has;
   };
+  // A phone has no mouse to let go of, so a page put away in the middle of a run is the pause too.
+  const onHide = () => { if (active && document.hidden && playing()) pause(); };
   // On a phone a drag anywhere on the picture looks around; the pads do the rest.
   let drag = null;
   const onTouch = e => {
@@ -424,7 +426,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   }
   const listen = on => {
     const f = on ? 'addEventListener' : 'removeEventListener';
-    document[f]('mousemove', onMove); document[f]('mousedown', onDown); document[f]('mouseup', onUp); document[f]('contextmenu', onMenu); document[f]('pointerlockchange', onLock);
+    document[f]('mousemove', onMove); document[f]('mousedown', onDown); document[f]('mouseup', onUp); document[f]('contextmenu', onMenu); document[f]('pointerlockchange', onLock); document[f]('visibilitychange', onHide);
     window[f]('blur', release);
     for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) canvas[f](t, onTouch);
   };
