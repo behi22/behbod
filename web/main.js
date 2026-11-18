@@ -23,6 +23,7 @@ import { makePrinter } from './src/printer.js';
 import { makeRubik } from './src/rubik.js';
 import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
+import { makeKnight, makeSaber } from './src/saber.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -198,6 +199,17 @@ function enterPens() {
   mode = 'pens'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
   pens.enter();
+}
+// The knight in the glass case, and his saber in my hand.
+const knight = makeKnight(scene, meta, [scene], { renderer });
+const saber = makeSaber({ engine, camera, canvas, coarse, knight, meta, audio: audio.saber, store, onExit: () => { mode = 'walk'; me.root.visible = true; } });
+const saberEye = new THREE.Vector3();
+window.__saber = saber;
+if (saber) { const vi = meta.interact.find(i => i.id === 'vader'); if (vi) vi.label = 'Take the saber'; }
+function enterSaber() {
+  if (mode !== 'walk' || !saber?.enter()) return;
+  mode = 'saber'; route = null; keys.clear();
+  me.root.visible = false; $('prompt').classList.remove('on');
 }
 function enterScope() {
   if (mode !== 'walk') return;
@@ -430,6 +442,7 @@ function act(it) {
   if (GAME_AT[it.id]) return playGame(GAME_AT[it.id]);
   if (it.id === 'records') return playRecord();
   if (it.id === 'telescope') return enterScope();
+  if (it.id === 'vader' && saber) return enterSaber();
   if (it.id === 'range') return enterRange();
   if (it.id === 'tea') { earn('tea'); audio.sfx.pour(at); }
   if (it.id === 'book') { earn('book'); return panels.book(); }
@@ -489,6 +502,7 @@ addEventListener('keydown', e => {
     if (e.code.startsWith('Arrow')) e.preventDefault();
     return;
   }
+  if (mode === 'saber') { if (saber.key(e, true)) e.preventDefault(); return; }
   // At the piano the letter keys play it; Esc stands up.
   if (mode === 'sit' && pianoMode.active) {
     if (e.code === 'Escape') { stand(); return; }
@@ -510,11 +524,11 @@ addEventListener('keydown', e => {
   if (e.code === 'Backquote') { showStats = !showStats; $('stats').style.display = showStats ? 'block' : 'none'; }
   if (e.code === 'Space') e.preventDefault();
 });
-addEventListener('keyup', e => { keys.delete(e.code); if (pianoMode.active) pianoMode.keyup(e); if (mode === 'range') range.key(e, false); });
+addEventListener('keyup', e => { keys.delete(e.code); if (pianoMode.active) pianoMode.keyup(e); if (mode === 'range') range.key(e, false); if (mode === 'saber') saber.key(e, false); });
 addEventListener('blur', () => keys.clear());
 canvas.addEventListener('pointerdown', e => {
-  // At the firing line the range reads the mouse itself.
-  if (mode === 'range') return;
+  // At the firing line the range reads the mouse itself, and so does the saber.
+  if (mode === 'range' || mode === 'saber') return;
   dragging = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: 0 }; canvas.setPointerCapture(e.pointerId);
   if (mode === 'pens') { aim(e); pens.aimAt(ray.ray); pens.shoot(); }
 });
@@ -589,7 +603,7 @@ function goTo(name) {
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
 $('cmd').addEventListener('keydown', e => { if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); } });
 $('use').addEventListener('click', () => {
-  if (mode === 'desk') leaveDesk(); else if (mode === 'sit') stand(); else if (mode === 'range') range.exit(); else if (mode === 'scope') scope.exit(); else if (mode === 'pens') pens.exit(); else if (near) act(near);
+  if (mode === 'desk') leaveDesk(); else if (mode === 'sit') stand(); else if (mode === 'range') range.exit(); else if (mode === 'scope') scope.exit(); else if (mode === 'pens') pens.exit(); else if (mode === 'saber') saber.exit(); else if (near) act(near);
 });
 $('hood').addEventListener('click', () => me.toggleHood());
 $('closet').addEventListener('click', () => wardrobe.toggle());
@@ -768,8 +782,8 @@ function step() {
     }
   }
   // At the firing line the range holds the camera (my eye, the aim, the kick of each shot).
-  if (mode === 'range') range.pose(dt, camLook); else camera.lookAt(camLook);
-  range.tick(dt, t); scope.tick(dt);
+  if (mode === 'range') range.pose(dt, camLook); else if (mode === 'saber') saber.pose(dt, camLook); else camera.lookAt(camLook);
+  range.tick(dt, t); scope.tick(dt); saber?.tick(dt, t, saberEye.copy(pos).setY(pos.y + 1.6));
   liveVideo.tick();
   fleet.tick(dt, t, camera.position);
   printer?.tick(dt, camera.position);
