@@ -2,12 +2,12 @@
 // knight stands in its place, the saber comes out of the case and lights, a bolt aimed at the blade is blocked and one
 // aimed wide gets through, the drone keeps firing on its own, and Esc or the button puts it all back. No page errors,
 // no console errors, no failed requests. Pictures go to the out folder.
-//   node test/saber.js [outdir]    (LOFT_URL defaults to http://127.0.0.1:8815)
+//   LOFT_URL=http://127.0.0.1:8815 node test/saber.js [outdir]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output/saber';
 require('fs').mkdirSync(OUT, { recursive: true });
-const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8815';
+const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
 let fails = 0;
 const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name}${detail ? ' ' + detail : ''} ${ok ? 'PASS' : 'FAIL'}`); };
