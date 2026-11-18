@@ -66,13 +66,24 @@ export function foeSounds(go, env) {
     // The eye gathering a bolt: a whine that climbs for `span` seconds.
     droneCharge(pos, span = 1) {
       const S = go(pos, 0.25);
-      if (!S) return;
+      if (!S) return null;
       const t = S.t;
       for (const [type, f0, k] of [['sine', 360, 0.08], ['triangle', 726, 0.03]]) {
         const o = tone(S, type, f0, k, span * 0.85, 0.18, t);
         o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 4.2, t + span);
       }
       S.play(t, t + span + 0.3);
+      let over = false;
+      S.onDone = () => { over = true; };
+      // A drone shot or left mid-charge must not go on whining.
+      return {
+        stop() {
+          if (over) return;
+          const now = S.ctx.currentTime;
+          S.out.gain.cancelScheduledValues(now); S.out.gain.setTargetAtTime(0, now, 0.015);
+          S.stop(now + 0.08);
+        },
+      };
     },
     boltFire(pos) {
       const S = go(pos, 0.35);

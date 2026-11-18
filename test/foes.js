@@ -241,6 +241,44 @@ async function desktop(b) {
   check('a drone sent up just after another was shot down is whole', slot.core && slot.arms, JSON.stringify(slot));
   await p.evaluate(() => __loft.range.film(false));
 
+  // A drone's wind-up whine stops when it is shot mid-charge, and when the run is left mid-charge.
+  await p.evaluate(() => {
+    const sfx = __loft.audio.sfx, P = BaseAudioContext.prototype, rec = window.__whines = [];
+    window.__whineWas = sfx.droneCharge;
+    sfx.droneCharge = function (pos, span) {
+      const mk = P.createOscillator, oscs = [];
+      P.createOscillator = function () { const o = mk.call(this); o.addEventListener('ended', () => { o.endedAt = performance.now(); }); oscs.push(o); return o; };
+      try { const h = window.__whineWas.call(this, pos, span); rec.push({ pos, at: performance.now(), oscs }); return h; } finally { P.createOscillator = mk; }
+    };
+  });
+  const charge = () => until(p, () => [...__loft.range.debug.run.bolts.values()].some(b => b.phase === 'charge'), null, 400);
+  const mark = () => p.evaluate(() => { const b = [...__loft.range.debug.run.bolts.values()].find(x => x.phase === 'charge'), o = b && __loft.range.targets.live().find(x => x.id === b.from); window.__whineDrone = o ? o.g.position : null; return o ? o.id : null; });
+  const whine = cut => p.evaluate(c => {
+    const r = window.__whines.filter(w => w.pos === window.__whineDrone).pop();
+    if (!r) return null;
+    const ends = r.oscs.map(x => x.endedAt), ended = ends.every(Boolean);
+    return { oscs: r.oscs.length, ended, cutAfterStart: Math.round(c - r.at), endAfterCut: ended ? Math.round(Math.max(...ends) - c) : null };
+  }, cut);
+  const stopped = w => !!w && w.oscs > 0 && w.cutAfterStart < 750 && w.ended && w.endAfterCut < 200;
+  await begin(p, 'swarm', 'hard', 2);
+  await p.evaluate(() => __loft.range.press('aim', true));
+  await charge();
+  const shotId = await mark();
+  for (let i = 0; i < 3 && await p.evaluate(id => __loft.range.debug.run.live.has(id), shotId); i++) { await p.evaluate(id => __loft.range.aimAtTarget(id), shotId); await st(0.02, 1); await fire(p); }
+  const shotAt = await p.evaluate(id => __loft.range.debug.run.live.has(id) ? null : performance.now(), shotId);
+  await p.evaluate(() => __loft.range.press('aim', false));
+  await p.waitForTimeout(400);
+  const shotWhine = shotAt ? await whine(shotAt) : null;
+  check('a drone shot mid-charge stops its whine', stopped(shotWhine), JSON.stringify({ shotId, ...shotWhine }));
+  await charge();
+  const leftId = await mark();
+  await p.evaluate(() => { __loft.range.film(false); __loft.range.escape(); });
+  const leftAt = await p.evaluate(() => { [...document.querySelectorAll('.rg-card button')].find(x => x.textContent === 'Stages').click(); return performance.now(); });
+  await p.waitForTimeout(400);
+  const leftWhine = await whine(leftAt);
+  check('a run left mid-charge stops the whine', stopped(leftWhine), JSON.stringify({ leftId, ...leftWhine }));
+  await p.evaluate(() => { __loft.audio.sfx.droneCharge = window.__whineWas; });
+
   // Out of the range: everything back as it was.
   await p.evaluate(() => __loft.range.exit());
   await p.waitForTimeout(600);

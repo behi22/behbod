@@ -79,6 +79,7 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
     if (on && !o.hum) o.hum = sfx?.droneHum?.(o.g.position) || null;
     else if (!on && o.hum) { o.hum.stop(); o.hum = null; }
   };
+  const hush = o => { o.whine?.stop(); o.whine = null; };
 
   // Where a shot along this ray (in the room) meets this target: { dist, zone, point, normal } or null.
   function strike(o, origin, dir) {
@@ -224,7 +225,7 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
         return;
       }
       calmDrone(o, false);
-      hum(o, false);
+      hum(o, false); hush(o);
       o.mat.eye.color.setRGB(...C.DEAD); o.mat.vinyl.emissive.setScalar(0);
       o.fall = { v: tmp.copy(dir).multiplyScalar(1.6).setY(0.6).clone(), spin: (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 5), smoke: 0 };
       fx.burst(h.point, { sparks: 26, pieces: 2, size: 0.04, speed: 3 });
@@ -236,15 +237,15 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
       if (!o) return;
       live.delete(id);
       o.dead = false; o.gone = 0;
-      if (o.kind === 'drone') calmDrone(o, false);
+      if (o.kind === 'drone') { calmDrone(o, false); hush(o); }
       if (o.kind === 'walker') { o.g.visible = false; o.busy = false; } else { o.up = 0; leaving.push(o); }
     },
     // On Hard a drone gathers a bolt in its eye for `span` seconds from `from` (its age) before it fires.
-    charge(id, from, span) { const o = live.get(id); if (o?.kind === 'drone') { chargeDrone(o, from, span); sfx?.droneCharge?.(o.g.position, span); } },
+    charge(id, from, span) { const o = live.get(id); if (o?.kind === 'drone') { chargeDrone(o, from, span); hush(o); o.whine = sfx?.droneCharge?.(o.g.position, span) || null; } },
     // The bolt left (fired) or its drone went before it could (not fired).
-    calm(id, fired) { const o = live.get(id); if (o?.kind === 'drone') calmDrone(o, fired); },
+    calm(id, fired) { const o = live.get(id); if (o?.kind === 'drone') { calmDrone(o, fired); if (fired) o.whine = null; else hush(o); } },
     clear() {
-      for (const o of [...live.values(), ...leaving]) { o.g.visible = false; o.busy = false; if (o.kind !== 'plate') o.reset(); if (o.kind === 'drone') hum(o, false); }
+      for (const o of [...live.values(), ...leaving]) { o.g.visible = false; o.busy = false; if (o.kind !== 'plate') o.reset(); if (o.kind === 'drone') { hum(o, false); hush(o); } }
       live.clear(); leaving.length = 0;
     },
     // A point on a live target, for the checks to aim at (the weak spot when it has one).
