@@ -50,6 +50,7 @@ const CSS = `
 .rg-list button span { color: #2b3640; letter-spacing: 3px; } .rg-list button span b { color: #ffc24a; }
 .rg-list button[disabled] { opacity: .42; cursor: default; }
 .rg-seg { display: flex; gap: 6px; margin: 8px 0 2px; } .rg-seg button { flex: 1; padding: 7px 4px; }
+.rg-guns { flex-wrap: wrap; }
 .rg button { font: inherit; color: #e9f3f6; background: rgba(120, 220, 210, .08); border: 1px solid rgba(120, 220, 210, .3); border-radius: 9px; padding: 9px 14px; cursor: pointer; }
 .rg button:hover:not([disabled]) { background: rgba(120, 220, 210, .16); }
 .rg button.on, .rg button.go { background: #5fe3d0; color: #06110f; border-color: #5fe3d0; }
