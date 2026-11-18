@@ -178,7 +178,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     const mine = owned(), kit = mine.length > 1 ? el('div', 'rg-seg rg-guns') : null;
     for (const id of kit ? mine : []) { const bt = el('button', held === id ? 'on' : '', GUN[id].name); bt.addEventListener('click', () => { bt.disabled = true; take(id).then(() => { if (state === 'menu') menu(); }, () => { bt.disabled = false; }); }); kit.append(bt); }
     const stars = totalStars(best), next = nextGun(stars);
-    hud.card([el('h2', '', 'THE RANGE'), el('h3', '', 'Pick a stage'), el('p', '', `${stars} of ${STAGES.length * 3} stars. Stars unlock guns${next ? `: ${next.need} more for the ${next.name} (${next.kind.toLowerCase()})` : ''}. On Hard the drones shoot back: step aside, duck or shoot the bolt. The other guns are still being built.`), list, seg],
+    hud.card([el('h2', '', 'THE RANGE'), el('h3', '', 'Pick a stage'), el('p', '', `${stars} of ${STAGES.length * 3} stars. Stars unlock guns${next ? `: ${next.need} more for the ${next.name} (${next.kind.toLowerCase()})` : ''}. On Hard the drones shoot back: step aside, duck or shoot the bolt.`), list, seg],
       [['Start', () => start(pick.stage, pick.difficulty), true], ['Leave', () => api.exit()]]);
     if (kit) seg.after(kit);
     hud.set({ playing: false });
@@ -213,7 +213,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     const B = res.bolts;
     if (B?.launched) lines.push(`Bolts: ${B.dodged} dodged, ${B.parried} shot down, ${B.taken} took a shield.`);
     if (got.best) lines.push('A new best.');
-    for (const name of got.guns) lines.push(`Unlocked: the ${name}. It will hang on the gun wall once it is built.`);
+    for (const name of got.guns) lines.push(`Unlocked: the ${name}. Pick it on the stage card.`);
     for (const name of more) lines.push(`Unlocked: ${name}.`);
     const nextStage = STAGES[STAGES.findIndex(x => x.id === res.stage) + 1];
     const canNext = res.stars > 0 && nextStage && openStages(progress.rangeBest()).includes(nextStage.id);
