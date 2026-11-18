@@ -223,8 +223,8 @@ export async function makeGun({ env, id = 'pistol', file = 'assets/range/p22.glb
       const a = smoother(st.aim), up = smoother(st.raised);
 
       // The clip, its cues, and what it says this frame; coming out of a look over, eased from where it was.
-      const [clip, ct] = current(w, s);
-      if (clip !== st.clip) { st.clip = clip; st.clipT = -1; }
+      const [clip, ct] = current(w, s), cut = clip !== st.clip;
+      if (cut) { st.clip = clip; st.clipT = -1; }
       if (clip) { for (const name of cues(clip, st.clipT, ct)) onCue?.(name, id); st.clipT = ct; }
       const now = clip ? sample(clip, ct) : REST, back = st.outK > 0 && st.outFrom ? smoother(st.outK) : 0, was = st.outFrom;
       const G = back ? now.gun.map((x, i) => x + (was.gun[i] - x) * back) : now.gun;
@@ -232,7 +232,8 @@ export async function makeGun({ env, id = 'pistol', file = 'assets/range/p22.glb
       // The slide: back hard on a shot and home again, held back on an empty gun until it is let go, or eased back by a
       // hand (and let go to fly home when the hand lets go).
       st.shotT += dt; st.freeT += dt;
-      if (st.held !== null && now.slide === null) { st.freeT = 0; st.freeFrom = st.held; st.lock = false; }
+      // A look into the chamber cut short never reaches its own slideHome cue.
+      if (st.held !== null && now.slide === null) { st.freeT = 0; st.freeFrom = st.held; st.lock = false; if (cut) onCue?.('slideHome', id); }
       st.held = now.slide;
       let slide = 0;
       if (now.slide !== null) slide = now.slide;

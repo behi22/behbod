@@ -146,6 +146,16 @@ const since = (a, b) => b.cues.slice(a.cues.length);
     h1 = await heard(p);
     const done = await p.evaluate(() => __loft.range.gun.inspecting);
     check('F looks the gun over, eases the slide back and gives it back', looking && !done && since(h0, h1).includes('slidePull') && since(h0, h1).includes('slideHome'), JSON.stringify(since(h0, h1)));
+    // Aiming while the hand holds the slide back: the slide still goes home with its sound.
+    h0 = await heard(p);
+    await p.keyboard.press('KeyF');
+    await p.evaluate(() => new Promise(r => { const n = __heard.cues.length, f = () => { if (__heard.cues.slice(n).includes('slidePull')) { __loft.range.press('aim', true); r(); } else requestAnimationFrame(f); }; f(); }));
+    await p.waitForTimeout(300);
+    await p.evaluate(() => __loft.range.press('aim', false));
+    await p.waitForTimeout(400);
+    h1 = await heard(p);
+    const cutShort = await p.evaluate(() => __loft.range.gun.inspecting);
+    check('aiming during the look into the chamber lets the slide go home, heard', !cutShort && since(h0, h1).at(-1) === 'slideHome', JSON.stringify(since(h0, h1)));
     // A shot ends a look over at once; aiming keeps one from starting.
     await p.keyboard.press('KeyF'); await p.waitForTimeout(500);
     const s0 = await p.evaluate(() => __loft.range.debug.run.shots);
