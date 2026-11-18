@@ -16,6 +16,7 @@ import { STAGES, STAGE, DIFFICULTIES, openStages, totalStars, starScores } from 
 import { newRun, step as stepRun, fired, hit as hitRun, quit as quitRun, parry } from '../pure/rangegame.js';
 import { spring, springStep, kick, critical } from '../pure/springs.js';
 import { makeFitter } from './fittings.js';
+import { makeSmith } from './smith.js';
 import { makeScopeView } from './scopeview.js';
 
 // The range: its rooms (fetched after the house) and the game at the firing line. You stand at the bench, look and
@@ -100,7 +101,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     const vel = v1.multiplyScalar(1.5 + Math.random() * 0.9).addScaledVector(v3, 1.3 + Math.random() * 0.8).addScaledVector(ahead, -0.5 - Math.random() * 0.4);
     fx.casing(gun.newCasing(), at, vel, new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(40));
   }
-  const layer = g => engine.addLayer({ scene: g.scene, camera: g.camera, clearDepth: true, on: () => active && gun === g });
+  const layer = g => engine.addLayer({ scene: g.scene, camera: g.camera, clearDepth: true, on: () => active && gun === g && !bench?.open });
   function loadGun(id) {
     fetching[id] ||= (async () => {
       const g = await makeGun({ env: room.env, id, onCue: cue });
@@ -130,9 +131,11 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   }
 
   // ---------- the gunsmith: attachments, finishes and charms, kept per gun in this browser ----------
-  let fitter = null, kits = null;
+  // Shown on the stage card with ?gunsmith until the bench has its place in the loadout room.
+  const smithOn = typeof location !== 'undefined' && new URLSearchParams(location.search).has('gunsmith');
+  let fitter = null, bench = null, kits = null, benchMask = 0;
   const scopeView = makeScopeView(), lightTo = new THREE.Vector3();
-  const between = () => !active || state === 'menu' || state === 'over';
+  const between = () => !active || state === 'menu' || state === 'over' || state === 'smith';
   const fitterNow = () => (fitter ||= makeFitter({ renderer: engine.renderer, env: room.env, stars: () => totalStars(progress.rangeBest()), has: id => progress.has?.(id) }));
   const kitOf = id => (kits ||= fitterNow().store.read())[id];
   // The gun's numbers from its kit at once; its look as soon as all it needs is in hand.
@@ -155,6 +158,22 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     if (!gun?.lens || (state !== 'play' && state !== 'count')) return;
     flash.set(!flash.on); sfx?.flashlight?.(flash.on);
     hud?.lightPad?.(coarse, flash.on);
+  }
+  // The bench takes the gun in the hand; the house is not drawn behind it (its camera sees nothing while it is open).
+  function openBench() {
+    if (!gun || !active || !between()) return false;
+    bench ||= makeSmith({ engine, coarse, env: room.env, fitter: fitterNow(), onClose: closeBench,
+      guns: { owned, take: id => take(id).then(ok => (ok ? gun : null)), stars: () => totalStars(progress.rangeBest()), has: id => progress.has?.(id) } });
+    if (!bench.show(gun)) return false;
+    state = 'smith'; hud?.closeCard(); unlock(); release();
+    benchMask = camera.layers.mask; camera.layers.disableAll();
+    return true;
+  }
+  function closeBench() {
+    camera.layers.mask = benchMask || 1;
+    kits = null;
+    if (gun) { equip(gun, held); gun.draw(); if (s.suppressed) sfx?.gunTake?.(held, true); }
+    if (active) menu();
   }
 
   // ---------- the board by the line ----------
@@ -207,7 +226,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     for (const id of kit ? mine : []) { const bt = el('button', held === id ? 'on' : '', GUN[id].name); bt.addEventListener('click', () => { bt.disabled = true; take(id).then(() => { if (state === 'menu') menu(); }, () => { bt.disabled = false; }); }); kit.append(bt); }
     const stars = totalStars(best), next = nextGun(stars);
     hud.card([el('h2', '', 'THE RANGE'), el('h3', '', 'Pick a stage'), el('p', '', `${stars} of ${STAGES.length * 3} stars. Stars unlock guns${next ? `: ${next.need} more for the ${next.name} (${next.kind.toLowerCase()})` : ''}. On Hard the drones shoot back: step aside${coarse ? '' : ', duck'} or shoot the bolt.`), list, seg],
-      [['Start', () => start(pick.stage, pick.difficulty), true], ['Leave', () => api.exit()]]);
+      [['Start', () => start(pick.stage, pick.difficulty), true], ...(smithOn ? [['Gunsmith', () => openBench()]] : []), ['Leave', () => api.exit()]]);
     if (kit) seg.after(kit);
     hud.set({ playing: false });
   }
@@ -431,14 +450,18 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       flashRoom.intensity = flashStage.intensity = 0;
       bolts.clear(); dark(false); lights = 1; lastHurt = 0; room.setLights(1); gun.setLights(1); flash.update(1, camera, v1.set(0, 0, 1));
       camera.fov = baseFov; camera.updateProjectionMatrix();
-      scopeView.hide();
+      scopeView.hide(); if (bench?.open) bench.close();
       engine.showBackground(true);
       // Back on the yellow line, a step from the bench and short of the crates at the line's end.
       onExit?.({ at: new THREE.Vector3(THREE.MathUtils.clamp(stand.x + along, R.strafe[0] + 0.5, R.strafe[1] - 0.5), stand.y, stand.z - 0.5) });
     },
     // Esc: out of a run to the pause card first, then out of the range.
-    escape() { if (state === 'play' || state === 'count') pause(); else api.exit(); },
+    escape() {
+      if (bench?.open) return bench.close();
+      if (state === 'play' || state === 'count') pause(); else api.exit();
+    },
     key(e, down) {
+      if (bench?.open) return bench.key(e, down);
       // Ctrl+R is the browser's, not the gun's (a key going up always counts, so nothing stays held).
       if (down && (e.ctrlKey || e.metaKey || e.altKey)) return false;
       const c = e.code;
@@ -454,6 +477,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     },
     // Puts the camera at my eye, looking where I aim. Blender's -y (downrange) is three's +z.
     pose(dt, lookAt) {
+      if (bench?.open) return;
       if (film) dt = film.step;
       enterK = Math.min(1, enterK + (film ? 1 : dt * 2.2));
       springStep(kickUp, 0, dt); springStep(kickSide, 0, dt);
@@ -468,6 +492,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       lookAt.copy(camera.position).add(v1.set(0, 0, -3).applyQuaternion(camera.quaternion));
     },
     tick(dt, t) {
+      if (bench?.open) { bench.tick(dt); return; }
       if (!gun) return;
       // Out of the range, what was left in the air still lands.
       if (!active) { if (visible()) fx.tick(dt); return; }
@@ -541,8 +566,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     get held() { return held; },
     get owned() { return owned(); },
     take,
-    // The scope's picture, each gun's saved kit.
-    get scopeView() { return scopeView; }, kit: id => kitOf(id),
+    // The gunsmith's bench (open it from the stage card), the scope's picture, each gun's saved kit.
+    openBench, get bench() { return bench; }, get scopeView() { return scopeView; }, kit: id => kitOf(id),
   };
   return api;
 }
