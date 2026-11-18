@@ -95,14 +95,21 @@ function hall(rng, dry, { rt, level, slap }) {
   }
   return [L, R];
 }
-// Every sound ends at a true zero, starts on a whisper, and is scaled to its peak.
+// Every sound ends at a true zero, starts on a whisper, and is scaled to its peak; its tail stops where it falls
+// below a ten-thousandth of full scale, far under hearing, so a third less is kept.
 function finish(chans, peak, drive = 0) {
   if (drive) for (const c of chans) for (let i = 0; i < c.length; i++) c[i] = Math.tanh(c[i] * drive) / Math.tanh(drive);
   let top = 0;
   for (const c of chans) for (let i = 0; i < c.length; i++) top = Math.max(top, Math.abs(c[i]));
   const k = top ? peak / top : 0, fade = at(0.02);
-  for (const c of chans) for (let i = 0; i < c.length; i++) { c[i] *= k; const left = c.length - 1 - i; if (left < fade) c[i] *= left / fade; }
-  return chans;
+  let last = 0;
+  for (const c of chans) for (let i = c.length - 1; i > last; i--) if (Math.abs(c[i] * k) > 1e-4) { last = i; break; }
+  const n = Math.min(chans[0].length, last + 1 + fade);
+  return chans.map(src => {
+    const c = src.slice(0, n);
+    for (let i = 0; i < n; i++) { c[i] *= k; const left = n - 1 - i; if (left < fade) c[i] *= left / fade; }
+    return c;
+  });
 }
 
 // ---------- the sounds ----------
@@ -168,9 +175,19 @@ export const SOUND_NAMES = Object.keys(SOUNDS);
 // How many takes of each sound, so a run of shots never sounds like one sample played again.
 export const TAKES = { shot: 3, shotQuiet: 2, magDrop: 2 };
 
+const soundsOf = g => g.sounds || SOUND_NAMES;
 // One take of a sound for a gun: two channels at SR.
 export function gunSound(name, gunId = 'pistol', take = 0) {
-  const g = GUN_SOUNDS[gunId], make = SOUNDS[name];
-  if (!g || !make) return null;
+  const g = Object.hasOwn(GUN_SOUNDS, gunId) ? GUN_SOUNDS[gunId] : null, make = Object.hasOwn(SOUNDS, name) ? SOUNDS[name] : null;
+  if (!g || !make || !soundsOf(g).includes(name)) return null;
   return make(g, makeRng(`${gunId}:${name}:${take}`));
+}
+
+// Every take a gun can be asked for, in the order they are wanted: the draw heard on stepping up, then the shot.
+const FIRST = ['draw', 'shot', 'dry'];
+export function soundsFor(gunId, { quiet = false } = {}) {
+  const g = Object.hasOwn(GUN_SOUNDS, gunId) ? GUN_SOUNDS[gunId] : null;
+  if (!g) return [];
+  const names = soundsOf(g).filter(n => quiet || n !== 'shotQuiet'), rank = n => (FIRST.includes(n) ? FIRST.indexOf(n) : FIRST.length);
+  return names.slice().sort((a, b) => rank(a) - rank(b)).flatMap(n => Array.from({ length: TAKES[n] || 1 }, (_, t) => [n, t]));
 }

@@ -1,42 +1,51 @@
 import { tone, noisy } from './drums.js';
-import { gunSound, SOUND_NAMES, TAKES, SR } from './pure/gunsound.js';
+import { gunSound, SR } from './pure/gunsound.js';
+import { makeBank } from './pure/gunbank.js';
 
 // The gun's sounds are made in pure/gunsound.js and played as samples at these levels against the shot; the rest are live.
 const LEVEL = { shot: 0.8, shotQuiet: 0.8, dry: 0.9, magRelease: 0.8, magOut: 0.9, magDrop: 0.7, magIn: 1, slideRelease: 1, slideHome: 0.9, slidePull: 0.9, grab: 0.8, handle: 0.8, cloth: 0.7, draw: 0.8 };
 
+// The samples become buffers any sound card can play, so one copy serves.
+function toBuffer(L, R, ctx) {
+  let b;
+  try { b = new AudioBuffer({ numberOfChannels: 2, length: L.length, sampleRate: SR }); } catch { if (!ctx) return null; b = ctx.createBuffer(2, L.length, SR); }
+  b.copyToChannel(L, 0); b.copyToChannel(R, 1);
+  return b;
+}
+const between = fn => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 400 }) : setTimeout(fn, 16));
+
 // `go(pos, wet)` starts a sound at a place in the room (or in the head when pos is null) with some of it sent to the reverb.
 export function rangeSounds(go) {
   const ring = (S, t, parts, level) => { for (const [f, a, d] of parts) tone(S, 'sine', f, a * level, 0.001, d, t); };
-  // The gun's sounds as samples, made once; and as the sound card's own buffers, made once per card.
-  const made = new Map(), cards = new WeakMap(), making = new Set();
-  const samples = (gun, name, take) => { const k = `${gun}:${name}:${take}`; if (!made.has(k)) made.set(k, gunSound(name, gun, take)); return made.get(k); };
-  // Everything a gun will want is made a piece at a time between frames, the first time it is heard.
-  const prepare = gun => {
-    if (making.has(gun)) return;
-    making.add(gun);
-    const todo = SOUND_NAMES.flatMap(n => Array.from({ length: TAKES[n] || 1 }, (_, t) => [gun, n, t]));
-    const next = () => { const job = todo.shift(); if (!job) return; samples(...job); setTimeout(next, 0); };
-    setTimeout(next, 0);
-  };
-  function play(gun, name, rate = 1 + (Math.random() - 0.5) * 0.04) {
-    const S = go(null);
-    if (!S) return;
-    prepare(gun);
-    const take = Math.floor(Math.random() * (TAKES[name] || 1)), k = `${gun}:${name}:${take}`;
-    let card = cards.get(S.ctx);
-    if (!card) cards.set(S.ctx, card = new Map());
-    let b = card.get(k);
-    if (!b) {
-      const [L, R] = samples(gun, name, take);
-      b = S.ctx.createBuffer(2, L.length, SR); b.copyToChannel(L, 0); b.copyToChannel(R, 1);
-      card.set(k, b);
-    }
+  let card = null, quietBuf = null;
+  const bank = makeBank({
+    spawn: () => (typeof Worker === 'function' ? new Worker(new URL('./gunworker.js', import.meta.url), { type: 'module' }) : null),
+    build: (gun, name, take) => gunSound(name, gun, take), make: (L, R) => toBuffer(L, R, card), later: between,
+  });
+  const start = (S, b, name, rate) => {
     const src = S.buffer(b);
     src.playbackRate.value = rate;
     src.connect(S.gain(LEVEL[name])).connect(S.out);
     S.play(S.t, S.t + b.duration / rate + 0.02);
+  };
+  // A sound started for nothing still has to end, or the count of live sounds never comes down.
+  const drop = S => { quietBuf ||= S.ctx.createBuffer(1, 1, S.ctx.sampleRate); S.buffer(quietBuf); S.play(S.t, S.t); };
+  function play(gun, name, rate = 1 + (Math.random() - 0.5) * 0.04) {
+    if (!bank.has(gun, name)) return;
+    const S = go(null);
+    if (!S) return;
+    card = S.ctx;
+    bank.want(gun, name);
+    const b = bank.get(gun, name);
+    if (b) { start(S, b, name, rate); return; }
+    // Asked for before it was made: it is made next and heard the moment it is.
+    drop(S);
+    bank.hurry(gun, name, buf => { const T = go(null); if (T) start(T, buf, name, rate); });
   }
   return {
+    // The gun taken up: its sounds made ahead (with the suppressed shot when one is on), any other gun's let go.
+    gunTake(gun, suppressed = false) { bank.take(gun, { quiet: suppressed }); },
+    gunSoundStats: () => bank.stats(),
     // loud: 1 for a bare muzzle, about 0.2 with a suppressor on.
     gunShot(loud = 1, gun = 'pistol') { play(gun, loud < 0.5 ? 'shotQuiet' : 'shot', 1 + (Math.random() - 0.5) * 0.05); },
     // The rest of a gun: the trigger on an empty chamber, the hands' moves, by the names its clips give.

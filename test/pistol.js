@@ -1,6 +1,7 @@
 // The pistol in the hand, desktop and phone: its hands built in the page and fitted to the gun, the trigger finger
 // on the trigger, a shot, a reload, a reload from empty (the slide let go by the thumb), the look over the gun on F
-// and on its phone pad, the sounds each move cues, the squeezed gun file, and a clean console.
+// and on its phone pad, the sounds each move cues (made off the page's thread, or on it in a browser with no
+// workers), the squeezed gun file, and a clean console.
 //   LOFT_URL=http://127.0.0.1:8814 node test/pistol.js [outdir]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -25,13 +26,17 @@ function countSound() {
   window.__heard = { cues: [], shots: 0, buffers: 0, played: 0 };
   const C = window.BaseAudioContext || window.AudioContext, make = C.prototype.createBuffer;
   C.prototype.createBuffer = function (ch, n, sr) { if (ch === 2 && sr === 48000) window.__heard.buffers++; return make.call(this, ch, n, sr); };
+  const AB = window.AudioBuffer;
+  window.AudioBuffer = function (o) { if (o?.numberOfChannels === 2 && o.sampleRate === 48000) window.__heard.buffers++; return new AB(o); };
+  window.AudioBuffer.prototype = AB.prototype;
   const start = AudioBufferSourceNode.prototype.start;
   AudioBufferSourceNode.prototype.start = function (...a) { if (this.buffer && this.buffer.sampleRate === 48000 && this.buffer.numberOfChannels === 2) window.__heard.played++; return start.apply(this, a); };
 }
-async function open(b, opts) {
+async function open(b, opts, init) {
   const p = await b.newPage(opts), errs = [], files = [];
   watch(p, errs, files);
   await p.addInitScript(countSound);
+  if (init) await p.addInitScript(init);
   await p.goto(`${BASE}/?auto&q=${opts.isMobile ? 'medium' : 'ultra'}`);
   await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
   await p.waitForTimeout(800);
@@ -110,6 +115,8 @@ const since = (a, b) => b.cues.slice(a.cues.length);
     await p.waitForTimeout(400);
     let h1 = await heard(p);
     check('a click fires: the shot is heard as a made sample', (await p.evaluate(() => __loft.range.debug.run.shots)) === shots0 + 1 && h1.shots === h0.shots + 1 && h1.played > h0.played && h1.buffers >= 1, JSON.stringify({ shots: h1.shots - h0.shots, played: h1.played - h0.played, buffers: h1.buffers }));
+    const bank = await p.evaluate(() => __loft.audio.sfx.gunSoundStats());
+    check('the gun\'s sounds were made off the page\'s thread, each held once, no suppressed shot without a suppressor', bank.where === 'worker' && bank.sounds === 16 && bank.queued === 0 && bank.bytes < 4.5e6 && h1.buffers <= bank.sounds + 1, JSON.stringify({ ...bank, buffers: h1.buffers }));
 
     // A reload on R: the magazine's moves are heard in order, the gun is full again.
     h0 = await heard(p);
@@ -216,6 +223,20 @@ const since = (a, b) => b.cues.slice(a.cues.length);
     const hq1 = await heard(q);
     check('phone: the LOAD pad reloads, heard move by move', since(hq0, hq1).includes('magIn') && (await q.evaluate(() => __loft.range.debug.weapon.ammo)) === 16, JSON.stringify(since(hq0, hq1)));
     check('phone: no errors or warnings', ph.errs.length === 0, JSON.stringify(ph.errs.slice(0, 5)));
+    await q.close();
+
+    // ---------- a browser with no workers: the page makes the sounds itself, and none goes missing ----------
+    const nw = await open(b, { viewport: { width: 1280, height: 800 } }, () => { delete window.Worker; });
+    const r = nw.p;
+    await toLine(r);
+    await r.click('.rg-card .rg-acts button.go');
+    await r.waitForFunction(() => __loft.range.state === 'play', null, { timeout: 8000 });
+    const n0 = await heard(r);
+    await r.mouse.move(640, 400); await r.mouse.down(); await r.waitForTimeout(80); await r.mouse.up();
+    await r.waitForTimeout(400);
+    const n1 = await heard(r), nb = await r.evaluate(() => __loft.audio.sfx.gunSoundStats());
+    check('no worker: the draw and the shot are still heard, made on the page', nb.where === 'page' && n0.played >= 1 && n1.shots === n0.shots + 1 && n1.played > n0.played, JSON.stringify({ ...nb, before: n0.played, after: n1.played }));
+    check('no worker: no errors or warnings', nw.errs.length === 0, JSON.stringify(nw.errs.slice(0, 5)));
   } finally { await b.close(); }
   console.log(fails ? `${fails} FAILED` : 'all PASS');
   process.exit(fails ? 1 : 0);
