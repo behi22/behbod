@@ -225,7 +225,11 @@ const run = (p, sec) => p.evaluate(async n => { for (let i = 0; i < n; i++) { __
       const bt = q.locator('.rg-guns button', { hasText: new RegExp(`^${name}$`) });
       await bt.tap();
       await q.waitForFunction(g => __loft.range.held === g, pick, { timeout: 20000 });
-      const fits = await q.evaluate(() => { const c = document.querySelector('.rg-card').getBoundingClientRect(); return { inside: c.left >= 0 && c.right <= innerWidth && c.bottom <= innerHeight + 1, wide: document.documentElement.scrollWidth <= innerWidth }; });
+      const fits = await q.evaluate(() => {
+        const card = document.querySelector('.rg-card'), c = card.getBoundingClientRect(), edge = c.right - parseFloat(getComputedStyle(card).paddingRight) + 0.5;
+        const row = card.scrollWidth <= card.clientWidth && [...document.querySelectorAll('.rg-guns button')].every(x => x.getBoundingClientRect().right <= edge);
+        return { inside: c.left >= 0 && c.right <= innerWidth && c.bottom <= innerHeight + 1, wide: document.documentElement.scrollWidth <= innerWidth, row };
+      });
       await q.tap('.rg-card .rg-acts button.go');
       await q.waitForFunction(() => __loft.range.state === 'play', null, { timeout: 8000 });
       await q.waitForTimeout(700);
@@ -240,7 +244,7 @@ const run = (p, sec) => p.evaluate(async n => { for (let i = 0; i < n; i++) { __
       await q.waitForTimeout(R * 1000 + 600);
       const st = await q.evaluate(() => ({ ammo: __loft.range.debug.weapon.ammo, mag: __loft.range.debug.stats.mag, chamber: __loft.range.debug.stats.chamber }));
       await q.screenshot({ path: `${OUT}/phone-${pick}.png` });
-      check(`phone: the ${name} picked with a tap (the card fits), fired and reloaded with the pads`, fits.inside && fits.wide && (shot || !fire) && st.ammo === st.mag + st.chamber, JSON.stringify({ fits, shot, fire: !!fire, ...st }));
+      check(`phone: the ${name} picked with a tap (the card fits), fired and reloaded with the pads`, fits.inside && fits.wide && fits.row && (shot || !fire) && st.ammo === st.mag + st.chamber, JSON.stringify({ fits, shot, fire: !!fire, ...st }));
     }
     check('phone: no errors or warnings', ph.errs.length === 0, JSON.stringify(ph.errs.slice(0, 5)));
   } finally { await b.close(); }
