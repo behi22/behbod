@@ -1,22 +1,25 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lit } from './lit.js';
+import { makeHand, makeHandMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
+import { blend, qFrame, add, relaxed } from '../pure/hands.js';
+import { LOW, ELBOWS } from '../pure/handling.js';
+import { HOLDS } from './holds.js';
+import { CLIPS, sample, cues } from '../pure/clips.js';
 
-// The gun in the hand. It is a scene of its own with its own camera, drawn over everything on a fresh depth, so it
-// never pokes through the bench or a wall; its camera sits exactly where the eye is, so the room's light and
-// reflections fall on it the right way round. Every part that moves on a real pistol moves: the slide, the barrel's
-// tilt, the trigger, the magazine and the round on top of it, the slide stop, the magazine release, the hands.
+// Its own scene, its camera at the eye, drawn on a fresh depth so it never pokes through the bench or a wall.
 const FOV = 50, SLIDE = 0.042, LOCK = 0.9;
 // Where the gun sits in the eye's space (x right, y up, -z ahead), at the hip and aimed down the sights.
 const HIP = { p: [0.085, -0.072, -0.33], r: [0.02, 0.07, -0.04] };
-// Blender's gun axes (x ahead, y left, z up) in three's (x ahead, y up, z right).
-const g2t = (x, y, z) => new THREE.Vector3(x, z, -y);
 // The magazine slides along the grip's slant: this way is out.
 const WELL = new THREE.Vector3(-0.333, -0.943, 0);
-const ramp = (t, a, b) => smoother((t - a) / (b - a));
+// Where a clip turns the gun about: the middle of the grip, in the gun's own space.
+const PIVOT = new THREE.Vector3(-0.004, -0.062, 0);
 // A push that carries a spring `peak` away before it comes back.
 const punch = (s, peak) => kick(s, peak * Math.sqrt(s.k) * Math.E);
+const REST = { gun: [0, 0, 0, 0, 0, 0], right: { a: 'grip', b: 'grip', k: 0 }, left: { a: 'grip', b: 'grip', k: 0 }, mag: [0, 0], slide: null };
 
 function flashTexture() {
   const c = document.createElement('canvas');
@@ -38,8 +41,9 @@ function flashTexture() {
   return t;
 }
 
-export async function makeGun({ env, file = 'assets/range/p22.glb' }) {
-  const gltf = await new GLTFLoader().loadAsync(file);
+export async function makeGun({ env, id = 'pistol', file = 'assets/range/p22.glb', onCue }) {
+  // The gun file is packed with meshopt (blender/squeeze.js).
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file);
   const model = gltf.scene;
   const scene = new THREE.Scene();
   scene.environment = env;
@@ -61,20 +65,31 @@ export async function makeGun({ env, file = 'assets/range/p22.glb' }) {
     if (!m.transparent) lit(m);
   });
   const P = name => model.getObjectByName(name);
-  const part = { slide: P('P22_slide'), barrel: P('P22_barrel'), trigger: P('P22_trigger'), stop: P('P22_slidestop'), rel: P('P22_magrelease'), mag: P('P22_mag'), round: P('P22_round'),
-    casing: P('P22_casing'), handR: P('P22_hand_r'), handL: P('P22_hand_l'), handM: P('P22_hand_l_mag') };
+  const part = { slide: P('P22_slide'), barrel: P('P22_barrel'), trigger: P('P22_trigger'), stop: P('P22_slidestop'), rel: P('P22_magrelease'), mag: P('P22_mag'), round: P('P22_round'), casing: P('P22_casing') };
   for (const [k, o] of Object.entries(part)) if (!o) throw new Error('the gun file has no ' + k);
   const home = Object.fromEntries(Object.entries(part).map(([k, o]) => [k, o.position.clone()]));
   const anchor = { muzzle: P('P22_muzzle'), eject: P('P22_eject'), iron: P('P22_aim_iron') };
   const fits = {};
   model.traverse(o => { if (o.name.startsWith('P22_att_')) { fits[o.name.slice(8)] = o; o.visible = false; } });
   P('P22_round_ext').visible = false;
-  part.casing.visible = false; part.handM.visible = false;
+  part.casing.visible = false;
   // The magazine that falls out is a second one; the one in the gun is the fresh one coming in.
   const spent = part.mag.clone(true);
   spent.traverse(o => { if (o.name.startsWith('P22_round')) o.visible = false; });
   spent.visible = false;
   part.mag.parent.add(spent);
+
+  // The hands: built here, posed from the gun's description, in the gun's own space.
+  const hm = makeHandMaterials(m => lit(m));
+  for (const m of Object.values(hm)) (mats[m.name] ||= new Set()).add(m);
+  const hands = { right: makeHand('right', hm), left: makeHand('left', hm) };
+  turn.add(hands.right.root, hands.left.root);
+  // The hands' poses on this gun, solved ahead of time (blender/holds.js).
+  const holds = HOLDS[id];
+  if (!holds) throw new Error('no hands are fitted to ' + id + ': run node blender/holds.js');
+  const lowQ = qFrame(LOW.fingers, LOW.back), lowDigits = relaxed();
+  let clips = null, clipsFor = null;
+  const clipsOf = s => { if (clipsFor !== s) { clipsFor = s; clips = CLIPS[id](s); } return clips; };
 
   // Aimed: the rear sight's notch sits on the eye's line, 30 cm ahead.
   const notch = anchor.iron.position.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
@@ -97,52 +112,66 @@ export async function makeGun({ env, file = 'assets/range/p22.glb' }) {
   // What moves by springs: the recoil (back, muzzle up, a twist), the lag behind the look, a bump when a magazine goes home.
   const soft = k => spring(k, critical(k) * 0.7);
   const sp = { back: soft(300), up: soft(240), side: soft(200), roll: soft(170), lagX: spring(90, critical(90)), lagY: spring(90, critical(90)), bump: soft(260) };
-  const st = { aim: 0, raised: 0, slide: 0, shotT: 9, lock: false, freeT: 9, freeFrom: 0, trig: 0, flashT: 9, flashK: 1, bob: 0, t: 0, lights: 1 };
-  const v = new THREE.Vector3(), q = new THREE.Quaternion(), e = new THREE.Euler();
+  const st = { aim: 0, raised: 0, slide: 0, shotT: 9, lock: false, freeT: 9, freeFrom: 0, trig: 0, flashT: 9, flashK: 1, bob: 0, t: 0, lights: 1,
+    drawT: 9, inspT: -1, outK: 0, outFrom: null, clip: null, clipT: 0, held: null };
+  const v = new THREE.Vector3(), v2 = new THREE.Vector3(), q = new THREE.Quaternion(), q2 = new THREE.Quaternion(), e = new THREE.Euler(), m4 = new THREE.Matrix4();
+  const toGun = new THREE.Matrix4(), toGunQ = new THREE.Quaternion();
+  const eyeToGun = (p, out) => out.set(p[0], p[1], p[2]).applyMatrix4(toGun);
+  const arr = o => [o.x, o.y, o.z];
 
-  function reloadPose(w, s) {
-    // Returns how far the gun is turned for the reload (0..1), how far the supporting hand is away (0..1), and
-    // places the two magazines and the hand that brings the new one.
-    if (w.phase !== 'reload') {
-      part.mag.position.copy(home.mag); part.mag.visible = true; spent.visible = false; part.handM.visible = false; part.rel.position.copy(home.rel);
-      return { turn: 0, away: 0 };
-    }
-    const t = w.t, R = s.reload;
-    const turned = ramp(t, 0, R.out * 0.8) * (1 - ramp(t, R.in + 0.12, R.in + 0.45));
-    const away = ramp(t, 0.02, R.out * 0.9) * (1 - ramp(t, R.in + 0.2, R.in + 0.5));
-    // The old magazine: the release goes in, it slides out and drops.
-    const press = ramp(t, R.out - 0.08, R.out - 0.03) * (1 - ramp(t, R.out + 0.05, R.out + 0.12));
-    part.rel.position.copy(home.rel).add(v.set(0, 0, 0.0016 * press));
-    const slid = Math.min(1, Math.max(0, (t - (R.out - 0.03)) / 0.1)), fall = Math.max(0, t - (R.out + 0.07));
-    spent.visible = t < R.out + 0.45;
-    spent.position.copy(home.mag).addScaledVector(WELL, 0.115 * slid * slid).add(v.set(-0.25 * fall, -4.9 * fall * fall, 0));
-    spent.rotation.z = -3.2 * fall;
-    // The new one: up from below in the cupped hand to the mouth of the grip, then driven home.
-    const from = R.out + 0.16, mouth = R.in - 0.17;
-    part.mag.visible = t >= from;
-    const d = t < mouth ? 0.115 + 0.19 * (1 - ramp(t, from, mouth)) : 0.115 * (1 - Math.pow(Math.min(1, (t - mouth) / (R.in - mouth)), 2.6));
-    const wide = 0.09 * (1 - ramp(t, from, mouth));
-    part.mag.position.copy(home.mag).addScaledVector(WELL, Math.max(0, d)).add(v.set(-0.03 * wide, 0, -wide));
-    // The cupped hand leaves downward once the magazine is home.
-    const gone = ramp(t, R.in + 0.03, R.in + 0.24);
-    part.handM.visible = t >= from && gone < 1;
-    part.handM.position.copy(home.handM).add(part.mag.position).sub(home.mag).add(v.set(-0.05 * gone, -0.3 * gone, -0.1 * gone));
-    return { turn: turned, away };
+  // The clip the hands are in now, and its time: a reload, the look over, the draw, or none.
+  function current(w, s) {
+    const C = clipsOf(s);
+    if (w.phase === 'reload') return [w.empty ? C.reloadEmpty : C.reload, w.t];
+    if (st.inspT >= 0) return [C.inspect, st.inspT];
+    if (st.drawT < C.draw.T) return [C.draw, st.drawT];
+    return [null, 0];
   }
 
+  // A named pose this frame in the gun's space; some ride the moving magazine or slide, 'low' is held in the eye's space.
+  function named(side, name, magOff, slideX) {
+    if (side === 'right') {
+      if (name === 'grip') return blend(holds.right.grip, holds.right.pull, st.trig);
+      return holds.right[name] || holds.right.grip;
+    }
+    if (name === 'low') {
+      eyeToGun(LOW.at, v2);
+      q.copy(toGunQ).multiply(q2.set(...lowQ));
+      return { at: arr(v2), q: [q.x, q.y, q.z, q.w], digits: lowDigits };
+    }
+    const p = holds.left[name] || holds.left.grip;
+    if (name === 'mag') return { ...p, at: add(p.at, magOff) };
+    if (name === 'over' || name === 'pinch') return { ...p, at: add(p.at, [-SLIDE * slideX, 0, 0]) };
+    return p;
+  }
+  const pick = (side, tr, magOff, slideX) => blend(named(side, tr.a, magOff, slideX), named(side, tr.b, magOff, slideX), tr.k);
+
   const api = {
-    scene, camera, model, part, anchor, mats,
+    scene, camera, model, part, anchor, mats, hands,
     get aim() { return st.aim; },
+    // The gun is being looked over, or is on its way back from it.
+    get inspecting() { return st.inspT >= 0 || st.outK > 0; },
     // Raises the gun from below (stepping up to the line, or a fresh run).
-    draw() { st.raised = 0; st.slide = 0; st.lock = false; st.shotT = st.freeT = 9; for (const s of Object.values(sp)) { s.x = 0; s.v = 0; } },
-    setAttachments(list) { for (const [id, o] of Object.entries(fits)) if (id !== 'mag') o.visible = list.includes(id); },
+    draw() {
+      st.raised = 0; st.slide = 0; st.lock = false; st.shotT = st.freeT = 9; st.drawT = 0; st.inspT = -1; st.outK = 0; st.clip = null; st.held = null;
+      for (const s of Object.values(sp)) { s.x = 0; s.v = 0; }
+    },
+    // The look over the gun: only from a loaded gun at rest in the hand.
+    inspect(w, s) {
+      if (st.inspT >= 0 || st.outK > 0 || w.phase !== 'ready' || w.ammo === 0 || st.aim > 0.05 || st.drawT < clipsOf(s).draw.T) return false;
+      st.inspT = 0;
+      return true;
+    },
+    setAttachments(list) { for (const [fid, o] of Object.entries(fits)) if (fid !== 'mag') o.visible = list.includes(fid); },
     // The hall's lights going down dims the gun's own light too.
     setLights(k) { st.lights = k; },
-    // The hands and sleeves in the colours he is wearing.
+    // The sleeves in the colours he is wearing.
     setLook(colours) { for (const [name, hex] of Object.entries(colours)) for (const m of mats[name] || []) m.color.set(hex); },
     // What the gun did: a shot kicks it and cycles the slide; the last round leaves the slide locked back.
-    event(ev, s) {
+    event(ev) {
       if (ev.type === 'shot') {
+        // A shot ends a look over at once: the kick hides the snap back.
+        if (st.inspT >= 0 || st.outK > 0) { st.inspT = -1; st.outK = 0; st.held = null; }
         const steady = 1 - 0.45 * st.aim;
         punch(sp.back, ev.back * steady); punch(sp.up, THREE.MathUtils.degToRad(ev.up * 2.6) * steady);
         punch(sp.side, THREE.MathUtils.degToRad(ev.side * 2.2)); punch(sp.roll, (Math.random() - 0.5) * 0.1);
@@ -172,16 +201,37 @@ export async function makeGun({ env, file = 'assets/range/p22.glb' }) {
       const L = 0.03 + 0.97 * st.lights;
       sky.intensity = 0.75 * L; key.intensity = 2.4 * L; rim.intensity = 0.9 * L;
 
-      // Coming up to the aim takes the gun's own time; a reload brings it back down.
-      const busy = w.phase === 'reload';
+      // The look over ends by itself, or eases back when the aim, a reload or the gun's state takes over.
+      if (st.inspT >= 0) {
+        st.inspT += dt;
+        const C = clipsOf(s);
+        if (st.inspT >= C.inspect.T) st.inspT = -1;
+        else if (input.aim || w.phase !== 'ready') { st.outFrom = { ...sample(C.inspect, st.inspT), slide: null }; st.outK = 1; st.inspT = -1; }
+      }
+      if (st.outK > 0) st.outK = Math.max(0, st.outK - dt / 0.18);
+      st.drawT += dt;
+
+      // Coming up to the aim takes the gun's own time; a reload or a look over brings it back down.
+      const busy = w.phase === 'reload' || st.inspT >= 0;
       st.aim = Math.min(1, Math.max(0, st.aim + (input.aim && !busy ? 1 : -1) * dt / Math.max(0.05, s.ads)));
       st.raised = Math.min(1, st.raised + dt / Math.max(0.1, s.draw));
       const a = smoother(st.aim), up = smoother(st.raised);
 
-      // The slide: back hard on a shot and home again, held back on an empty gun until it is let go.
+      // The clip, its cues, and what it says this frame; coming out of a look over, eased from where it was.
+      const [clip, ct] = current(w, s), cut = clip !== st.clip;
+      if (cut) { st.clip = clip; st.clipT = -1; }
+      if (clip) { for (const name of cues(clip, st.clipT, ct)) onCue?.(name, id); st.clipT = ct; }
+      const now = clip ? sample(clip, ct) : REST, back = st.outK > 0 && st.outFrom ? smoother(st.outK) : 0, was = st.outFrom;
+      const G = back ? now.gun.map((x, i) => x + (was.gun[i] - x) * back) : now.gun;
+
+      // The slide: kicked back by a shot, locked back when empty until let go, or held back by a hand.
       st.shotT += dt; st.freeT += dt;
+      // A look into the chamber cut short never reaches its own slideHome cue.
+      if (st.held !== null && now.slide === null) { st.freeT = 0; st.freeFrom = st.held; st.lock = false; if (cut) onCue?.('slideHome', id); }
+      st.held = now.slide;
       let slide = 0;
-      if (st.freeT < 0.05) slide = st.freeFrom * (1 - st.freeT / 0.05);
+      if (now.slide !== null) slide = now.slide;
+      else if (st.freeT < 0.05) slide = st.freeFrom * (1 - st.freeT / 0.05);
       else if (st.shotT < 0.028) slide = st.shotT / 0.028;
       else if (st.lock) slide = Math.max(LOCK, 1 - (st.shotT - 0.028) / 0.5);
       else slide = Math.max(0, 1 - (st.shotT - 0.028) / 0.05);
@@ -191,19 +241,14 @@ export async function makeGun({ env, file = 'assets/range/p22.glb' }) {
       part.barrel.rotation.z = drop;
       part.barrel.position.set(home.barrel.x + px - (px * Math.cos(drop) - py * Math.sin(drop)) - 0.003 * Math.min(1, slide * 4), home.barrel.y + py - (px * Math.sin(drop) + py * Math.cos(drop)), home.barrel.z);
       part.stop.rotation.z = st.lock && slide >= LOCK - 0.01 ? -0.12 : 0;
-      st.trig = approach(st.trig, input.fire ? 1 : 0, 40, dt);
+      st.trig = approach(st.trig, input.fire && !clip ? 1 : 0, 40, dt);
       part.trigger.rotation.z = -0.24 * st.trig;
-      part.round.visible = w.ammo > 0 || (busy && w.t > s.reload.out);
+      part.round.visible = w.ammo > 0 || (w.phase === 'reload' && w.t > s.reload.out);
 
       // The flash lasts a twentieth of a second.
       st.flashT += dt;
       flash.visible = st.flashT < 0.032;
       glare.intensity = st.flashT < 0.09 ? 9 * st.flashK * (1 - st.flashT / 0.09) : 0;
-
-      const rl = reloadPose(w, s);
-      part.handL.visible = rl.away < 0.995;
-      part.handL.position.copy(home.handL).add(v.set(-0.06 * rl.away, -0.3 * rl.away, -0.12 * rl.away));
-      part.handL.rotation.x = -0.5 * rl.away;
 
       // The lag behind the look, the sway of standing, the bob of stepping along the line.
       const [dyaw, dpitch] = input.turn || [0, 0];
@@ -215,14 +260,47 @@ export async function makeGun({ env, file = 'assets/range/p22.glb' }) {
       const breath = Math.sin(st.t * 1.25) * 0.0016 * calm, drift = Math.sin(st.t * 0.83 + 1.3) * 0.0012 * calm;
 
       rig.position.set(
-        HIP.p[0] + (ADS.p[0] - HIP.p[0]) * a + drift + bx * calm + sp.lagX.x * 0.35 - 0.045 * rl.turn,
-        HIP.p[1] + (ADS.p[1] - HIP.p[1]) * a + breath + by * calm - 0.26 * (1 - up) - 0.03 * (input.crouch || 0) * (1 - a) + sp.bump.x + 0.085 * rl.turn + sp.lagY.x * 0.3,
-        HIP.p[2] + (ADS.p[2] - HIP.p[2]) * a + sp.back.x + 0.02 * rl.turn);
-      e.set(
-        HIP.r[0] * (1 - a) + sp.up.x - 0.95 * (1 - up) + 0.5 * rl.turn + sp.lagY.x,
-        HIP.r[1] * (1 - a) + sp.side.x + sp.lagX.x + 0.22 * rl.turn,
-        HIP.r[2] * (1 - a) + sp.roll.x - strafe * 0.012 * calm - 0.62 * rl.turn, 'YXZ');
+        HIP.p[0] + (ADS.p[0] - HIP.p[0]) * a + drift + bx * calm + sp.lagX.x * 0.35 + G[0],
+        HIP.p[1] + (ADS.p[1] - HIP.p[1]) * a + breath + by * calm - 0.26 * (1 - up) - 0.03 * (input.crouch || 0) * (1 - a) + sp.bump.x + sp.lagY.x * 0.3 + G[1],
+        HIP.p[2] + (ADS.p[2] - HIP.p[2]) * a + sp.back.x + G[2]);
+      e.set(HIP.r[0] * (1 - a) + sp.up.x - 0.95 * (1 - up) + sp.lagY.x, HIP.r[1] * (1 - a) + sp.side.x + sp.lagX.x, HIP.r[2] * (1 - a) + sp.roll.x - strafe * 0.012 * calm, 'YXZ');
       rig.quaternion.setFromEuler(e);
+      // The clip's turn, about the middle of the grip.
+      if (G[3] || G[4] || G[5]) {
+        q.setFromEuler(e.set(G[3], G[4], G[5], 'YXZ'));
+        v.copy(PIVOT).applyAxisAngle(THREE.Object3D.DEFAULT_UP, Math.PI / 2).applyQuaternion(rig.quaternion);
+        rig.position.add(v);
+        rig.quaternion.multiply(q);
+        rig.position.sub(v.copy(PIVOT).applyAxisAngle(THREE.Object3D.DEFAULT_UP, Math.PI / 2).applyQuaternion(rig.quaternion));
+      }
+      rig.updateMatrix(); turn.updateMatrix();
+      toGun.multiplyMatrices(rig.matrix, turn.matrix).invert();
+      toGunQ.setFromRotationMatrix(m4.extractRotation(toGun));
+
+      // The magazines: the old one released and dropping, the fresh one on its way up the well from the free hand.
+      const R = s.reload, reloading = w.phase === 'reload', fresh = reloading && w.t >= R.out, magOff = v.set(0, 0, 0);
+      if (fresh) {
+        magOff.copy(WELL).multiplyScalar(now.mag[0]);
+        if (now.mag[1] > 0) magOff.addScaledVector(eyeToGun(LOW.at, v2).sub(home.mag).sub(magOff), now.mag[1]);
+      }
+      part.mag.position.copy(home.mag).add(magOff);
+      part.mag.visible = !(fresh && w.t < R.out + 0.1);
+      const pressing = reloading && w.t > R.out - 0.08 && w.t < R.out + 0.1;
+      part.rel.position.copy(home.rel).add(v2.set(0, 0, pressing ? 0.0016 : 0));
+      if (w.phase === 'reload' && w.t >= R.out) {
+        const slid = Math.min(1, (w.t - R.out) / 0.1), fall = Math.max(0, w.t - (R.out + 0.07));
+        spent.visible = w.t < R.out + 0.6;
+        spent.position.copy(home.mag).addScaledVector(WELL, 0.115 * slid * slid).add(v2.set(-0.25 * fall, -4.9 * fall * fall, 0));
+        spent.rotation.z = -3.2 * fall;
+      } else spent.visible = false;
+
+      // The hands, from the clip's poses; each forearm hangs from its elbow.
+      const off = arr(magOff);
+      for (const side of ['right', 'left']) {
+        let p = pick(side, now[side], off, slide);
+        if (back) p = blend(p, pick(side, was[side], off, slide), back);
+        hands[side].pose(p, arr(eyeToGun(ELBOWS[side], v2)));
+      }
     },
     // Where a point on the gun appears to be out in the room: the gun is drawn with its own lens, so the place is
     // carried over by where it falls on the screen and how far off it is.
