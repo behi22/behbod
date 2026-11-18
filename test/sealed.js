@@ -1,6 +1,7 @@
 // Is the house sealed? Builds the house in Blender without baking and sends rays through the south, west and east
-// walls (one every centimetre), the ceiling and the floor (every two) (blender/lib/sealed.py). A ray that gets past a
-// wall went through a hole you could see out of the map through, like the gaps there used to be round the front door.
+// walls and the glass wall (one every centimetre), the ceiling and the floor (every two), and every wall, ceiling and
+// floor of the range's rooms and tunnel (blender/lib/sealed.py). A ray that gets past a wall went through a hole you
+// could see out of the map through, like the gaps there used to be round the front door.
 // Run it by hand after any change to the walls, doors, floors or ceiling; it is not part of `npm test` (it needs Blender).
 //   node test/sealed.js        BLENDER=<path to blender> overrides where Blender is looked for.
 const { spawnSync } = require('child_process');
