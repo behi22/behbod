@@ -54,6 +54,14 @@ test('the Simorgh stays on the stair wall: clear of the frames, the chimney, the
   assert.ok(S.z[1] < 6.5 - 0.3, 'below the beams');
 });
 
+test('the painting hangs in the gap on the mezzanine wall, between the trophy shelf and the wardrobe', () => {
+  const meta = fresh(), M = PLACES.miniature, half = M.w / 2 + M.frame;
+  const walls = meta.walls.filter(w => w.wall === 's_mezz');
+  for (const w of walls) assert.ok(M.center[0] + half <= w.u[0] || M.center[0] - half >= w.u[1], w.name);
+  assert.ok(M.center[2] - M.h / 2 - M.frame > 3.4 && M.center[2] + M.h / 2 + M.frame + 0.2 < 6.3);
+  assert.ok(Math.abs(M.w / M.h - 3 / 4) < 1e-9, 'the picture is painted at 3 by 4');
+});
+
 test('the words: plain, no dashes, the facts the cards must carry', () => {
   const all = Object.values(SAYS).flat();
   for (const s of all) { assert.ok(!/[\u2013\u2014]/.test(s), s); assert.ok(s.length <= 330, `${s.length}: ${s}`); }
@@ -63,6 +71,7 @@ test('the words: plain, no dashes, the facts the cards must carry', () => {
   assert.match(SAYS.persia_shelf[0], /return of deported peoples/);
   assert.match(SAYS.persia_shelf[1], /Apadana/);
   assert.match(SAYS.persia_shelf[1], /two bulls/);
+  assert.match(SAYS.miniature[0], /original painting/);
   for (const s of SPOTS) assert.ok(SAYS[s.id], `${s.id} has words`);
 });
 

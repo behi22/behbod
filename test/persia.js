@@ -1,5 +1,5 @@
-// The Shahnameh pieces: the Simorgh over the stairs, the library shelf; on a computer and on phones both
-// ways up.
+// The Shahnameh pieces: the Simorgh over the stairs, the library shelf, the painting on the mezzanine; on a computer and
+// on phones both ways up.
 //   LOFT_URL=http://127.0.0.1:8815 node test/persia.js [outdir]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
@@ -64,11 +64,14 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
         await new Promise(r => setTimeout(r, 2600));
         const g = __persia.group, out = { meshes: 0, tris: 0, textures: [] };
         g.traverse(o => { if (o.isMesh) { out.meshes++; const pos = o.geometry.attributes.position; out.tris += (o.geometry.index ? o.geometry.index.count : pos.count) / 3; if (o.material.map) out.textures.push(`${o.material.map.image.width}x${o.material.map.image.height}`); } });
+        out.painted = __persia.mini.painted;
+        out.picture = __persia.mini.picture.material.map.image.width;
         out.colliders = __loft.meta.colliders.filter(c => c.name === 'persia_shelf').length;
         return out;
       });
       console.log(`cost: ${cost.meshes} meshes, ${Math.round(cost.tris)} triangles, textures ${cost.textures.join(' ')}; files ${got.join(' ')}`);
       check('the pieces are in the house, cheaply', cost.meshes <= 10 && cost.tris < 30000, `${cost.meshes} meshes, ${Math.round(cost.tris)} triangles`);
+      check('the painting is painted soon after the house is up, at 768 px across', cost.painted && cost.picture === 768, `${cost.picture}`);
       check('the shelf stands in the walls and the walk grid', cost.colliders === 1);
       // Each spot: the prompt names it, E answers with its card.
       for (const s of P.SPOTS) {
@@ -96,6 +99,7 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
       await shot(p, 'simorgh-lounge', [7.5, 7.4, 2.2], [0.4, 6.6, 4.9]);
       await shot(p, 'simorgh-mezz', [3.6, 6.4, 5.0], [0.1, 6.0, 5.1]);
       await shot(p, 'shelf', [10.1, 1.6, 1.45], [10.75, 0.15, 1.05]);
+      await shot(p, 'painting', [5.1, 1.5, 4.55], [5.1, 0.0, 4.5]);
       // Frame cost in the lounge, the pieces shown and hidden.
       await standAt(p, [3.0, 6.6, 0]);
       const frames = await p.evaluate(async () => {
