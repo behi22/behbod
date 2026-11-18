@@ -2,9 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { lit } from './lit.js';
 
-// The charms: small toy trinkets made here from simple shapes (original designs), each on a ring and two links of
-// chain. A charm's front faces out from the gun's left side (-z in the gun's space); its root sits on the hook and is
-// turned by the swing, so `len` is how far below the hook it hangs.
+// Original trinkets from simple shapes; the swing turns each root on its hook, so `len` is how far below it hangs.
 let M = null;
 // One kind of material for every charm, so the graphics card builds a single program for all of them.
 function materials() {

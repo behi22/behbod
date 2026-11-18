@@ -825,8 +825,7 @@ def gatekeeper():
 
 # ---------- the kit: the long guns' attachments, each built about its gun's mount (the P-22 carries its own) ----------
 def lathe(name, prof, mat, za=0.0, seg=32):
-    """A round body turned about the x axis at height za from a profile [(x, r), ...]: one closed shell, no booleans
-    (exact booleans between cylinders on one axis fling points far off). A point with r = 0 closes that end."""
+    """One closed shell turned about x, no booleans: exact booleans between cylinders on one axis fling points far off."""
     bm = bmesh.new()
     rings = []
     for x, r in prof:
@@ -854,8 +853,7 @@ def lathe(name, prof, mat, za=0.0, seg=32):
 
 
 def kit_light(name='KIT_light', k=1.0):
-    """A rail light hanging under a rail whose underside is at z = 0: a clamp, a body, a ribbed head, a tail switch;
-    k sizes it (the pistol's is smaller)."""
+    """A rail light hanging under a rail whose underside is at z = 0; k sizes it (the pistol's is smaller)."""
     clamp = cad.box('clamp', (0.032, 0.025, 0.007), (0.008, 0, -0.0035), M['dark'])
     jaws = [cad.box('jaw', (0.03, 0.0025, 0.009), (0.008, s * 0.0118, 0.0005), M['dark']) for s in (1, -1)]
     cad.union(clamp, jaws)
@@ -1014,8 +1012,7 @@ def kit():
               kit_suppressor('smg', 0.0155, 0.024, 0.13), kit_suppressor('rifle', 0.0165, 0.046, 0.15),
               kit_suppressor('sniper', 0.0195, 0.05, 0.17), kit_suppressor('lmg', 0.018, 0.054, 0.15)] + kit_mags()
     for o in pieces:
-        # An exact boolean on touching faces can fling a point far off (finish() stops the guns' builds for it): such
-        # points and the slivers through them are cut away, and the build stops if it was more than a sliver.
+        # An exact boolean on touching faces can fling a point far off: cut such slivers away, stop if more than a sliver.
         bm = bmesh.new()
         bm.from_mesh(o.data)
         far = [v for v in bm.verts if max(abs(c) for c in v.co) > 1.0]

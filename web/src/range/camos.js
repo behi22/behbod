@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { CAMO } from '../pure/smith.js';
 
-// The finishes, painted here from src/pure/smith.js's descriptions (nothing downloaded): each a small picture that
-// repeats seamlessly, laid on the gun's painted parts in real size (`metres` a repeat), drawn the first time it is picked.
+// The finishes are painted here, never downloaded, each the first time it is picked.
 const SIZE = 256, cache = new Map();
 
 // A repeatable random sequence, so a finish looks the same on every visit.

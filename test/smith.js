@@ -1,5 +1,4 @@
-// The gunsmith: the bench, the attachments on every gun, finishes, charms, the scope's picture, the light, the bigger
-// magazines, desktop and phone. LOFT_URL=http://127.0.0.1:8814 node test/smith.js [outdir]
+// The gunsmith on desktop and phone. LOFT_URL=http://127.0.0.1:8814 node test/smith.js [outdir]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output/smith';
@@ -130,8 +129,7 @@ const onGun = p => p.evaluate(() => {
       await p.waitForTimeout(1200);
       await p.screenshot({ path: `${OUT}/bench-${id}-charm.png` });
     }
-    // Back to a gun changed earlier on this visit: it still wears what was chosen (taking it must not dress it in the
-    // kit the range read before the bench opened).
+    // Taking a gun again must not dress it in the kit the range read before the bench opened.
     await toGun(p, 'smg'); await p.waitForTimeout(1500);
     const again = await onGun(p);
     check('a gun picked again on the bench wears what was chosen for it', again.optic === 'scope' && again.light && /sup/.test(again.muzzle) && again.charm === 'rivet', JSON.stringify(again));

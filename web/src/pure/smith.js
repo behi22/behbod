@@ -1,7 +1,6 @@
 import { GUN, ATTACHMENTS, fit, stats } from './arsenal.js';
 
-// The gunsmith's rules: the slots on a gun, the finishes and charms on offer, what each choice does to the numbers,
-// and what a visitor's browser may hand back as a saved loadout. Pure: the bench (src/range/smith.js) draws them.
+// The gunsmith's rules, kept pure so they are tested here and the bench (src/range/smith.js) only draws them.
 
 // The slots, in the order the bench lists them. An attachment slot offers 'none' and the attachments for it.
 export const SLOTS = [
@@ -22,9 +21,7 @@ export const BLURBS = {
   mag: 'More rounds, a slightly slower reload.',
 };
 
-// Finishes: drawn in the page (src/range/camos.js) from these, never downloaded. kind: how the pattern is drawn;
-// colours from dark to light; rough and metal for the paint; metres: how big one repeat of the pattern is.
-// unlock: { stars } on the range, or { achievement } for when achievements arrive (kept locked until then).
+// Finishes, painted in the page (src/range/camos.js) so nothing is downloaded; `metres` is one repeat's size on the gun.
 export const CAMOS = [
   { id: 'factory', name: 'Factory', kind: 'none' },
   { id: 'tidepool', name: 'Tidepool', kind: 'splinter', colours: ['#0b1a22', '#145a63', '#5fe3d0'], rough: 0.55, metal: 0, metres: 0.16 },
@@ -61,8 +58,7 @@ export function isOpen(item, stars = 0, has = null) {
 export const lockLine = item => (item?.unlock?.stars !== undefined ? `${item.unlock.stars} range stars` : item?.unlock?.achievement ? 'An achievement' : '');
 
 export const BLANK = Object.freeze({ att: Object.freeze([]), camo: 'factory', charm: 'none' });
-// One gun's saved loadout as the bench and the range may use it: from whatever the browser kept (old, edited or
-// broken), only real attachments (one per slot), and a finish and charm that exist and are open to this visitor.
+// What the browser kept may be old, edited or broken: only real attachments and open finishes and charms come back.
 export function readKit(raw, stars = 0, has = null) {
   const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const camo = typeof r.camo === 'string' && Object.hasOwn(CAMO, r.camo) && isOpen(CAMO[r.camo], stars, has) ? r.camo : 'factory';

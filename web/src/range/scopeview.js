@@ -1,5 +1,4 @@
-// Looking down a scope: the gun gives way to the scope's own round picture (the world, magnified by the range's own
-// zoom) with black around it and the reticle on top. Drawn on the page, so it costs the graphics card nothing.
+// Looking down a scope: a round picture drawn on the page over the magnified view, so it costs the graphics card nothing.
 const CSS = `
 .rg-scope { position: fixed; inset: 0; z-index: 29; pointer-events: none; opacity: 0; --r: min(46vmin, 46vw);
   background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--r) - 18px), rgba(0, 0, 0, .55) calc(var(--r) - 4px), #000 var(--r)); }
@@ -9,8 +8,7 @@ const CSS = `
 .rg-scope .dot { fill: #ff3b2f; filter: drop-shadow(0 0 1.4px rgba(255, 60, 40, .9)); }`;
 
 const NS = 'http://www.w3.org/2000/svg';
-// The reticle on a 200-unit circle: posts from the rim, fine hairs through the middle; the long scope adds mil dots
-// and a lit centre, the shorter one a small open centre.
+// The reticle on a 200-unit circle; the long scope adds mil dots and a lit centre.
 function reticle(long) {
   const parts = [`<circle class="rim" r="100"/>`, `<circle class="glint" r="96" stroke-dasharray="40 260" transform="rotate(-140)"/>`];
   for (const [x1, y1, x2, y2] of [[-100, 0, -34, 0], [100, 0, 34, 0], [0, 100, 0, 34], [0, -100, 0, -60]]) parts.push(`<line class="post" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);

@@ -4,10 +4,7 @@ import { prepare } from './room.js';
 import { camoCanvas } from './camos.js';
 import { makeCharm } from './charms.js';
 
-// The loadout room dressed for the gunsmith: an attachment in each outline on the board, six finishes in the rack's
-// frames, four charms on its pegs, and the gun in the hand lying on the bench as it is fitted. Built the first time the
-// rooms are in view (the kit file is fetched then); every piece is made ready before it shows, so none stalls a frame.
-// places: the loadout room's spots in Blender's axes (loadout.js), B: Blender's axes to the page's (decor.js).
+// The loadout room dressed for the gunsmith; every piece is made ready before it shows, so none stalls a frame.
 const BOARD = [
   // [piece, size, how it stands]: the light and suppressor upright, the scope level, the magazine as it hangs in a gun.
   ['KIT_light', 3.4, 'up'], ['KIT_sup_rifle', 2.7, 'up'], ['KIT_scope', 2.1, 'level'], ['KIT_mag_rifle', 1.85, 'level'],

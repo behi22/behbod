@@ -21,8 +21,7 @@ export const GUNS = [
 export const GUN = Object.fromEntries(GUNS.map(g => [g.id, g]));
 
 // What each attachment changes. The long scope magnifies by `zoom`, per gun; the holo sight does not magnify (the gun
-// keeps its own aimed zoom) but comes up faster and steadies the hip. `ads` is how much slower (over 1) or quicker the
-// gun comes up to the aim with it on: weight out front slows it.
+// keeps its own aimed zoom) but comes up faster and steadies the hip.
 export const ATTACHMENTS = {
   light: { name: 'Flashlight', slot: 'rail', ads: 1.04 },
   suppressor: { name: 'Suppressor', slot: 'muzzle', damage: 0.94, loud: 0.22, flash: 0.15, kick: 0.9, ads: 1.05 },

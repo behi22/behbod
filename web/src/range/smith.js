@@ -3,10 +3,7 @@ import { GUN, ATTACHMENTS } from '../pure/arsenal.js';
 import { SLOTS, CAMOS, CHARMS, CAMO, CHARM, BLURBS, optionsFor, isOpen, lockLine, choose, inSlot, compare } from '../pure/smith.js';
 import { camoSwatch } from './camos.js';
 
-// The gunsmith's bench: the gun alone on a clean backdrop, turned by a drag and brought closer by the wheel or a pinch,
-// with its slots down one side, the choices for the picked slot under it and the numbers they change on the other side.
-// Every change goes on the gun at once and is saved for that gun in this browser. The gun on the bench is the one in the
-// hand, lent to the bench's own scene and handed back on closing.
+// The gunsmith's bench: the gun in the hand is lent to the bench's own scene and handed back on closing.
 const CSS = `
 .gs { position: fixed; inset: 0; z-index: 32; display: grid; pointer-events: none; color: #e9f3f6; font: 600 13px/1.35 ui-monospace, Menlo, Consolas, monospace; user-select: none; -webkit-user-select: none;
   grid-template-columns: 300px minmax(0, 1fr) 312px; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "head stage stats" "slots stage stats" "slots opts stats";
@@ -67,9 +64,7 @@ body.gs-on .rg, body.gs-on .corner, body.gs-on #prompt { visibility: hidden; }
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const damp = (x, to, k, dt) => x + (to - x) * (1 - Math.exp(-k * dt));
-// How the gun is turned for each slot (0 shows its left side; more turns the muzzle toward you), tipped (more shows its
-// top) and how much of it the view takes in (metres across, 0 for all of it). The gun turns, not the camera, so its
-// charm swings as it is turned.
+// Each slot's [turn, tip, metres across (0 for all)]: the gun turns, not the camera, so its charm swings as it is turned.
 const VIEWS = { all: [-0.35, 0.2, 0], muzzle: [0.8, 0.16, 0.3], optic: [-0.7, 0.45, 0.34], rail: [0.35, -0.4, 0.34], mag: [0.1, -0.25, 0.4], camo: [-0.25, 0.16, 0], charm: [0.2, 0.08, 0.13] };
 
 export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
@@ -85,8 +80,7 @@ export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
   let layered = false, open = false, gun = null, home = null, kit = null, kits = null, slot = 'all', preview = null, lastChange = null, closing = false;
   let root = null, nodes = {};
   const swatches = new Map();
-  // The gun's turn and tip (radians), how close (1 frames the gun), and the point looked at (want.at on the gun, view.at
-  // where it is now); each eases to where it is asked.
+  // Each of view eases toward want, so a jump in what is asked is never a jump on screen.
   const view = { yaw: 0, pitch: 0, zoom: 1, at: new THREE.Vector3() }, want = { yaw: 0, pitch: 0, zoom: 1, at: new THREE.Vector3() };
   let fit = 1, spin = 0;
   const size = new THREE.Vector3(), box = new THREE.Box3(), part = new THREE.Box3(), centre = new THREE.Vector3(), target = new THREE.Vector3();
@@ -220,8 +214,7 @@ export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
     aimView(s);
     drawSlots(); drawOpts(); drawStats();
   }
-  // The point a slot's view looks at, in the bench's space.
-  // Each a little way along from its mount to where the piece itself is (in the gun's own space, x ahead, y up).
+  // A little way from each mount toward the piece itself, so the view centres on the piece (gun space: x ahead, y up).
   const NUDGE = { muzzle: [0.06, 0, 0], optic: [0.01, 0.02, 0], rail: [0.02, -0.015, 0], mag: [0, 0, 0], charm: [0, -0.016, 0] };
   function focus(s) {
     const n = s === 'muzzle' ? gun.mounts.muzzle : s === 'optic' ? (gun.mounts.optic || gun.model.getObjectByName('P22_aim_holo')) : s === 'rail' ? gun.mounts.rail

@@ -8,8 +8,7 @@ export const RIGS = {
     well: [-0.333, -0.943, 0], drop: 0.115, pivot: [-0.004, -0.062, 0],
     hip: { p: [0.085, -0.072, -0.33], r: [0.02, 0.07, -0.04] }, sight: 0.30, homeCue: 'slideHome',
     rides: { left: { mag: 'mag', over: 'slide', pinch: 'slide' }, right: {} },
-    // Its holo sight, scope and long magazine are its own pieces; its light and suppressor come from the kit file on
-    // these mounts (its own came out of the build broken). And where a charm hangs. All in the gun's space.
+    // Its own light and suppressor came out of the build broken, so those two come from the kit file on these mounts.
     kit: { own: ['holo', 'scope', 'mag'], light: 'KIT_light_pistol', mounts: { muzzle: [0.1605, 0.0155, 0], rail: [0.105, -0.012, 0] }, hook: [0.082, -0.006, -0.0145], charm: 0.8 },
   },
   smg: {

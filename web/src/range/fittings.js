@@ -8,9 +8,7 @@ import { makeCharm } from './charms.js';
 import { RIGS } from '../pure/rigs.js';
 import { readKits } from '../pure/smith.js';
 
-// Dressing a gun from its saved loadout: the long guns' attachments come from one kit file, fetched the first time one
-// is fitted (or the bench opens); finishes are painted and charms built here. Every new kind of material is made ready
-// in a scene lit like the gun's own (the same lights by kind), so nothing new stalls a frame when it first shows.
+// New materials are made ready in a scene lit like the gun's own, so nothing new stalls a frame when it first shows.
 const KEY = 'loft.range.kit';
 
 export function makeFitter({ renderer, env, stars = () => 0, has = null }) {
@@ -54,8 +52,7 @@ export function makeFitter({ renderer, env, stars = () => 0, has = null }) {
   return {
     store, loadKit, readyCharms,
     get kitLoaded() { return !!kitFile; },
-    // Fits a loadout to a gun once all it needs is in hand; a later call for the same gun wins over an earlier one
-    // still waiting. Resolves true when it was put on (false if overtaken or the kit could not be fetched).
+    // A later call for the same gun wins over one still waiting for the kit file.
     async dress(gun, kit) {
       const mine = (tokens.get(gun) || 0) + 1;
       tokens.set(gun, mine);

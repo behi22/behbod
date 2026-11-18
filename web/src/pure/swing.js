@@ -1,6 +1,4 @@
-// A charm on its short chain: a weight on a fixed length from a hook that moves, stepped the Verlet way (where it
-// was and where it is say how fast it goes), so it lags when the gun is swung and settles back under the hook.
-// Points are [x, y, z] in metres in one fixed frame (the room's, y up).
+// A charm on its chain, stepped the Verlet way so it lags when the gun is swung and settles back under the hook.
 const G = 9.8, STEP = 1 / 120;
 
 export function newSwing(hook, len) {
@@ -8,8 +6,7 @@ export function newSwing(hook, len) {
   return { b, prev: [...b], len, hook: [...hook] };
 }
 
-// Moves the weight on by dt with the hook now at `hook`; returns the unit vector from the hook to the weight.
-// damp: how much of its speed it loses per second; a long stall (a hidden tab) leaves it hanging still.
+// A long stall (a hidden tab) or a broken number leaves it hanging still rather than flinging it off.
 export function swing(st, hook, dt, { damp = 2.2, gravity = G } = {}) {
   if (!(dt > 0)) return dir(st, hook);
   if (dt > 0.25 || !st.b.every(Number.isFinite) || !hook.every(Number.isFinite)) { Object.assign(st, newSwing(hook, st.len)); return [0, -1, 0]; }

@@ -221,7 +221,6 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
       st.inspT = 0;
       return true;
     },
-    // The attachments on: pieces from the kit file (fittings.js) on the gun's mounts, or the P-22's own (rigs.js kit.own).
     // Returns false if a piece it needs is not in hand (no kit file given), leaving that slot bare.
     setAttachments(list, kitFile = null) {
       const on = a => list.includes(a), K = spec.kit || {}, own = a => ((K.own || []).includes(a) ? fits[a] : null);
