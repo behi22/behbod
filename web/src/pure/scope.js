@@ -1,12 +1,10 @@
-// The telescope's sums, with no three and no DOM so the tests can run them: where to point, how to swing there the
-// short way, how far to zoom, and the planets that are really up over Vancouver.
+// The telescope's sums, kept free of three and the page so the unit tests can run them.
 import { DAY } from './calendar.js';
 import { eqToWorld, moonView, clamp, lerp, EYE, WATER_Y, landHeight, landKind, shoreN, inPark } from './outside.js';
 
 const RAD = Math.PI / 180;
 
-// Fields of view in degrees. Land never goes past `land`: the city and the mountains are built for that; the moon and
-// the planets take the high-power eyepiece down to `sky`.
+// Fields of view in degrees: the city and mountains are built down to `land`, only the sky goes to `sky`.
 export const FOV = { start: 16, wide: 24, land: 1.5, sky: 0.15 };
 // The planets are drawn this many times their real size, so their bands, rings and phases read in the eyepiece.
 export const PLANET_SCALE = 4;
@@ -33,20 +31,17 @@ export function fovFor(size, dist) {
   return clamp(ang * 2.4, FOV.land, FOV.start);
 }
 
-// How far in the eyepiece may go on what is in the middle of the view: a planet takes the high power, the moon stops
-// when it fills the eyepiece, anything else stays at the land's limit.
+// The deepest zoom on what is in the middle: planets take the high power, the moon stops when it fills the view.
 export const zoomFloor = stop => (stop?.kind === 'sky' ? stop.min ?? FOV.sky : FOV.land);
 export const clampFov = (fov, floor) => clamp(fov, floor, FOV.wide);
-// The view's field follows the asked one smoothly, by the same share of the gap each moment, counted in ratios so
-// zooming in and out feel the same.
+// Eased in ratios, so zooming in and out feel the same.
 export function easeFov(fov, target, dt, tau = 0.12) {
   return fov * Math.pow(target / fov, 1 - Math.exp(-Math.max(dt, 0) / tau));
 }
 
 const easeInOut = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-// A swing from one aim and field to another: never through the house, a little wider in the middle so the eye can
-// follow (a far swing pulls back more), eased at both ends like a motor mount.
+// Never through the house, wider mid-swing so the eye can follow, eased at both ends like a motor mount.
 export function slewPlan(from, to) {
   const dyaw = turn(from.yaw, to.yaw), dpitch = to.pitch - from.pitch;
   const angle = Math.hypot(dyaw * Math.cos((from.pitch + to.pitch) / 2), dpitch);
@@ -81,8 +76,7 @@ export function distance(m) {
 }
 
 // ---------- the planets ----------
-// Keplerian elements and their rates per century (JPL, Standish, good from 1800 to 2050): a (au), e, I, L, long. of
-// perihelion, long. of the node (degrees). "earth" is the Earth-Moon barycentre.
+// JPL (Standish, 1800 to 2050): a (au), e, I, L, long. of perihelion and of the node (deg), then rates per century.
 const ELEMENTS = {
   mercury: [[0.38709927, 0.20563593, 7.00497902, 252.2503235, 77.45779628, 48.33076593], [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081]],
   venus: [[0.72333566, 0.00677672, 3.39467605, 181.9790995, 131.60246718, 76.67984255], [0.0000039, -0.00004107, -0.0007889, 58517.81538729, 0.00268329, -0.27769418]],
@@ -91,8 +85,7 @@ const ELEMENTS = {
   jupiter: [[5.202887, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909], [-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106]],
   saturn: [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448], [-0.0012506, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]],
 };
-// Name, brightness law (magnitude at 1 au from the sun and the earth, then per degree of phase angle), the disc's
-// diameter in arcseconds at 1 au, how round it is, and the north pole (RA, Dec in degrees, J2000).
+// Magnitude law (at 1 au, then per degree of phase), disc in arcsec at 1 au, flattening, pole (RA, Dec, J2000).
 export const PLANETS = [
   { id: 'mercury', name: 'Mercury', mag: [-0.42, 0.038, -0.000273, 0.000002], arc: 6.74, flat: 1, pole: [281.01, 61.42] },
   { id: 'venus', name: 'Venus', mag: [-4.4, 0.0009, 0.000239, -0.00000065], arc: 16.92, flat: 1, pole: [272.76, 67.16] },
@@ -125,10 +118,7 @@ function radec(x, y, z) {
 }
 export function poleDir(ra, dec, lst, out = [0, 0, 0]) { return eqToWorld(ra * RAD, dec * RAD, lst, out); }
 
-// Every planet as seen from Vancouver at `date`, with `lst` the local sidereal time (radians) the sky is turned by.
-// `dir` is where it sits in the drawn sky: like the moon, a planet in the southern half is folded into the north, the
-// way the balcony faces, at a lower height (`el` and `az` keep the true ones, in degrees). `light` points to its sun
-// side in that same folded sky, so the phase stays true.
+// Like the moon, a planet in the southern sky is folded north, the way the balcony faces; `el` and `az` stay true.
 export function planets(date, lst) {
   const T = (julian(date) - 2451545.0) / 36525, E = helio('earth', T, [0, 0, 0]), P = [0, 0, 0];
   const sunW = eqToWorld(...radec(-E[0], -E[1], -E[2]), lst, [0, 0, 0]);
@@ -157,16 +147,14 @@ export function planets(date, lst) {
   });
 }
 
-// Whether a planet shows through the telescope: above the real horizon, out of the sun's glare, and bright enough for
-// the sky at that hour (in daylight only Venus, and Jupiter at its best, can be found).
+// Up, out of the sun's glare, and bright enough for the sky (by day only Venus, or Jupiter at its best).
 export function planetShows(p, sunEl) {
   if (p.el < 1.5 || p.elong < 10) return false;
   const limit = sunEl < -9 ? 6 : sunEl < -4 ? 1.5 : sunEl < 0 ? 0 : p.elong > 25 ? -2.6 : -99;
   return p.mag <= limit;
 }
 
-// Jupiter's four big moons, by Meeus' short method: for each, its angle round its orbit (its offset from the planet
-// on the sky is r sin u) and its distance in Jupiter radii.
+// Jupiter's four big moons by Meeus' short method: the angle round each orbit, the radius in Jupiter radii.
 export const GALILEAN = [['Io', 5.9], ['Europa', 9.4], ['Ganymede', 15.0], ['Callisto', 26.4]];
 export function galilean(date) {
   const d = julian(date) - 2451545.0;
@@ -193,9 +181,7 @@ export function inView(stops, yaw, pitch, fov, within = 1) {
   return best;
 }
 
-// Whether the straight line from `a` to `b` ([x, y, z]) clears every tower on the way. A tower is the world outside's
-// box: centre x and z, width, depth and height, its foot `base`, turned `rot` about the vertical. A stop behind the
-// downtown towers is no stop at all.
+// A stop behind the downtown towers is no stop; a tower is a box turned `rot` about the vertical, foot at `base`.
 export function clearLine(a, b, towers) {
   const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dz) || 1;
   for (const t of towers) {
@@ -233,8 +219,7 @@ export function clearSky(a, d, towers) {
 }
 
 // ---------- the close-up city ----------
-// The North Shore's streets run on the grid its slopes are drawn with: blocks 120 m east to west and 85 m north to
-// south, the streets on the block edges. A block holds two rows of seven lots.
+// Streets on the grid the slopes are drawn on: 120 by 85 m blocks, each two rows of seven lots.
 export const BLOCK = [120, 85];
 export function houseLots() {
   const lots = [];
@@ -260,9 +245,7 @@ export function towerGrid(towers) {
   return grid;
 }
 
-// The house for a lot, false for a lot left as a garden (about one in five), or null where nothing belongs: a house
-// stands on town land above the shore, out of the park, clear of every tower, on ground not too steep. Its walls reach 6 m into the ground, so on a
-// slope the downhill side shows a basement instead of a gap. [x, ground y, z, width, depth, wall, roof, turn, paint].
+// A lot's house, false for a garden, null for none; its walls reach 6 m down, so a slope shows a basement.
 export function houseOn(lot, rand, grid) {
   const [x, z] = lot, dx = x - EYE[0], dn = EYE[2] - z;
   const r = [rand(), rand(), rand(), rand(), rand(), rand(), rand()];
@@ -278,8 +261,7 @@ export function houseOn(lot, rand, grid) {
   return [x, WATER_Y + Math.min(h, ...hs), z, 9 + r[2] * 4, 8 + r[3] * 4, 5 + r[4] * 2.5, 1.6 + r[5] * 1.8, r[6] < 0.3 ? Math.PI / 2 : 0, rand()];
 }
 
-// Trees in a lot's back garden, towards the middle of its block and clear of the house: [x, ground y, z, size, kind]
-// with kind 0 a fir, 1 a broadleaf. A garden with no house gets a few more.
+// Back-garden trees towards the block's middle, clear of the house; kind 0 a fir, 1 a broadleaf.
 export function yardTrees(lot, house, rand) {
   const [x, z, row] = lot, out = [], n = house ? (rand() < 0.75 ? 1 : 2) : 3;
   for (let i = 0; i < n; i++) {

@@ -76,8 +76,7 @@ const FACADE_F = /* glsl */ `
       col = mix(wall, pane, win * (1.0 - slab));
       if (band > 0.0) col = mix(col, alb * diffuse * 1.1, slab + aa * band);
       if (uScope > 0.5) {
-        // Close up through the telescope: blinds and curtains, rooms lit from the ceiling with the furniture dark
-        // along the bottom, a mullion down each pane, and on the glass towers the balcony rail and the slab's shade.
+        // Close up only: blinds and curtains, lit rooms, mullions, and the balcony rails on the glass towers.
         float k = 1.0 - aa, wy = clamp((f.y - 0.55) / open.y + 0.5, 0.0, 1.0);
         float h3 = hash13(vec3(unit, vSeed * 23.0 + 2.0));
         float blind = step(h3, 0.22) * step(0.55 - 0.4 * fract(h3 * 7.0), wy);

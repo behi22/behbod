@@ -3,9 +3,7 @@ import { material, OUT } from './outside/glsl.js';
 import { galilean, PLANET_SCALE } from './pure/scope.js';
 import { makeScopeCity } from './scopecity.js';
 
-// What only the telescope shows, fetched the first time someone looks through it: the moon close up, the five bright
-// planets where they really are, each a lit disc with its own face (Jupiter's belts and moons, Saturn's rings, the
-// phases of Venus), and the city close up (scopecity.js).
+// Fetched on the first look only: the moon close up, the five bright planets with their faces, the city close up.
 const R_PL = 29000;
 const KIND = { mercury: 0, venus: 1, mars: 2, jupiter: 3, saturn: 4 };
 // How far each quad reaches, in drawn radii: Jupiter's out to Callisto, Saturn's to the edge of its rings.
@@ -27,8 +25,7 @@ const VERTEX = /* glsl */ `
     gl_Position = projectionMatrix * mv;
   }`;
 
-// vUv is in drawn radii, x along the equator and y towards the north pole as it falls on the eyepiece; vPz is how far
-// that pole leans towards us, vL the sunlight in the same frame.
+// vUv in drawn radii, x along the equator and y to the pole as seen; vPz the pole's lean towards us.
 const FRAGMENT = /* glsl */ `
   uniform vec3 uDir; uniform float uKind, uFlat, uShow; uniform vec4 uMoonX, uMoonZ;
   varying vec2 vUv; varying vec3 vL; varying float vPz;
@@ -110,9 +107,7 @@ const FRAGMENT = /* glsl */ `
     ${OUT}
   }`;
 
-// The moon close up, over the plain one the sky draws (which is dimmed while the telescope is in use): the same size
-// and phase, with its seas where the naked-eye moon has them, craters in four sizes lit by the low sun along the
-// terminator, and the bright young craters with their rays.
+// The moon close up over the plain one (dimmed meanwhile), so seas, craters and rays show at high power.
 const R_MOON = 29250, MOON_DEG = 0.36;
 const MOON_V = /* glsl */ `
   uniform float uSize; varying vec2 vUv; varying vec3 vL;
@@ -126,8 +121,7 @@ const MOON_V = /* glsl */ `
 const MOON_F = /* glsl */ `
   varying vec2 vUv; varying vec3 vL;
   float blob(vec2 p, vec2 c, float r) { vec2 d = p - c; return exp(-dot(d, d) / (r * r)); }
-  // One size of crater: at most one in each cell of a grid laid over the moon's own longitude and latitude, a bowl
-  // with a raised rim. Adds its slope (for the light) to g and returns a little extra brightness for fresh ones.
+  // One size of crater, at most one per cell of a grid on the moon's own longitude and latitude.
   float craters(vec2 p, float cells, float seed, float keep, inout vec2 g) {
     vec2 q = p * cells, c = floor(q), f = fract(q) - 0.5;
     if (hash13(vec3(c, seed)) > keep) return 0.0;

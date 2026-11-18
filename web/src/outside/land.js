@@ -86,8 +86,7 @@ export function makeTerrain(U, q) {
         alb = mix(alb, vec3(0.8, 0.82, 0.86), snow * (0.85 + 0.15 * nf.g));
         alb = mix(alb, vec3(0.12, 0.115, 0.105), smoothstep(2.2, 0.8, alt) * smoothstep(-4.0, -1.0, alt));
         if (uScope > 0.5) {
-          // Through the telescope the forest breaks into crowns, each lump lit on its sunny side, and the town's
-          // ground goes to gardens between the houses.
+          // Close up only: the forest breaks into lit crowns and the town's ground into gardens.
           vec2 cp = vWp.xz / 230.0;
           float c0 = texture2D(uNoise, cp).a, cx = texture2D(uNoise, cp + vec2(0.004, 0.0)).a, cz = texture2D(uNoise, cp + vec2(0.0, 0.004)).a;
           float vis = smoothstep(3.0, 0.8, fwidth(cp.x) * 256.0) * smoothstep(26000.0, 5000.0, dist) * (1.0 - snow);

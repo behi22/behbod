@@ -4,8 +4,7 @@ import * as S from './pure/scope.js';
 import { litFraction, BRIDGE, WATER_Y, wx, wz } from './pure/outside.js';
 import { moonPhase, sunElev } from './pure/calendar.js';
 
-// The balcony telescope: a round eyepiece onto the city, the mountains and the real sky, with labelled stops it swings
-// to by itself. Somewhere up there is a moon that is not a moon, visible only through the eyepiece.
+// The balcony telescope; somewhere up there is a moon that is not a moon, seen only through it.
 const CSS = `
 .ts-veil { position: fixed; inset: 0; pointer-events: none; z-index: 30;
   background:
@@ -38,8 +37,7 @@ const CSS = `
 body[data-mode="scope"] .touch, body[data-mode="scope"] .prompt { display: none; }
 `;
 const RAD = Math.PI / 180;
-// The view starts at the front lens (the telescope point is the mount), and nothing nearer than this is drawn while
-// looking through it: a real telescope cannot show its own tube, the railing or the string lights beside it.
+// A real telescope cannot show its own tube, the railing or the string lights: the view starts at the lens.
 const LENS = new THREE.Vector3(0.08, 0.4, -0.6), NEAR = 2.5;
 
 // Places in the view: id, short name, full name, metres east and north of the window, height above the water, field.
@@ -50,8 +48,7 @@ const PLACES = [
   ['lonsdale', 'Lonsdale Quay', 'Lonsdale Quay', 430, 2400, 14, 5],
   ['seymour', 'Seymour', 'Mount Seymour', 6900, 12600, 1000, 7],
 ];
-// What moves on the water and over it: which vessel of the world outside, short and full names, the height of its
-// middle above the water, its length.
+// [vessel of the world outside, short and full names, height of its middle above the water, length].
 const CRAFT = [[0, 'Cruise ship', 'Cruise ship', 24, 300], [1, 'SeaBus', 'SeaBus', 3, 36], [2, 'Floatplane', 'Floatplane', 2, 16]];
 const GROUP = { sky: 0, land: 1, water: 2 };
 
@@ -75,9 +72,7 @@ function deathStar(facing) {
   return g;
 }
 
-// `sky` is the 3D outside's Death Star direction (kept up to date by it). A small one is drawn on that line too, in the
-// loft's own scene, so it shows through the eyepiece even when clouds cover the real sky. `outside` is the 3D world
-// outside, when it runs: the moon, the planets and the boats come from it.
+// `sky` is the Death Star's line; a small one is drawn on it in the loft too, so it shows even through cloud.
 export function makeTelescope(scene, camera, meta, { sky, outside, renderer, coarse, canvas, onSpot, onExit }) {
   const mount = b2t(...meta.points.telescope);
   const eye = mount.clone().add(LENS);

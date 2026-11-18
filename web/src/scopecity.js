@@ -4,9 +4,8 @@ import { unitBox } from './outside/city.js';
 import { houseLots, houseOn, towerGrid, yardTrees } from './pure/scope.js';
 import { rng } from './pure/outside.js';
 
-// The city as the telescope sees it, built the first time someone looks through and drawn only then: a balcony slab
-// at every floor of the glass towers, and the North Shore's houses and garden trees along its streets. The facades' own close-up
-// detail is switched on by uScope in their shaders.
+// Built on the first look only: balcony slabs on the glass towers, North Shore houses and garden trees.
+
 // How many houses each quality of the world outside draws, nearest first.
 const HOUSES = { low: 3500, medium: 7000, high: 10000 };
 
@@ -29,8 +28,7 @@ const SLAB_F = /* glsl */ `
     ${OUT}
   }`;
 
-// A house from a unit shape: x and z across -0.5..0.5, and y a code (0 the foot, 1 the eaves, 2 the ridge) the
-// vertex shader turns into metres from each house's own sizes.
+// A unit house; y is a code (0 foot, 1 eaves, 2 ridge) the vertex shader turns into each house's own metres.
 const HOUSE_V = /* glsl */ `
   attribute vec4 aAt, aSize; attribute float aPaint;
   varying vec3 vWp, vN; varying vec2 vFace; varying float vPaint, vRoof, vWall;
