@@ -43,7 +43,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     loading ||= (async () => {
       const r = await loadRangeRoom(meta, engine.renderer, { small: coarse });
       await breathe();
-      const g = await makeGun({ env: r.env });
+      const g = await makeGun({ env: r.env, onCue: (name, id) => sfx?.gunCue(name, id) });
       await breathe();
       // The bench's top and the floor are what a spent case lands on.
       const b0 = b2t(R.strafe[0] - 1, R.line[1] - 0.3, 0), b1 = b2t(R.strafe[1] + 1, R.line[1] + 0.3, 0);
@@ -240,10 +240,13 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     if (!drag || e.pointerId !== drag.id) return;
     if (e.type === 'pointermove') { if (playing()) turn(e.clientX - drag.x, e.clientY - drag.y, TOUCH_LOOK); drag.x = e.clientX; drag.y = e.clientY; } else drag = null;
   };
+  // The look over the gun, at the line while a run is on.
+  const inspect = () => { if (state === 'play' || state === 'count') gun.inspect(w, s); };
   function onPad(name, down, x) {
     if (name === 'fire') input.fire = down;
     else if (name === 'aim') { if (down && !aimHeld) input.aim = !input.aim; aimHeld = down; }
     else if (name === 'reload') input.reload = down;
+    else if (name === 'inspect') { if (down) inspect(); }
     else if (name === 'step') input.step = down ? Math.max(-1, Math.min(1, x * 1.4)) : 0;
     else if (name === 'quit') api.escape();
   }
@@ -273,7 +276,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       if (look) gun.setLook(look());
       hud = makeHud({ coarse, onPad });
       hud.show();
-      hud.hint([['Click', 'shoot'], ['Right click', 'aim'], ['R', 'reload'], ['A D', 'step'], ['C', 'duck'], ['Esc', 'pause']]);
+      hud.hint([['Click', 'shoot'], ['Right click', 'aim'], ['R', 'reload'], ['F', 'inspect'], ['A D', 'step'], ['C', 'duck'], ['Esc', 'pause']]);
       listen(true);
       menu();
       return true;
@@ -303,6 +306,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       else if (c === 'KeyD' || c === 'ArrowRight') input.right = down;
       else if (c === 'KeyC' || c === 'ShiftLeft') input.crouch = down;
       else if (c === 'Space') input.fire = down && !hud?.carded;
+      else if (c === 'KeyF') { if (down && !e.repeat) inspect(); }
       else return false;
       return true;
     },
@@ -340,13 +344,11 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       // The gun works while a run is on; the run's clock only once the count is over.
       const hands = { fire: input.fire && state === 'play', reload: live && input.reload, aim: gun.aim };
       if (state !== 'paused') {
+        // The magazine and the slide are heard from the hands' clips (gun.js), in time with what is seen.
         for (const ev of stepWeapon(w, s, dtc, hands)) {
           gun.event(ev, s);
           if (ev.type === 'shot') shoot(ev);
           else if (ev.type === 'dry') sfx?.gunCue('dry', s.id);
-          else if (ev.type === 'mag_out') sfx?.gunCue('magOut', s.id);
-          else if (ev.type === 'mag_in') sfx?.gunCue('magIn', s.id);
-          else if (ev.type === 'rack') sfx?.gunCue('slideRelease', s.id);
         }
       }
       if (state === 'play') {
@@ -360,7 +362,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
         targets.update(dtc, t, id => { const g = run?.live.get(id); return g ? run.t - g.born : 0; });
         fx.tick(dtc);
       }
-      gun.update(dtc, camera, w, s, { aim: input.aim && live, fire: hands.fire, turn: [yaw - lastYaw, pitch - lastPitch], strafe: live ? alongV : 0, crouch: duck });
+      gun.update(state === 'paused' ? 0 : dtc, camera, w, s, { aim: input.aim && live, fire: hands.fire, turn: [yaw - lastYaw, pitch - lastPitch], strafe: live ? alongV : 0, crouch: duck });
       lastYaw = yaw; lastPitch = pitch;
       flashT += dt;
       flashRoom.intensity = flashStage.intensity = flashT < 0.07 ? 26 * flashK * (1 - flashT / 0.07) : 0;
@@ -377,6 +379,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     advance(dt) { if (film) film.step = dt; },
     start(stage = 'warmup', difficulty = 'normal', seed) { if (active) start(stage, difficulty, seed); },
     get debug() { return { state, run, weapon: w, stats: s, targets: targets?.live().map(o => ({ id: o.id, kind: o.kind })) || [], fx: fx?.counts, aim: gun?.aim, along, duck }; },
+    get gun() { return gun; },
   };
   return api;
 }

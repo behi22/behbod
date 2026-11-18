@@ -58,6 +58,7 @@ const CSS = `
 .rg-fire { right: calc(26px + env(safe-area-inset-right, 0px)); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); width: 84px; height: 84px; background: rgba(255, 120, 80, .3); }
 .rg-aim { right: calc(122px + env(safe-area-inset-right, 0px)); bottom: calc(60px + env(safe-area-inset-bottom, 0px)); width: 60px; height: 60px; }
 .rg-load { right: calc(40px + env(safe-area-inset-right, 0px)); bottom: calc(188px + env(safe-area-inset-bottom, 0px)); width: 54px; height: 54px; }
+.rg-insp { right: calc(104px + env(safe-area-inset-right, 0px)); bottom: calc(196px + env(safe-area-inset-bottom, 0px)); width: 66px; height: 36px; border-radius: 18px; font-size: 9px; }
 .rg-step { left: calc(26px + env(safe-area-inset-left, 0px)); bottom: calc(70px + env(safe-area-inset-bottom, 0px)); width: 112px; height: 60px; border-radius: 30px; }
 .rg-quit { position: absolute; pointer-events: auto; top: calc(58px + env(safe-area-inset-top, 0px)); left: calc(16px + env(safe-area-inset-left, 0px)); }
 .rg.rg-touch .rg-hint { display: none; } .rg.rg-touch .rg-ammo { bottom: auto; top: calc(58px + env(safe-area-inset-top, 0px)); }
@@ -85,8 +86,8 @@ export function makeHud({ coarse, onPad }) {
     hint = el('div', 'rg-hint');
     root.append(dim, cross, hit, top, left, ammo, pop, big, hint);
     if (coarse) {
-      // Thumb controls: step along the line on the left; fire, aim and reload on the right. Dragging anywhere else looks.
-      for (const [cls, label, name] of [['rg-fire', 'FIRE', 'fire'], ['rg-aim', 'AIM', 'aim'], ['rg-load', 'LOAD', 'reload'], ['rg-step', '◀  ▶', 'step']]) {
+      // Thumb controls: step along the line on the left; fire, aim, reload and inspect on the right. Dragging anywhere else looks.
+      for (const [cls, label, name] of [['rg-fire', 'FIRE', 'fire'], ['rg-aim', 'AIM', 'aim'], ['rg-load', 'LOAD', 'reload'], ['rg-insp', 'INSPECT', 'inspect'], ['rg-step', '◀  ▶', 'step']]) {
         const b = el('div', 'rg-pad ' + cls, label);
         const send = (e, down) => { e.preventDefault(); const r = b.getBoundingClientRect(); onPad?.(name, down, (e.clientX - r.left) / r.width * 2 - 1); };
         b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); send(e, true); });
