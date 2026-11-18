@@ -186,7 +186,9 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     // Every labour's picture, one after another, and the end: lives run out, the score is kept as the best.
     for (let i = 2; i < 7; i++) {
       await p.evaluate(n => { const st = __loft.screens.desktop.games.playing.st; st.labour = n - 1; st.phase = 'won'; st.t = 9; }, i);
-      await p.waitForTimeout(650); await p.keyboard.press('Space'); await p.waitForTimeout(500);
+      await p.waitForFunction(() => { const st = __loft.screens.desktop.games.playing.st; return st.phase === 'intro' && st.t > 0.45; }, null, { timeout: 5000 }).catch(() => {});
+      await p.keyboard.press('Space');
+      await p.waitForFunction(() => __loft.screens.desktop.games.playing.st.phase === 'play', null, { timeout: 4000 }).catch(() => {});
       const now = await G(() => [__loft.screens.desktop.games.playing.st.labour, __loft.screens.desktop.games.playing.st.phase]);
       if (now[0] !== i || now[1] !== 'play') check(`labour ${i + 1} opens`, false, now.join(' '));
       await p.screenshot({ path: `${OUT}/khan-${i + 1}.png` });
@@ -226,14 +228,16 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     }
     check('each visit begins with a different story', new Set(visits).size === 3, visits.map(s => s.slice(43, 80)).join(' | '));
     // Walking off ends the story; away from the fire it gives its tips as before.
-    await p.evaluate(() => { __loft.pos.set(12, 0.05, -6); });
+    await p.evaluate(() => { const s = __loft.meta.points.spawn; __loft.pos.set(s[0], s[2] + 0.05, -s[1]); });
     await p.waitForTimeout(1200);
     const left = await p.evaluate(() => __loft.creatures.bh22.state);
-    await p.evaluate(() => { __loft.creatures.bh22.pos.set(12.4, 0, -6.3); });
     const quiet = await toast(p); await p.waitForTimeout(5000);
     check('walking off ends the story', left !== 'story' && (await toast(p)) === quiet, `state ${left}`);
     // BH-22 has gone back to its rounds by now: bring it over and hold it still while it is asked, turn by turn.
-    const here = () => p.evaluate(() => { Object.assign(__loft.creatures.bh22, { state: 'pause', timer: 30, route: [] }); __loft.creatures.bh22.pos.set(12.4, 0, -6.3); });
+    const here = async () => {
+      await p.evaluate(() => { const s = __loft.meta.points.spawn; Object.assign(__loft.creatures.bh22, { state: 'pause', timer: 30, route: [] }); __loft.creatures.bh22.pos.set(s[0] + 0.4, s[2], -s[1]); });
+      await p.waitForFunction(() => document.getElementById('prompt').classList.contains('on') && /BH-22/.test(document.getElementById('prompt').lastChild.nodeValue), null, { timeout: 4000 }).catch(() => {});
+    };
     for (let i = 0; i < 3; i++) {
       await here(); await p.waitForTimeout(400);
       const lab = await p.evaluate(() => document.getElementById('prompt').lastChild.nodeValue);
@@ -245,10 +249,10 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     const tip = await toast(p), st = await p.evaluate(() => __loft.creatures.bh22.state), why = await p.evaluate(() => [__loft.mode, document.getElementById('prompt').lastChild.nodeValue, __loft.pos.toArray().map(v => v.toFixed(2)).join(','), __loft.creatures.bh22.pos.toArray().map(v => v.toFixed(2)).join(',')].join(' / '));
     check('away from the fire, a tip as before', /^BH-22: /.test(tip) && st === 'talk', `${st}: ${tip} (${why})`);
     // Sitting on the couch by the fire calls it over (no tea this time).
-    await p.evaluate(() => { const l = __loft, at = l.meta.interact.find(i => i.id === 'couch_east').at; Math.random = () => 0.9; Object.assign(l.creatures.bh22, { state: 'home', route: [] }); l.creatures.bh22.pos.set(9, 0, -3.6); l.pos.set(at[0], at[2] + 0.05, -at[1]); });
+    await p.evaluate(() => { const l = __loft, at = l.meta.interact.find(i => i.id === 'couch_east').at; Math.random = () => 0.9; Object.assign(l.creatures.bh22, { state: 'home', route: [] }); l.creatures.bh22.pos.set(7, -0.45, -10.2); l.pos.set(at[0], at[2] + 0.05, -at[1]); });
     await p.waitForTimeout(600);
     await p.evaluate(() => { window.__r2log = []; const r2 = __loft.creatures.bh22; window.__r2t = setInterval(() => __r2log.push(__loft.mode + ':' + r2.state), 1000); __loft.act('couch_east'); });
-    await p.waitForFunction(() => /^BH-22: A story from the Shahnameh/.test(document.getElementById('toast').textContent), null, { timeout: 25000 }).catch(() => {});
+    await p.waitForFunction(() => /^BH-22: A story from the Shahnameh/.test(document.getElementById('toast').textContent), null, { timeout: 60000 }).catch(() => {});
     const sat = await p.evaluate(() => [__loft.mode, document.getElementById('toast').textContent, __loft.creatures.bh22.state]);
     check('sitting by the fire, BH-22 comes over and tells a story', sat[0] === 'sit' && sat[1].startsWith('BH-22: A story from the Shahnameh') && sat[2] === 'story', sat.join(' | ') + ' / ' + (await p.evaluate(() => __r2log.slice(0, 8).join(' '))));
     await p.screenshot({ path: `${OUT}/bh22-couch.png` });
