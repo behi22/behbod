@@ -343,10 +343,10 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
         for (const ev of stepWeapon(w, s, dtc, hands)) {
           gun.event(ev, s);
           if (ev.type === 'shot') shoot(ev);
-          else if (ev.type === 'dry') sfx?.gunDry();
-          else if (ev.type === 'mag_out') sfx?.magOut();
-          else if (ev.type === 'mag_in') sfx?.magIn();
-          else if (ev.type === 'rack') sfx?.slideRack();
+          else if (ev.type === 'dry') sfx?.gunCue('dry', s.id);
+          else if (ev.type === 'mag_out') sfx?.gunCue('magOut', s.id);
+          else if (ev.type === 'mag_in') sfx?.gunCue('magIn', s.id);
+          else if (ev.type === 'rack') sfx?.gunCue('slideRelease', s.id);
         }
       }
       if (state === 'play') {

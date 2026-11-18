@@ -1,63 +1,49 @@
 import { tone, noisy } from './drums.js';
+import { gunSound, SOUND_NAMES, TAKES, SR } from './pure/gunsound.js';
 
-// The range's sounds, all made here rather than recorded: the shot (a crack, the body of the blast, a thump in the
-// chest and the hall answering), the gun's own clicks, brass on the floor, steel ringing, and machines coming apart.
+// The range's sounds. The gun's own (the shot with the hall answering, the trigger, the magazine, the slide, the
+// hands) are made sample by sample in src/audio/pure/gunsound.js, the first time the range is used, and played as
+// recordings; the rest (brass on the floor, steel ringing, machines coming apart) are made live here.
+// How loud each of the gun's sounds goes in, against the shot.
+const LEVEL = { shot: 0.8, shotQuiet: 0.8, dry: 0.9, magRelease: 0.8, magOut: 0.9, magDrop: 0.7, magIn: 1, slideRelease: 1, slideHome: 0.9, slidePull: 0.9, grab: 0.8, handle: 0.8, cloth: 0.7, draw: 0.8 };
+
 // `go(pos, wet)` starts a sound at a place in the room (or in the head when pos is null) with some of it sent to the reverb.
 export function rangeSounds(go) {
   const ring = (S, t, parts, level) => { for (const [f, a, d] of parts) tone(S, 'sine', f, a * level, 0.001, d, t); };
+  // The gun's sounds as samples, made once; and as the sound card's own buffers, made once per card.
+  const made = new Map(), cards = new WeakMap(), making = new Set();
+  const samples = (gun, name, take) => { const k = `${gun}:${name}:${take}`; if (!made.has(k)) made.set(k, gunSound(name, gun, take)); return made.get(k); };
+  // Everything a gun will want is made a piece at a time between frames, the first time it is heard.
+  const prepare = gun => {
+    if (making.has(gun)) return;
+    making.add(gun);
+    const todo = SOUND_NAMES.flatMap(n => Array.from({ length: TAKES[n] || 1 }, (_, t) => [gun, n, t]));
+    const next = () => { const job = todo.shift(); if (!job) return; samples(...job); setTimeout(next, 0); };
+    setTimeout(next, 0);
+  };
+  function play(gun, name, rate = 1 + (Math.random() - 0.5) * 0.04) {
+    const S = go(null);
+    if (!S) return;
+    prepare(gun);
+    const take = Math.floor(Math.random() * (TAKES[name] || 1)), k = `${gun}:${name}:${take}`;
+    let card = cards.get(S.ctx);
+    if (!card) cards.set(S.ctx, card = new Map());
+    let b = card.get(k);
+    if (!b) {
+      const [L, R] = samples(gun, name, take);
+      b = S.ctx.createBuffer(2, L.length, SR); b.copyToChannel(L, 0); b.copyToChannel(R, 1);
+      card.set(k, b);
+    }
+    const src = S.buffer(b);
+    src.playbackRate.value = rate;
+    src.connect(S.gain(LEVEL[name])).connect(S.out);
+    S.play(S.t, S.t + b.duration / rate + 0.02);
+  }
   return {
     // loud: 1 for a bare muzzle, about 0.2 with a suppressor on.
-    gunShot(loud = 1) {
-      const S = go(null, 0.55 * loud + 0.1);
-      if (!S) return;
-      const t = S.t, k = 0.35 + 0.65 * loud;
-      noisy(S, 'highpass', 2600, 0.7, 0.5 * loud, 0.0006, 0.045, t);
-      noisy(S, 'bandpass', loud > 0.5 ? 820 : 1500, 0.6, 0.55 * k, 0.001, loud > 0.5 ? 0.12 : 0.06, t);
-      const o = tone(S, 'sine', 170, 0.6 * loud, 0.001, 0.13, t);
-      o.frequency.setValueAtTime(170, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.11);
-      noisy(S, 'lowpass', 1500, 0.7, 0.16 * loud, 0.01, 0.5, t + 0.02);
-      // The slide going back and home.
-      noisy(S, 'bandpass', 3400, 2.5, 0.09, 0.0006, 0.018, t + 0.025);
-      noisy(S, 'bandpass', 2300, 2.5, 0.11, 0.0006, 0.022, t + 0.07);
-      S.play(t, t + 0.65);
-    },
-    gunDry() {
-      const S = go(null);
-      if (!S) return;
-      const t = S.t, o = tone(S, 'square', 2100, 0.05, 0.0005, 0.012, t);
-      o.frequency.exponentialRampToValueAtTime(1300, t + 0.012);
-      noisy(S, 'highpass', 3500, 0.7, 0.1, 0.0005, 0.012, t);
-      S.play(t, t + 0.06);
-    },
-    magOut() {
-      const S = go(null, 0.1);
-      if (!S) return;
-      const t = S.t;
-      noisy(S, 'bandpass', 2900, 3, 0.12, 0.0006, 0.014, t);
-      noisy(S, 'bandpass', 1300, 1.2, 0.09, 0.004, 0.08, t + 0.03);
-      tone(S, 'triangle', 340, 0.05, 0.002, 0.04, t + 0.03);
-      S.play(t, t + 0.2);
-    },
-    magIn() {
-      const S = go(null, 0.12);
-      if (!S) return;
-      const t = S.t;
-      noisy(S, 'bandpass', 1500, 1, 0.1, 0.004, 0.05, t - 0.0);
-      const o = tone(S, 'sine', 210, 0.3, 0.001, 0.06, t + 0.05);
-      o.frequency.exponentialRampToValueAtTime(120, t + 0.1);
-      noisy(S, 'bandpass', 2600, 3, 0.2, 0.0006, 0.02, t + 0.05);
-      noisy(S, 'highpass', 4200, 0.7, 0.07, 0.0005, 0.012, t + 0.058);
-      S.play(t, t + 0.25);
-    },
-    slideRack() {
-      const S = go(null, 0.15);
-      if (!S) return;
-      const t = S.t;
-      noisy(S, 'bandpass', 2400, 2.2, 0.16, 0.0006, 0.02, t);
-      noisy(S, 'bandpass', 3300, 3, 0.22, 0.0006, 0.026, t + 0.045);
-      tone(S, 'triangle', 760, 0.07, 0.001, 0.03, t + 0.045);
-      S.play(t, t + 0.2);
-    },
+    gunShot(loud = 1, gun = 'pistol') { play(gun, loud < 0.5 ? 'shotQuiet' : 'shot', 1 + (Math.random() - 0.5) * 0.05); },
+    // The rest of a gun: the trigger on an empty chamber, the hands' moves, by the names its clips give.
+    gunCue(name, gun = 'pistol') { if (Object.hasOwn(LEVEL, name)) play(gun, name); },
     casing(pos, k = 1) {
       const S = go(pos, 0.25);
       if (!S) return;
