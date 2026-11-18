@@ -1,27 +1,75 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PLACES, SPOTS, SAYS, addPersia, makeSayer } from '../../web/src/pure/persia.js';
+import { PLACES, SPOTS, FEAST_SPOTS, SAYS, FEASTS, feastAt, addPersia, makeSayer } from '../../web/src/pure/persia.js';
+import { nowruz, EVENTS } from '../../web/src/pure/calendar.js';
 import { makeInteract } from '../../web/src/pure/interact.js';
 import { makeCollision } from '../../web/src/pure/collide.js';
 
 const WORLD = JSON.parse(readFileSync(new URL('../../web/assets/world.json', import.meta.url), 'utf8'));
 const fresh = () => JSON.parse(JSON.stringify(WORLD));
+// About noon in Vancouver on a date, as a moment (UTC-8, or UTC-7 since BC kept its summer time: the same day either way).
+const van = (y, m, d, h = 12) => new Date(Date.UTC(y, m - 1, d, h + 8));
+const day = t => new Date(t).toISOString().slice(0, 10);
 
-test('the pieces join the house through their E spots, copied', () => {
-  const meta = fresh(), before = meta.interact.length;
-  addPersia(meta);
+test('the haft-sin is out from Chaharshanbe Suri to Sizdah Bedar, and only then', () => {
+  for (const y of [2026, 2027, 2028, 2031]) {
+    const n = nowruz(y), suri = EVENTS.find(e => e.id === 'suri').span(y)[0], last = n + 12 * 864e5;
+    const at = t => feastAt(new Date(t + 20 * 3600e3));
+    assert.equal(at(suri), 'haftsin', `${y} suri ${day(suri)}`);
+    assert.equal(at(n), 'haftsin', `${y} nowruz ${day(n)}`);
+    assert.equal(at(last), 'haftsin', `${y} sizdah ${day(last)}`);
+    assert.equal(at(suri - 864e5), null, `${y} the day before suri`);
+    assert.equal(at(last + 864e5), null, `${y} the day after sizdah`);
+    assert.ok(n - suri >= 864e5 && n - suri <= 8 * 864e5, `${y}: suri falls in the week before nowruz`);
+  }
+  // The day of the spring equinox in Tehran, the next day when it falls after noon there: 1 Farvardin.
+  assert.equal(day(nowruz(2026)), '2026-03-21');
+  assert.equal(day(nowruz(2027)), '2027-03-21');
+  assert.equal(day(nowruz(2028)), '2028-03-20');
+});
+
+test('the Yalda table is out on the house\'s Yalda days, the solstice night among them', () => {
+  assert.equal(feastAt(van(2026, 12, 20)), 'yalda');
+  assert.equal(feastAt(van(2026, 12, 21, 20)), 'yalda');
+  assert.equal(feastAt(van(2026, 12, 19)), null);
+  assert.equal(feastAt(van(2026, 12, 22)), null);
+  // Days are Vancouver's: 22 December at 05:00 UTC is still the 21st there.
+  assert.equal(feastAt(new Date(Date.UTC(2026, 11, 22, 5))), 'yalda');
+  assert.equal(feastAt(new Date(Date.UTC(2026, 11, 22, 9))), null);
+  for (const [m, d] of [[1, 1], [6, 21], [9, 23], [11, 18], [3, 5]]) assert.equal(feastAt(van(2027, m, d)), null, `${m}/${d}`);
+});
+
+test('?holiday= previews a table: Nowruz, Suri and Sizdah the haft-sin, Yalda its own, anything else none', () => {
+  for (const h of ['nowruz', 'suri', 'sizdah']) assert.equal(feastAt(van(2026, 7, 1), h), 'haftsin');
+  assert.equal(feastAt(van(2026, 7, 1), 'yalda'), 'yalda');
+  // A forced other holiday hides the table even on its real days, like the rest of the house's look.
+  assert.equal(feastAt(van(2026, 3, 21), 'halloween'), null);
+  assert.equal(feastAt(van(2026, 12, 20), 'nonsense'), null);
+  assert.equal(feastAt(van(2026, 12, 20), ''), 'yalda');
+  assert.deepEqual(Object.keys(FEASTS), ['haftsin', 'yalda']);
+});
+
+test('the pieces join the house: one collider for the shelf, their E spots, the table\'s only on its day', () => {
+  const meta = fresh(), before = meta.interact.length, cols = meta.colliders.length;
+  const got = addPersia(meta, null);
+  assert.equal(meta.colliders.length, cols + 1);
   assert.equal(meta.interact.length, before + SPOTS.length);
+  assert.equal(got.feast, null);
+  const yal = fresh(); addPersia(yal, 'yalda');
+  assert.equal(yal.interact.at(-1).id, 'yalda');
+  for (const bad of ['bogus', '__proto__', 'constructor', '']) assert.equal(addPersia(fresh(), bad).feast, null, bad);
+  // Copies: changing what was added never changes the module's own lists.
   meta.interact.at(-1).at[0] = 99;
   assert.notEqual(SPOTS.at(-1).at[0], 99);
 });
 
 test('each E spot is reached from where you stand, and nothing else of the house\'s is nearer there', () => {
-  {
+  for (const feast of ['haftsin', 'yalda']) {
     const meta = fresh();
-    addPersia(meta);
+    addPersia(meta, feast);
     const things = makeInteract(meta.interact), col = makeCollision(meta);
-    for (const s of SPOTS) {
+    for (const s of [...SPOTS, FEAST_SPOTS[feast]]) {
       const p = { x: s.at[0], y: s.at[2], z: -s.at[1] };
       assert.equal(things.nearest(p)?.id, s.id, s.id);
       // The spot is open floor: standing there runs into nothing.
@@ -71,8 +119,10 @@ test('the words: plain, no dashes, the facts the cards must carry', () => {
   assert.match(SAYS.persia_shelf[0], /return of deported peoples/);
   assert.match(SAYS.persia_shelf[1], /Apadana/);
   assert.match(SAYS.persia_shelf[1], /two bulls/);
+  for (const w of ['sabzeh', 'samanu', 'senjed', 'sir', 'sib', 'somagh', 'serkeh', 'mirror', 'goldfish']) assert.match(SAYS.haftsin[0], new RegExp(w, 'i'), w);
+  for (const w of ['longest night', 'pomegranates', 'watermelon', 'Hafez']) assert.match(SAYS.yalda[0], new RegExp(w), w);
   assert.match(SAYS.miniature[0], /original painting/);
-  for (const s of SPOTS) assert.ok(SAYS[s.id], `${s.id} has words`);
+  for (const s of [...SPOTS, ...Object.values(FEAST_SPOTS)]) assert.ok(SAYS[s.id], `${s.id} has words`);
 });
 
 test('pressing E: the shelf gives its two cards in turn, the others the same line, anything else nothing', () => {

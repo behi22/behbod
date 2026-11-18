@@ -1,5 +1,5 @@
-// The Shahnameh pieces: the Simorgh over the stairs, the library shelf, the painting on the mezzanine; on a computer and
-// on phones both ways up.
+// The Shahnameh pieces: the Simorgh over the stairs, the library shelf, the painting on the mezzanine, the haft-sin and
+// Yalda tables on their days; on a computer and on phones both ways up.
 //   LOFT_URL=http://127.0.0.1:8815 node test/persia.js [outdir]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
@@ -55,6 +55,7 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
 
 (async () => {
   const P = await import('../web/src/pure/persia.js');
+  const today = P.feastAt(new Date());
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
     // ---------- a computer, today ----------
@@ -64,7 +65,7 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
         await new Promise(r => setTimeout(r, 2600));
         const g = __persia.group, out = { meshes: 0, tris: 0, textures: [] };
         g.traverse(o => { if (o.isMesh) { out.meshes++; const pos = o.geometry.attributes.position; out.tris += (o.geometry.index ? o.geometry.index.count : pos.count) / 3; if (o.material.map) out.textures.push(`${o.material.map.image.width}x${o.material.map.image.height}`); } });
-        out.painted = __persia.mini.painted;
+        out.feast = __persia.feast; out.painted = __persia.mini.painted;
         out.picture = __persia.mini.picture.material.map.image.width;
         out.colliders = __loft.meta.colliders.filter(c => c.name === 'persia_shelf').length;
         return out;
@@ -73,6 +74,7 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
       check('the pieces are in the house, cheaply', cost.meshes <= 10 && cost.tris < 30000, `${cost.meshes} meshes, ${Math.round(cost.tris)} triangles`);
       check('the painting is painted soon after the house is up, at 768 px across', cost.painted && cost.picture === 768, `${cost.picture}`);
       check('the shelf stands in the walls and the walk grid', cost.colliders === 1);
+      check(`no holiday table today unless it is one (${today || 'none'})`, cost.feast === today && got.includes('feasts.js') === !!today, `${cost.feast}; feasts.js fetched: ${got.includes('feasts.js')}`);
       // Each spot: the prompt names it, E answers with its card.
       for (const s of P.SPOTS) {
         await standAt(p, s.at);
@@ -112,11 +114,35 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
       check('no error on a computer', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
+    // ---------- the two holidays, previewed ----------
+    for (const [h, feast] of [['nowruz', 'haftsin'], ['sizdah', 'haftsin'], ['yalda', 'yalda'], ['halloween', null]]) {
+      const { p, errs, got } = await open(b, DESK, `&holiday=${h}`);
+      const t = await p.evaluate(async () => { const t = await __persia.tableReady; return t ? { id: t.id, children: t.group.children.length } : null; });
+      check(`?holiday=${h}: ${feast || 'no table'}`, (t?.id ?? null) === feast && got.includes('feasts.js') === !!feast, JSON.stringify(t));
+      if (feast) {
+        const spot = P.FEAST_SPOTS[feast];
+        await standAt(p, spot.at);
+        await p.keyboard.press('KeyE');
+        await p.waitForTimeout(200);
+        check(`?holiday=${h}: E at the table says what it is`, (await toast(p)) === P.SAYS[feast][0]);
+        const moves = await p.evaluate(async () => {
+          const t = __persia.table, f = t.group.getObjectByName('feast_fish'), fl = t.group.getObjectByName('feast_flames');
+          const a = [f?.rotation.y, fl.children[0].scale.y];
+          await new Promise(r => setTimeout(r, 300));
+          return [a, [f?.rotation.y, fl.children[0].scale.y]];
+        });
+        check(`?holiday=${h}: the candles flicker${feast === 'haftsin' ? ' and the goldfish swim' : ''}`, moves[0][1] !== moves[1][1] && (feast !== 'haftsin' || moves[0][0] !== moves[1][0]), JSON.stringify(moves));
+        await shot(p, `table-${h}`, [5.4, 10.2, 0.75], [4.45, 10.5, -0.05]);
+      }
+      check(`?holiday=${h}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
     // ---------- phones, both ways up: the Use button reads the cards ----------
     for (const [name, opts] of [['upright', UPRIGHT], ['sideways', SIDEWAYS]]) {
-      const { p, errs } = await open(b, opts);
-      for (const s of P.SPOTS) {
-        const id = s.id;
+      const { p, errs } = await open(b, opts, '&holiday=yalda');
+      await p.evaluate(() => __persia.tableReady);
+      for (const id of ['miniature', 'persia_shelf', 'yalda']) {
+        const s = [...P.SPOTS, ...Object.values(P.FEAST_SPOTS)].find(x => x.id === id);
         await standAt(p, s.at);
         const use = await p.evaluate(() => { const r = document.getElementById('use').getBoundingClientRect(); return { w: r.width, h: r.height, x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
         await p.touchscreen.tap(use.x, use.y);

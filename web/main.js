@@ -26,7 +26,7 @@ import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
-import { makePersia, addPersia } from './src/persia/index.js';
+import { makePersia, addPersia, feastAt } from './src/persia/index.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -52,7 +52,7 @@ engine.onTier(name => { world?.setGloss(name === 'high' || name === 'ultra'); wo
 // ---------- loading ----------
 const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
 const meta = await load.json('assets/world.json');
-addPersia(meta);
+const persiaAt = addPersia(meta, feastAt(new Date(), params.get('holiday')));
 // Where each sitting style puts the hips, and which poses build its motions.
 const sitInfo = await load.json('assets/sitposes.json').catch(() => null);
 // My YouTube videos for the TV and the screening wall: [{ id, title, by }].
@@ -174,7 +174,7 @@ const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: ()
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
-const persia = makePersia(scene, { day: () => out3d?.light.dayK ?? 0 }); window.__persia = persia;
+const persia = makePersia(scene, { feast: persiaAt.feast, day: () => out3d?.light.dayK ?? 0 }); window.__persia = persia;
 const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
