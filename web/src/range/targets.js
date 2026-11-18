@@ -66,7 +66,7 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
   }
   const build = { plate: buildPlate, walker: () => buildRobot('walker'), drone: () => buildRobot('drone') };
   // A few of each are built with the rooms, so their shaders are ready and nothing is made in the middle of a run.
-  for (const [kind, n] of [['plate', 3], ['walker', 3], ['drone', 4]]) for (let i = 0; i < n; i++) pools[kind].push(build[kind]());
+  for (const [kind, n] of [['plate', 3], ['walker', 3], ['drone', 5]]) for (let i = 0; i < n; i++) pools[kind].push(build[kind]());
   for (const o of pools.plate) o.rim.visible = false;
   function take(kind) {
     const pool = pools[kind];
@@ -133,7 +133,8 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
     }
   }
   function burstDrone(o) {
-    o.fall = null;
+    // Its slot is held until these pieces are down, or a new drone would take them over in mid-air.
+    o.fall = null; o.gone = 0;
     o.g.getWorldPosition(tmp);
     scatterParts(o, [o.core, ...o.rotors.map(r => r.arm)], tmp2.set(0, 0, 0), 0.6);
     fx.burst(tmp, { sparks: 60, pieces: 7, size: 0.045, speed: 4.5 });

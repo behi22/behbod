@@ -219,6 +219,28 @@ async function desktop(b) {
   await p.screenshot({ path: `${OUT}/arrow.png` });
   await p.evaluate(() => __loft.range.film(false));
 
+  // A drone shot down breaks up when it lands; its slot must not go to a new drone while those pieces still fly.
+  await p.evaluate(() => __loft.range.escape());
+  await p.waitForTimeout(150);
+  await p.evaluate(() => [...document.querySelectorAll('.rg-card button')].find(x => x.textContent === 'Stages').click());
+  await p.waitForTimeout(200);
+  await p.evaluate(() => __loft.range.film(true));
+  const slot = await p.evaluate(async () => {
+    const R = __loft.range, T = R.targets;
+    const frames = async s => { for (let t = 0; t < s - 1e-6; t += 0.05) { R.advance(0.05); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); } };
+    const s = id => ({ id, kind: 'drone', x: 0, d: 10, h: 2.2, life: 99, fx: 1, fh: 1, ax: 0, ad: 0, ah: 0, ph: 0, hp: 55, points: 250 });
+    T.spawn(s('slotA')); await frames(1);
+    const pt = T.aimPoint('slotA');
+    T.kill('slotA', { point: pt, normal: pt.clone().set(0, 0, -1) }, pt.clone().set(0, 0, 1));
+    await frames(3.45);
+    const b = T.spawn(s('slotB')); await frames(1.2);
+    const out = { core: b.core.visible, arms: b.rotors.every(r => r.arm.visible) };
+    T.clear();
+    return out;
+  });
+  check('a drone sent up just after another was shot down is whole', slot.core && slot.arms, JSON.stringify(slot));
+  await p.evaluate(() => __loft.range.film(false));
+
   // Out of the range: everything back as it was.
   await p.evaluate(() => __loft.range.exit());
   await p.waitForTimeout(600);
