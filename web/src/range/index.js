@@ -131,7 +131,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     const seg = el('div', 'rg-seg');
     for (const [id, d] of Object.entries(DIFFICULTIES)) { const bt = el('button', pick.difficulty === id ? 'on' : '', d.name); bt.addEventListener('click', () => { pick.difficulty = id; menu(); }); seg.append(bt); }
     const stars = totalStars(best), next = nextGun(stars);
-    hud.card([el('h2', '', 'THE RANGE'), el('h3', '', 'Pick a stage'), el('p', '', `${stars} of ${STAGES.length * 3} stars. Stars unlock guns${next ? `: ${next.need} more for the ${next.name} (${next.kind.toLowerCase()})` : ''}. On Hard the drones shoot back: step aside, duck or shoot the bolt. The other guns are still being built.`), list, seg],
+    hud.card([el('h2', '', 'THE RANGE'), el('h3', '', 'Pick a stage'), el('p', '', `${stars} of ${STAGES.length * 3} stars. Stars unlock guns${next ? `: ${next.need} more for the ${next.name} (${next.kind.toLowerCase()})` : ''}. On Hard the drones shoot back: step aside${coarse ? '' : ', duck'} or shoot the bolt. The other guns are still being built.`), list, seg],
       [['Start', () => start(pick.stage, pick.difficulty), true], ['Leave', () => api.exit()]]);
     hud.set({ playing: false });
   }

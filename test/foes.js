@@ -79,7 +79,7 @@ async function desktop(b) {
   await p.evaluate(() => [...document.querySelectorAll('.rg-card button')].find(x => x.textContent === 'Stages').click());
   await p.waitForTimeout(300);
   check('every stage can be picked once the one before has a star', card.open === 5, `${card.open} open`);
-  check('the stage card no longer says stages are still being built, and says Hard shoots back', !/stages are still|Opens with the next/.test(card.text) && /On Hard the drones shoot back/.test(card.text));
+  check('the stage card no longer says stages are still being built, and says Hard shoots back', !/stages are still|Opens with the next/.test(card.text) && /On Hard the drones shoot back: step aside, duck or shoot the bolt/.test(card.text));
   await p.click('.rg-card .rg-list button:nth-child(4)'); await p.waitForTimeout(150);
   check('the lights-out stage reads as such on the card', /The hall goes dark/.test(await p.evaluate(() => document.querySelector('.rg-card').textContent)));
 
@@ -257,6 +257,8 @@ async function phone(b) {
   const { p, errs } = await open(b, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, 'low', ['warmup', 'walkers', 'swarm', 'dark']);
   const st = stepper(p);
   check('phone: every stage can be picked', (await p.evaluate(() => document.querySelectorAll('.rg-card .rg-list button:not([disabled])').length)) === 5);
+  const phoneCard = await p.evaluate(() => document.querySelector('.rg-card').textContent);
+  check('phone: the card says step aside or shoot the bolt, and no duck (phones have no duck pad)', /step aside or shoot the bolt/.test(phoneCard) && !/duck/i.test(phoneCard), phoneCard.match(/On Hard[^.]*\./)?.[0]);
   await begin(p, 'walkers', 'hard', 7);
   await until(p, () => __loft.range.debug.targets.some(t => t.kind === 'walker'));
   const tris = await p.evaluate(() => { const o = __loft.range.targets.live().find(x => x.kind === 'walker'); let n = 0; o.g.traverse(m => { if (m.isMesh) n += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; }); return Math.round(n); });
