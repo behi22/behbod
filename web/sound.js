@@ -8,7 +8,10 @@ export class Sound {
     const ctx = this.ctx = new C();
     this.master = ctx.createGain();
     this.master.gain.value = 0.9;
-    this.master.connect(ctx.destination);
+    // After the master, so a hidden page never touches the Sound switch or what the film and the piano have faded.
+    this.shown = ctx.createGain();
+    this.master.connect(this.shown).connect(ctx.destination);
+    document.addEventListener('visibilitychange', () => this.setHidden(document.hidden));
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     let b = 0;
     for (let i = 0; i < len; i++) { b = (b + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = b * 3.5; }
@@ -29,6 +32,17 @@ export class Sound {
     this.on = !this.on;
     this.master.gain.setTargetAtTime(this.on ? 0.9 : 0, this.ctx.currentTime, 0.05);
     return this.on;
+  }
+  // A quick fade, then the sound's clock stops: every loop and record waits where it is until the page is shown again.
+  setHidden(hidden) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    clearTimeout(this.hideT);
+    const g = this.shown.gain, t = ctx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    if (hidden) { g.setTargetAtTime(0, t, 0.03); this.hideT = setTimeout(() => ctx.suspend().catch(() => {}), 200); }
+    else { ctx.resume().catch(() => {}); g.setTargetAtTime(1, t, 0.08); }
   }
   burst(freq, q, dur, gain, delay = 0) {
     if (!this.ctx || !this.on) return;
