@@ -270,7 +270,7 @@ const followPose = makeFollowCam(col, meta.regions);
 const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
 const desk = makeDesk({ camera, me, meta, coarse, follow });
 // The computer's desktop, laid over the monitor while I sit at it.
-const deskView = makeDesktopView({ camera, meta, screens, act: deskAct, coarse, tapTerminal: () => { if (coarse) $('cmd').focus(); } });
+const deskView = makeDesktopView({ camera, meta, screens, act: deskAct, coarse, sfx: audio.sfx, tapTerminal: () => { if (coarse) $('cmd').focus(); } });
 const deskCtx = () => ({ records: audio.music.records, playing: audio.music.current, sound: sound.on, quality: autoTier ? 'auto' : tierName, hood: me.hoodUp,
   scenes: world.scenes, scene: world.sceneName, coolant: world.coolantName, projects: meta.projects });
 let deskCtxKey = '', deskCtxAt = 0;

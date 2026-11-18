@@ -3,6 +3,9 @@ import { drawWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.j
 import { makePanels } from './panels.js';
 import { W as DW, H as DH, BAR, DOCK, TITLE, PAD, STYLE, appById, newDesktop, dock as dockIcons, rows as appRows, layout, wrap, termShown, open as openApp, keepOpen, clockText, calcLayout, tail } from './src/pure/desktop.js';
 import { newCalc, press as calcPress, show as calcShow, fromKeyboard as calcKey } from './src/pure/calc.js';
+import { siteById, newBrowser, go as browserGo, browserLayout, LOCK } from './src/pure/browser.js';
+import { launcherLayout, playLayout, gameById } from './src/pure/arcade.js';
+import { makeDeskGames } from './src/deskgames.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -46,8 +49,12 @@ export function makeCanvases(meta, opts = {}) {
   // the same desktop out in HTML over this screen, from the same model.
   S.main = surface(DW, DH);
   const term = { lines: [], input: '', focus: false, blink: 0 };
-  const desk = { st: newDesktop(), ctx: {}, notes: loadNotes(), calc: newCalc(), dirty: true, drawn: -1, listeners: [] };
+  const desk = { st: newDesktop(), ctx: {}, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), sfx: null, dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
+  // The games keep their best scores in the visitor's own browser; the sounds arrive once the house's audio exists.
+  const local = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* this visit only */ } } };
+  const gameSfx = Object.fromEntries(['click', 'blip', 'miss', 'hit'].map(n => [n, () => desk.sfx?.[n]?.()]));
+  desk.games = makeDeskGames({ store: local, sfx: gameSfx, onEvent: name => { if (name === 'over') changed(); } });
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
   const CMDS = {
@@ -75,6 +82,22 @@ export function makeCanvases(meta, opts = {}) {
     g.strokeStyle = on ? STYLE.accent : STYLE.ink; g.lineWidth = 1.8; g.lineCap = 'round'; g.lineJoin = 'round';
     g.stroke(icon[a.id] ||= new Path2D(a.icon));
     g.restore();
+  }
+  // A 24 by 24 stroke path drawn `size` across, without the icon's box.
+  function strokePath(g, d, x, y, size, color) {
+    g.save(); g.translate(x, y); g.scale(size / 24, size / 24);
+    g.strokeStyle = color; g.lineWidth = 1.8; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.stroke(icon[d] ||= new Path2D(d));
+    g.restore();
+  }
+  // A window's laid-out text pieces and buttons.
+  function drawBits(g, L) {
+    for (const t of L.texts) { g.font = `${t.b} ${t.px}px ${STYLE.font}`; g.fillStyle = col(t.c); g.fillText(t.s, t.x, t.y); }
+    for (const p of L.pills) {
+      g.fillStyle = p.on ? 'rgba(62,230,196,.16)' : 'rgba(255,255,255,.04)'; g.beginPath(); rrect(g, p.x, p.y, p.w, p.h, p.h / 2); g.fill();
+      g.strokeStyle = p.on ? STYLE.accent : 'rgba(127,138,160,.4)'; g.lineWidth = 1; g.stroke();
+      g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = p.on ? STYLE.accent : STYLE.ink; g.fillText(p.label, p.x + 12, p.y + p.h / 2 + 5);
+    }
   }
   function drawWindow(g, w, focused) {
     const a = appById(w.app);
@@ -110,15 +133,33 @@ export function makeCanvases(meta, opts = {}) {
         g.font = `${k.kind === 'num' ? 400 : 700} ${L.keyPx}px ${STYLE.font}`; g.fillStyle = k.kind === 'go' ? '#05110f' : k.kind === 'op' ? STYLE.accent : STYLE.ink; g.fillText(k.label, k.x + k.w / 2, k.y + k.h / 2 + L.keyPx * 0.36);
       }
       g.textAlign = 'left';
-    } else {
-      const L = layout(w, appRows(w.app, desk.ctx));
-      for (const t of L.texts) { g.font = `${t.b} ${t.px}px ${STYLE.font}`; g.fillStyle = col(t.c); g.fillText(t.s, t.x, t.y); }
-      for (const p of L.pills) {
-        g.fillStyle = p.on ? 'rgba(62,230,196,.16)' : 'rgba(255,255,255,.04)'; g.beginPath(); rrect(g, p.x, p.y, p.w, p.h, p.h / 2); g.fill();
-        g.strokeStyle = p.on ? STYLE.accent : 'rgba(127,138,160,.4)'; g.lineWidth = 1; g.stroke();
-        g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = p.on ? STYLE.accent : STYLE.ink; g.fillText(p.label, p.x + 12, p.y + p.h / 2 + 5);
+    } else if (w.app === 'browser') {
+      // The page itself is only shown in the seated view; the monitor says which site is up.
+      const L = browserLayout(w, desk.browser.site), P = L.page, site = siteById(desk.browser.site);
+      g.fillStyle = '#05080d'; g.beginPath(); rrect(g, P.x, P.y, P.w, P.h, 8); g.fill();
+      g.textAlign = 'center';
+      g.font = `700 ${STYLE.text + 5}px ${STYLE.font}`; g.fillStyle = STYLE.accent; g.fillText(site.title, P.x + P.w / 2, P.y + P.h / 2 - 4);
+      g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = STYLE.dim; g.fillText('sit at the desk to browse', P.x + P.w / 2, P.y + P.h / 2 + 24);
+      g.textAlign = 'left';
+      if (L.lock) strokePath(g, LOCK, L.lock.x, L.lock.y, L.lock.size, STYLE.dim);
+      drawBits(g, L);
+    } else if (w.app === 'games') {
+      const G = desk.games, p = G.playing;
+      if (p) {
+        const L = playLayout(w, p.id, { state: p.done ? 'done' : p.paused ? 'paused' : 'play', status: G.status() }), A = L.area;
+        drawBits(g, L);
+        g.save(); g.beginPath(); g.rect(A.x, A.y, A.w, A.h); g.clip(); g.translate(A.x, A.y); G.draw(g, A.w, A.h); g.restore();
+      } else {
+        const L = launcherLayout(w, G.bests);
+        for (const c of L.cards) {
+          g.fillStyle = 'rgba(255,255,255,.03)'; g.beginPath(); rrect(g, c.x, c.y, c.w, c.h, 10); g.fill();
+          g.strokeStyle = STYLE.edge; g.lineWidth = 1; g.stroke();
+          drawIcon(g, { id: 'game-' + c.id, icon: gameById(c.id).icon }, c.icon.x, c.icon.y, c.icon.size, false);
+          if (c.pic) { g.save(); g.beginPath(); rrect(g, c.pic.x, c.pic.y, c.pic.w, c.pic.h, 8); g.clip(); g.translate(c.pic.x, c.pic.y); g.fillStyle = '#05080d'; g.fillRect(0, 0, c.pic.w, c.pic.h); G.preview(g, c.id, c.pic.w, c.pic.h); g.restore(); }
+        }
+        drawBits(g, L);
       }
-    }
+    } else drawBits(g, layout(w, appRows(w.app, desk.ctx)));
     g.restore();
     g.strokeStyle = focused ? 'rgba(62,230,196,.55)' : STYLE.edge; g.lineWidth = focused ? 1.5 : 1;
     g.beginPath(); rrect(g, w.x + 0.5, w.y + 0.5, w.w - 1, w.h - 1, 10); g.stroke();
@@ -310,6 +351,10 @@ export function makeCanvases(meta, opts = {}) {
       set notes(v) { desk.notes = v; saveNotes(v); changed(); },
       get calc() { return desk.calc; },
       calcPress(key) { calcPress(desk.calc, key); changed(); },
+      get browser() { return desk.browser; },
+      browserGo(id) { const ok = browserGo(desk.browser, id); if (ok) changed(); return ok; },
+      get games() { return desk.games; },
+      set sfx(v) { desk.sfx = v; },
       setCtx(patch) { Object.assign(desk.ctx, patch); changed(); },
       get ctx() { return desk.ctx; },
       set covered(on) { desk.covered = on; if (!on) desk.dirty = true; },
