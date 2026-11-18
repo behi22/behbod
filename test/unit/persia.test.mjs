@@ -30,6 +30,16 @@ test('each E spot is reached from where you stand, and nothing else of the house
   }
 });
 
+test('the shelf fits its corner: between the bookcase and the partition, under the collection case above', () => {
+  const meta = fresh(), [x0, y0, z0] = PLACES.shelf.min, [x1, y1, z1] = PLACES.shelf.max;
+  const solid = meta.colliders.filter(c => c.kind === 'solid');
+  const overlaps = c => c.min[0] < x1 && c.max[0] > x0 && c.min[1] < y1 && c.max[1] > y0 && c.min[2] < z1 && c.max[2] > z0;
+  assert.deepEqual(solid.filter(overlaps).map(c => c.name), []);
+  const shelfE = meta.colliders.find(c => c.name === 'bookshelf_e'), part = meta.colliders.find(c => c.name === 'wall_partition');
+  assert.ok(x0 >= shelfE.max[0] && x1 <= part.min[0], 'beside the bookcase, short of the partition');
+  assert.ok(y0 >= 0 && y1 <= shelfE.max[1], 'no deeper than the bookcase');
+});
+
 test('the Simorgh stays on the stair wall: clear of the frames, the chimney, the mezzanine slab and the ceiling', () => {
   const meta = fresh(), S = PLACES.simorgh;
   for (const [name, w] of Object.entries(meta.screens).filter(([k]) => /^proj\d$/.test(k))) {
@@ -47,11 +57,20 @@ test('the Simorgh stays on the stair wall: clear of the frames, the chimney, the
 test('the words: plain, no dashes, the facts the cards must carry', () => {
   const all = Object.values(SAYS).flat();
   for (const s of all) { assert.ok(!/[\u2013\u2014]/.test(s), s); assert.ok(s.length <= 330, `${s.length}: ${s}`); }
+  assert.match(SAYS.persia_shelf[0], /539 BCE/);
+  assert.match(SAYS.persia_shelf[0], /Babylon/);
+  assert.match(SAYS.persia_shelf[0], /British Museum/);
+  assert.match(SAYS.persia_shelf[0], /return of deported peoples/);
+  assert.match(SAYS.persia_shelf[1], /Apadana/);
+  assert.match(SAYS.persia_shelf[1], /two bulls/);
   for (const s of SPOTS) assert.ok(SAYS[s.id], `${s.id} has words`);
 });
 
-test('pressing E: the Simorgh gives its line each time, anything else nothing', () => {
+test('pressing E: the shelf gives its two cards in turn, the others the same line, anything else nothing', () => {
   const say = makeSayer();
+  assert.equal(say('persia_shelf'), SAYS.persia_shelf[0]);
+  assert.equal(say('persia_shelf'), SAYS.persia_shelf[1]);
+  assert.equal(say('persia_shelf'), SAYS.persia_shelf[0]);
   assert.equal(say('simorgh'), SAYS.simorgh[0]);
   assert.equal(say('simorgh'), SAYS.simorgh[0]);
   for (const id of ['tv', 'desk', 'holiday', '__proto__', 'constructor', 'toString', undefined]) assert.equal(say(id), null, String(id));

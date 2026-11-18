@@ -1,4 +1,5 @@
-// The Shahnameh pieces: the Simorgh over the stairs, on a computer and on phones both ways up.
+// The Shahnameh pieces: the Simorgh over the stairs, the library shelf; on a computer and on phones both
+// ways up.
 //   LOFT_URL=http://127.0.0.1:8815 node test/persia.js [outdir]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
@@ -63,10 +64,12 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
         await new Promise(r => setTimeout(r, 2600));
         const g = __persia.group, out = { meshes: 0, tris: 0, textures: [] };
         g.traverse(o => { if (o.isMesh) { out.meshes++; const pos = o.geometry.attributes.position; out.tris += (o.geometry.index ? o.geometry.index.count : pos.count) / 3; if (o.material.map) out.textures.push(`${o.material.map.image.width}x${o.material.map.image.height}`); } });
+        out.colliders = __loft.meta.colliders.filter(c => c.name === 'persia_shelf').length;
         return out;
       });
       console.log(`cost: ${cost.meshes} meshes, ${Math.round(cost.tris)} triangles, textures ${cost.textures.join(' ')}; files ${got.join(' ')}`);
       check('the pieces are in the house, cheaply', cost.meshes <= 10 && cost.tris < 30000, `${cost.meshes} meshes, ${Math.round(cost.tris)} triangles`);
+      check('the shelf stands in the walls and the walk grid', cost.colliders === 1);
       // Each spot: the prompt names it, E answers with its card.
       for (const s of P.SPOTS) {
         await standAt(p, s.at);
@@ -80,8 +83,19 @@ const shot = async (p, name, eye, at, w = 960, h = 600) => {
           check(`${s.id}: E says line ${k + 1}`, t === lines[k], t.slice(0, 60));
         }
       }
+      // The shelf: walking straight at it stops in front of it, and a click on its corner leads only up to it.
+      await standAt(p, [10.75, 1.4, 0]);
+      await p.evaluate(() => { __loft.yaw = Math.PI; __loft.keys.add('KeyW'); });
+      await p.waitForTimeout(2500);
+      const walked = await p.evaluate(() => { __loft.keys.delete('KeyW'); return -__loft.pos.z; });
+      await standAt(p, [10.75, 1.4, 0]);
+      await p.evaluate(() => __loft.walkTo(10.75, 0.12, 0));
+      await p.waitForTimeout(3500);
+      const led = await p.evaluate(() => -__loft.pos.z);
+      check('nobody walks into the shelf', walked > P.PLACES.shelf.max[1] + 0.1 && walked < 0.9 && led > P.PLACES.shelf.max[1] + 0.1, `walking stopped at y ${walked.toFixed(2)}, a click at ${led.toFixed(2)}`);
       await shot(p, 'simorgh-lounge', [7.5, 7.4, 2.2], [0.4, 6.6, 4.9]);
       await shot(p, 'simorgh-mezz', [3.6, 6.4, 5.0], [0.1, 6.0, 5.1]);
+      await shot(p, 'shelf', [10.1, 1.6, 1.45], [10.75, 0.15, 1.05]);
       // Frame cost in the lounge, the pieces shown and hidden.
       await standAt(p, [3.0, 6.6, 0]);
       const frames = await p.evaluate(async () => {
