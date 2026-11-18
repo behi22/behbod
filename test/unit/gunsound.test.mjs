@@ -1,13 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gunSound, SOUND_NAMES, TAKES, SR, GUN_SOUNDS } from '../../web/src/audio/pure/gunsound.js';
+import { gunSound, TAKES, SR, GUN_SOUNDS, soundsFor } from '../../web/src/audio/pure/gunsound.js';
 
 const rms = (x, a, b) => { const i0 = Math.round(a * SR), i1 = Math.min(x.length, Math.round(b * SR)); let s = 0; for (let i = i0; i < i1; i++) s += x[i] * x[i]; return Math.sqrt(s / Math.max(1, i1 - i0)); };
 const peak = chans => Math.max(...chans.map(c => c.reduce((m, v) => Math.max(m, Math.abs(v)), 0)));
-const sounds = Object.fromEntries(SOUND_NAMES.map(n => [n, gunSound(n)]));
+const sounds = Object.fromEntries(GUN_SOUNDS.pistol.sounds.map(n => [n, gunSound(n)]));
+// Every sound of every gun, once each.
+const ALL = Object.keys(GUN_SOUNDS).flatMap(id => GUN_SOUNDS[id].sounds.map(n => [`${id} ${n}`, gunSound(n, id)]));
 
-test('every sound is two clean channels: no gaps in the numbers, never over full scale, ending in silence', () => {
-  for (const [name, chans] of Object.entries(sounds)) {
+test('every sound of every gun is two clean channels: no gaps in the numbers, never over full scale, ending in silence', () => {
+  assert.ok(ALL.length > 50);
+  for (const [name, chans] of ALL) {
     assert.equal(chans.length, 2, name);
     assert.equal(chans[0].length, chans[1].length, name);
     for (const c of chans) for (const v of c) assert.ok(Number.isFinite(v), `${name} has a broken sample`);
@@ -21,7 +24,7 @@ test('every sound is two clean channels: no gaps in the numbers, never over full
 });
 
 test('nothing but the shot starts with a jump (a click before the sound)', () => {
-  for (const [name, [L]] of Object.entries(sounds)) if (!name.startsWith('shot')) assert.ok(Math.abs(L[0]) < 0.01 && Math.abs(L[1] - L[0]) < 0.1, `${name} starts at ${L[0]}, ${L[1]}`);
+  for (const [name, [L]] of ALL) if (!/ shot/.test(name)) assert.ok(Math.abs(L[0]) < 0.01 && Math.abs(L[1] - L[0]) < 0.1, `${name} starts at ${L[0]}, ${L[1]}`);
 });
 
 test('the shot: sharp at once, loudest early, the hall answering for over a second', () => {
@@ -54,4 +57,6 @@ test('takes: the same take is the same sound every time, the takes differ', () =
   assert.equal(gunSound('shot', 'nothing'), null);
   assert.equal(gunSound('nothing'), null);
   assert.ok(GUN_SOUNDS.pistol);
+  assert.equal(gunSound('boltOpen', 'pistol'), null, 'a gun makes only its own sounds');
+  assert.deepEqual(soundsFor('pistol').filter(([n]) => n === 'boltOpen'), []);
 });

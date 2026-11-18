@@ -7,6 +7,10 @@ z = 0 is the line where the slide rides on the frame.
 blender -b --factory-startup -P blender/build_guns.py                 (build and export blender/build/p22.glb, then
                                                                        node blender/squeeze.js makes web/assets/range/p22.glb)
 blender -b --factory-startup -P blender/build_guns.py -- <prefix>     (also render look-at pictures to <prefix>-*.png)
+blender -b --factory-startup -P blender/build_guns.py -- gun=smg      (the other guns: smg, rifle, sniper, lmg, each to
+                                                                       blender/build/<its file>.glb; squeeze.js takes the paths)
+The long guns share the pistol's grip and trigger guard (one hand fits them all) and leave empties named
+<prefix>_mount_muzzle, _mount_optic, _mount_rail and _mount_mag where the attachments still to come will sit.
 """
 import bpy, bmesh, sys, os, math
 from mathutils import Vector, Matrix
@@ -15,7 +19,8 @@ sys.path.insert(0, ROOT + '/blender')
 from lib import cad
 
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-PREVIEW = ARGS[0] if ARGS else ''
+GUN = next((a[4:] for a in ARGS if a.startswith('gun=')), 'pistol')
+PREVIEW = next((a for a in ARGS if '=' not in a), '')
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
 SPECKLE = cad.grain('T_GunSpeckle', kind='speckle', amp=1.0)
@@ -350,7 +355,479 @@ def pistol():
     return root
 
 
-root = pistol()
+# ---------- the long guns: the same toy finish, the pistol's grip and trigger guard under each receiver ----------
+def long_lower(name, outline, mat, well=None):
+    """The housing under a long gun's receiver: the P-22's grip and trigger guard, so the hand that fits one fits all,
+    grown forward into a magazine well. `well` is (x0, x1, half-width, depth below the top) of its opening."""
+    up = cad.outline(name, outline, 0.0131, mat)
+    rings = []
+    for i in range(14):
+        z = -0.022 + (GRIP_Z + 0.022) * i / 13
+        u = (-z - 0.022) / (-GRIP_Z - 0.022)
+        xf = min(front(z), 0.0285)
+        xb = back(z) - 0.0035 * math.sin(math.pi * max(0.0, min(1.0, (-z - 0.035) / 0.08)))
+        b = 0.0131 + 0.0014 * min(1.0, u / 0.3) + 0.0011 * math.sin(math.pi * u) + (0.0009 if i == 13 else 0.0)
+        rings.append(cad.oval((xf + xb) / 2, 0, z, (xf - xb) / 2, b))
+    cad.union(up, [cad.loft('grip', rings)])
+    cutters = [
+        cad.outline('c', [(0.0335, -0.0235), (0.078, -0.0235), (0.0815, -0.028), (0.0815, -0.043), (0.077, -0.0475), (0.043, -0.0475), (0.0355, -0.043), (0.0335, -0.036)], 0.03),
+        cad.box('c', (0.05, 0.02, 0.031), (0.059, 0.0185, -0.0395)),
+        cad.box('c', (0.05, 0.02, 0.031), (0.059, -0.0185, -0.0395)),
+    ]
+    if well:
+        x0, x1, hw, zb = well
+        cutters.append(cad.box('c', (x1 - x0, 2 * hw, 0.3), ((x0 + x1) / 2, 0, zb + 0.15)))
+    cad.cut(up, cutters)
+    cad.split_at(up, (-0.062, GRIP_Z + 0.009))
+    done(up, 0.0008, 2)
+    up.data.materials.append(M['grip'])
+    bm = bmesh.new()
+    bm.from_mesh(up.data)
+    for f in bm.faces:
+        c, n = f.calc_center_median(), f.normal
+        if GRIP_Z + 0.0095 < c.z < -0.0625 and c.x < 0.034 and (abs(n.y) > 0.75 or abs(n.x) > 0.8) and abs(n.z) < 0.5:
+            f.material_index = 1
+    bm.to_mesh(up.data)
+    bm.free()
+    return up
+
+
+def rail(name, x0, x1, z, mat, axis='top', y=0.0):
+    """A toothed accessory rail along x, on top of something (its foot at z) or under it (hanging from z)."""
+    s = 1 if axis == 'top' else -1
+    r = cad.box(name, (x1 - x0, 0.021, 0.0065), ((x0 + x1) / 2, y, z + s * 0.00325), mat)
+    n = int((x1 - x0) / 0.01)
+    cad.cut(r, [cad.box('c', (0.0045, 0.03, 0.0035), (x0 + 0.005 + i * 0.01, y, z + s * 0.0065)) for i in range(n)])
+    return done(r, 0.0004)
+
+
+def peep(name, x, z_aim, mat, foot):
+    """A rear aperture: a block on the rail, two guarding ears, the ring the eye looks through."""
+    base = cad.box(name, (0.022, 0.02, z_aim - foot - 0.004), (x, 0, (foot + z_aim - 0.004) / 2), mat)
+    ears = [cad.box('ear', (0.014, 0.003, 0.015), (x, s * 0.0085, z_aim + 0.001), mat) for s in (1, -1)]
+    ring = cad.cyl('ring', 0.0062, 0.003, (x, 0, z_aim), mat, seg=24)
+    cad.union(base, ears + [ring])
+    cad.cut(base, [cad.cyl('c', 0.0022, 0.03, (x, 0, z_aim), seg=20)])
+    return done(base, 0.0003)
+
+
+def post(name, x, z_tip, foot, mat):
+    """A front sight: a base, two hooding ears, the post with a dot that glows a little."""
+    base = cad.box(name, (0.018, 0.02, 0.006), (x, 0, foot + 0.003), mat)
+    ears = [cad.box('ear', (0.012, 0.0025, z_tip - foot - 0.002), (x, s * 0.0085, (foot + z_tip) / 2 + 0.002), mat) for s in (1, -1)]
+    pin = cad.box('post', (0.004, 0.0028, z_tip - foot - 0.006), (x, 0, (foot + 0.006 + z_tip) / 2), mat)
+    cad.union(base, ears + [pin])
+    done(base, 0.0003)
+    dot = cad.cyl('dot', 0.0011, 0.0006, (x - 0.0021, 0, z_tip - 0.0015), M['dot'], seg=14)
+    cad.box_uv(dot)
+    return cad.join(name, [base, dot])
+
+
+def marks(objs, y, lines):
+    """Etched lettering on a side: (text, size, x, z) each; y > 0 is the left side, read from the left."""
+    for t, size, x, z in lines:
+        o = cad.text('mk', t, size, (x, y, z), M['mark'], rot_z=math.pi if y > 0 else 0.0)
+        cad.box_uv(o)
+        objs.append(o)
+
+
+def finish(root, prefix, base, loose, anchors):
+    """Shades the gun assembled, parents it, and leaves its anchors and attachment mounts as empties."""
+    cad.shade(base)
+    for extra in loose:
+        cad.shade(base + [extra], only=[extra])
+    for o in base + loose:
+        if o.parent is None:
+            o.parent = root
+    for name, at in anchors.items():
+        empty(f'{prefix}_{name}', at, root)
+    meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+    # An exact boolean on touching faces can leave a point flung far off: stop the build rather than ship it.
+    bpy.context.view_layer.update()
+    for o in meshes:
+        far = max(abs(c) for v in o.data.vertices for c in (o.matrix_world @ v.co))
+        if far > 1.0:
+            raise SystemExit(f'{o.name} has a point {far:.3g} m out')
+    print(prefix + ':', len(meshes), 'pieces,', cad.tris(meshes), 'triangles:', ', '.join(f'{o.name} {cad.tris([o])}' for o in sorted(meshes, key=lambda o: -cad.tris([o]))))
+    return root
+
+
+def rename(o, name):
+    o.name = name
+    o.data.name = name
+    return o
+
+
+def seat_round(r, mag, at, tilt=-4):
+    r.rotation_euler = (0, deg(tilt), 0)
+    r.location = at
+    bpy.context.view_layer.update()
+    keep = r.matrix_world.copy()
+    r.parent = mag
+    r.matrix_parent_inverse = mag.matrix_world.inverted()
+    r.matrix_world = keep
+
+
+# ---------- the Vesper: a compact submachine gun, closed bolt, a side charging handle, a folding wire stock ----------
+VBZ = 0.030
+M['slate'] = cad.material('G_Slate', (0.026, 0.033, 0.05), 0.55, 0.0, SPECKLE, 60, 0.14)
+
+
+def vesper_mag(name):
+    top, bot = 0.010, -0.185
+    body = cad.outline('mag', [(0.0935, top), (0.1215, top), (0.1235, bot), (0.0915, bot)], 0.0105, M['dark'])
+    cad.cut(body, [cad.box('c', (0.022, 0.03, 0.0016), (0.1075, 0, z)) for z in (-0.03, -0.075, -0.12)])
+    done(body, 0.0006, 2)
+    pad = cad.outline('pad', [(0.0895, bot + 0.003), (0.1255, bot + 0.003), (0.1275, bot - 0.011), (0.0875, bot - 0.011)], 0.0125, M['slate'])
+    done(pad, 0.0015, 3)
+    lip = cad.outline('lip', [(0.0945, top + 0.0005), (0.1205, top + 0.0005), (0.1205, top - 0.004), (0.0945, top - 0.004)], 0.0072, M['poly'])
+    done(lip, 0.0004)
+    return cad.origin(cad.join(name, [body, pad, lip]), (0.1075, 0, -0.09))
+
+
+def vesper():
+    root = bpy.data.objects.new('VSP', None)
+    cad.SC().objects.link(root)
+    lower = long_lower('VSP_lower', [(-0.062, 0.0), (0.205, 0.0), (0.205, -0.010), (0.138, -0.015), (0.139, -0.064), (0.133, -0.070), (0.089, -0.070),
+                                     (0.086, -0.052), (0.0835, -0.0525), (0.037, -0.0525), (0.0285, -0.049), (0.0245, -0.058), (-0.0335, -0.058), (-0.0235, -0.020), (-0.062, -0.014)],
+                       M['poly'], well=(0.0925, 0.1225, 0.0109, -0.075))
+    body = cad.section('VSP_body', [(-0.019, 0.0), (0.019, 0.0), (0.019, 0.047), (0.0145, 0.053), (-0.0145, 0.053), (-0.019, 0.047)], -0.068, 0.205, M['slide'])
+    cad.cut(body, [
+        cad.box('c', (0.25, 0.024, 0.036), (0.07, 0, 0.03)),            # the inside, where the bolt runs
+        cad.box('c', (0.05, 0.02, 0.022), (0.06, -0.015, 0.031)),       # the ejection port, on the right
+        cad.box('c', (0.085, 0.02, 0.008), (0.1375, 0.015, 0.034)),     # the charging handle's slot, on the left
+        cad.box('c', (0.03, 0.0218, 0.03), (0.1075, 0, 0.0)),           # the magazine's way up
+    ])
+    done(body, 0.0006)
+    top = rail('VSP_rail', -0.05, 0.14, 0.053, M['dark'])
+    guard = cad.section('VSP_guard', [(-0.021, -0.008), (0.021, -0.008), (0.023, 0.004), (0.023, 0.044), (0.016, 0.052), (-0.016, 0.052), (-0.023, 0.044), (-0.023, 0.004)], 0.205, 0.335, M['slate'])
+    cuts = [cad.cyl('c', 0.0105, 0.2, (0.27, 0, VBZ), seg=24)]
+    for i in range(4):                                                                        # vents through to the barrel
+        for s in (1, -1):
+            cuts.append(cad.box('c', (0.016, 0.03, 0.007), (0.225 + i * 0.026, s * 0.02, VBZ + 0.002)))
+    cad.cut(guard, cuts)
+    done(guard, 0.001, 2)
+    under = rail('VSP_underrail', 0.268, 0.328, -0.008, M['dark'], axis='under')
+    barrel = cad.tube('VSP_barrel', 0.0072, 0.0045, 0.282, (0.231, 0, VBZ), M['steel'], seg=32)
+    can = cad.cyl('muzzle', 0.0095, 0.022, (0.361, 0, VBZ), M['dark'], seg=28)
+    cad.cut(can, [cad.cyl('c', 0.0046, 0.04, (0.361, 0, VBZ), seg=20)] + [cad.tube('c', 0.0105, 0.0085, 0.0014, (0.355 + i * 0.004, 0, VBZ), seg=28) for i in range(3)])
+    done(barrel, 0.0003)
+    done(can, 0.0004, 1)
+    barrel = cad.join('VSP_barrel', [barrel, can])
+    front_sight = post('VSP_front', 0.318, 0.072, 0.052, M['dark'])
+    rear_sight = peep('VSP_rear', -0.03, 0.072, M['dark'], 0.0595)
+    # A folding wire stock, locked open: a hinge block, a skeleton loop, a rubber butt.
+    hinge = done(cad.box('VSP_hinge', (0.018, 0.03, 0.05), (-0.077, 0, 0.022), M['dark']), 0.002, 2)
+    stock = cad.outline('VSP_stock', [(-0.084, 0.05), (-0.29, 0.046), (-0.304, 0.038), (-0.304, -0.072), (-0.29, -0.08), (-0.272, -0.074), (-0.084, -0.006)], 0.0085, M['dark'])
+    cad.cut(stock, [cad.outline('c', [(-0.112, 0.036), (-0.275, 0.033), (-0.283, 0.025), (-0.283, -0.055), (-0.272, -0.058), (-0.112, -0.0)], 0.02)])
+    done(stock, 0.002, 2)
+    butt = done(cad.outline('VSP_butt', [(-0.3, 0.048), (-0.318, 0.046), (-0.321, 0.035), (-0.321, -0.072), (-0.318, -0.082), (-0.3, -0.083)], 0.017, M['slate']), 0.003, 3)
+    bolt = cad.box('VSP_bolt', (0.09, 0.0205, 0.028), (0.045, 0, 0.031), M['steel'])
+    cad.cut(bolt, [cad.box('c', (0.03, 0.03, 0.004), (0.02, 0, 0.031)), cad.cyl('c', 0.0046, 0.02, (0.09, 0, VBZ), seg=16)])
+    done(bolt, 0.0006)
+    ext = done(cad.box('ext', (0.02, 0.0016, 0.004), (0.078, -0.0103, 0.036), M['dark']), 0.0003)
+    bolt = cad.origin(cad.join('VSP_bolt', [bolt, ext]), (0.045, 0, 0.031))
+    arm = cad.box('VSP_handle', (0.008, 0.016, 0.006), (0.175, 0.025, 0.034), M['dark'])
+    knob = cad.cyl('knob', 0.0055, 0.012, (0.175, 0.037, 0.034), M['poly'], axis='Y', seg=20)
+    done(arm, 0.0006)
+    done(knob, 0.001, 2)
+    handle = cad.origin(cad.join('VSP_handle', [arm, knob]), (0.175, 0.019, 0.034))
+    trigger = rename(build_trigger(), 'VSP_trigger')
+    stop, rel = build_controls()
+    bpy.data.objects.remove(stop)
+    rel = rename(rel, 'VSP_magrelease')
+    mag = vesper_mag('VSP_mag')
+    rnd = build_round('VSP_round')
+    seat_round(rnd, mag, (0.1075, 0, 0.0145), -2)
+    casing = build_round('VSP_casing', loose=True)
+    casing.location = (0.05, -0.05, 0.05)
+    extra = []
+    marks(extra, 0.01905, [('VESPER', 0.0075, 0.17, 0.006), ('KEEPER ARMS  VANCOUVER BC', 0.0024, 0.16, 0.0185), ('9 MM', 0.0028, 0.16, 0.0225)])
+    marks(extra, -0.01905, [('BH22 000222', 0.0026, 0.115, 0.006)])
+    body = cad.join('VSP_body', [body] + extra)
+    base = [lower, body, top, guard, under, barrel, front_sight, rear_sight, hinge, stock, butt, bolt, handle, trigger, rel, mag, rnd]
+    return finish(root, 'VSP', base, [casing], {
+        'muzzle': (0.372, 0, VBZ), 'eject': (0.06, -0.021, 0.034), 'aim_iron': (-0.03, 0, 0.072),
+        'mount_muzzle': (0.372, 0, VBZ), 'mount_optic': (0.045, 0, 0.0595), 'mount_rail': (0.298, 0, -0.0145), 'mount_mag': (0.1075, 0, -0.07),
+    })
+
+
+# ---------- the Keeper: a rifle, its upper one piece with a rail end to end, a side charger, a curved magazine ----------
+KBZ = 0.032
+M['olive'] = cad.material('G_Olive', (0.042, 0.047, 0.03), 0.6, 0.0, SPECKLE, 60, 0.14)
+
+
+def rifle_round(name, loose=False):
+    """A longer, bottlenecked-looking cartridge: the pistol's round drawn out."""
+    r = build_round(name, loose)
+    r.data.transform(Matrix.Diagonal((1.9, 1.05, 1.05, 1.0)))
+    return r
+
+
+def keeper_mag(name):
+    body = cad.outline('mag', [(0.096, 0.008), (0.150, 0.008), (0.152, -0.04), (0.158, -0.09), (0.168, -0.14), (0.180, -0.178), (0.124, -0.192), (0.112, -0.145), (0.104, -0.095), (0.099, -0.045)], 0.0108, M['dark'])
+    cad.cut(body, [cad.box('c', (0.06, 0.03, 0.0018), (0.13 + k * 0.012, 0, z), rot=('Y', deg(-8 - k * 6))) for k, z in enumerate((-0.03, -0.085, -0.135))])
+    done(body, 0.0007, 2)
+    pad = cad.outline('pad', [(0.123, -0.188), (0.183, -0.17), (0.189, -0.182), (0.13, -0.204), (0.12, -0.198)], 0.0128, M['poly'])
+    done(pad, 0.0015, 3)
+    return cad.origin(cad.join(name, [body, pad]), (0.125, 0, -0.09))
+
+
+def keeper():
+    root = bpy.data.objects.new('KPR', None)
+    cad.SC().objects.link(root)
+    lower = long_lower('KPR_lower', [(-0.075, 0.0), (0.22, 0.0), (0.22, -0.012), (0.158, -0.016), (0.16, -0.072), (0.153, -0.078), (0.093, -0.078), (0.089, -0.058),
+                                     (0.0835, -0.0525), (0.037, -0.0525), (0.0285, -0.049), (0.0245, -0.058), (-0.0335, -0.058), (-0.0235, -0.020), (-0.075, -0.014)],
+                       M['poly'], well=(0.093, 0.153, 0.0116, -0.085))
+    body = cad.section('KPR_body', [(-0.0185, 0.0), (0.0185, 0.0), (0.0185, 0.044), (0.013, 0.05), (-0.013, 0.05), (-0.0185, 0.044)], -0.078, 0.222, M['slide'])
+    cad.cut(body, [
+        cad.box('c', (0.27, 0.024, 0.032), (0.075, 0, 0.028)),          # the inside, where the bolt carrier runs
+        cad.box('c', (0.055, 0.02, 0.02), (0.065, -0.015, 0.03)),       # the ejection port, on the right
+        cad.box('c', (0.06, 0.0232, 0.03), (0.123, 0, 0.0)),            # the magazine's way up
+        cad.box('c', (0.095, 0.02, 0.009), (-0.03, 0.015, 0.038)),       # the side charger's slot, on the left
+    ])
+    done(body, 0.0006)
+    top = rail('KPR_rail', -0.072, 0.48, 0.05, M['dark'])
+    guard = cad.section('KPR_guard', [(-0.013, -0.006), (0.013, -0.006), (0.021, 0.004), (0.021, 0.04), (0.013, 0.05), (-0.013, 0.05), (-0.021, 0.04), (-0.021, 0.004)], 0.222, 0.48, M['olive'])
+    cuts = [cad.cyl('c', 0.011, 0.3, (0.35, 0, KBZ), seg=24)]
+    for i in range(7):                                                                        # hexagonal vents, through
+        cuts.append(cad.cyl('c', 0.0062, 0.06, (0.252 + i * 0.033, 0, KBZ - 0.004), axis='Y', seg=6))
+    cad.cut(guard, cuts)
+    done(guard, 0.0012, 2)
+    under = rail('KPR_underrail', 0.405, 0.475, -0.006, M['dark'], axis='under')
+    barrel = cad.tube('KPR_barrel', 0.0075, 0.0028, 0.5, (0.35, 0, KBZ), M['steel'], seg=32)
+    brake = cad.cyl('brake', 0.0112, 0.042, (0.621, 0, KBZ), M['dark'], seg=28)
+    cad.cut(brake, [cad.cyl('c', 0.0034, 0.06, (0.621, 0, KBZ), seg=16)] + [cad.box('c', (0.006, 0.03, 0.009), (0.608 + i * 0.011, 0, KBZ)) for i in range(3)])
+    done(barrel, 0.0003)
+    done(brake, 0.0005, 1)
+    barrel = cad.join('KPR_barrel', [barrel, brake])
+    front_sight = post('KPR_front', 0.455, 0.075, 0.0565, M['dark'])
+    rear_sight = peep('KPR_rear', -0.04, 0.075, M['dark'], 0.0565)
+    # The stock on its tube, a window for a sling, a rubber butt.
+    tube_ = done(cad.cyl('KPR_tube', 0.0145, 0.2, (-0.178, 0, 0.02), M['dark'], seg=28), 0.001, 1)
+    stock = cad.outline('KPR_stock', [(-0.19, 0.041), (-0.33, 0.043), (-0.345, 0.036), (-0.345, -0.086), (-0.33, -0.093), (-0.25, -0.062), (-0.19, -0.012)], 0.016, M['olive'])
+    cad.cut(stock, [cad.outline('c', [(-0.222, 0.012), (-0.298, 0.018), (-0.304, -0.05), (-0.29, -0.06), (-0.222, -0.022)], 0.03)])
+    done(stock, 0.002, 2)
+    butt = done(cad.outline('KPR_butt', [(-0.343, 0.044), (-0.358, 0.042), (-0.36, 0.03), (-0.36, -0.088), (-0.357, -0.097), (-0.343, -0.096)], 0.018, M['poly']), 0.003, 3)
+    carrier = cad.box('KPR_bolt', (0.10, 0.021, 0.026), (0.04, 0, 0.029), M['steel'])
+    cad.cut(carrier, [cad.box('c', (0.04, 0.03, 0.004), (0.015, 0, 0.03)), cad.cyl('c', 0.0042, 0.02, (0.09, 0, KBZ), seg=16)])
+    done(carrier, 0.0006)
+    bolt = cad.origin(carrier, (0.04, 0, 0.029))
+    # A side charger at the back of the receiver, on the left: it stays put while the carrier works.
+    arm = cad.box('KPR_handle', (0.012, 0.014, 0.007), (0.005, 0.0245, 0.038), M['dark'])
+    knob = cad.cyl('knob', 0.006, 0.013, (0.005, 0.036, 0.038), M['poly'], axis='Y', seg=20)
+    done(arm, 0.0006)
+    done(knob, 0.001, 2)
+    handle = cad.origin(cad.join('KPR_handle', [arm, knob]), (0.005, 0.0185, 0.038))
+    trigger = rename(build_trigger(), 'KPR_trigger')
+    stop, rel = build_controls()
+    bpy.data.objects.remove(stop)
+    rel = rename(rel, 'KPR_magrelease')
+    mag = keeper_mag('KPR_mag')
+    rnd = rifle_round('KPR_round')
+    seat_round(rnd, mag, (0.122, 0, 0.0125), -2)
+    casing = rifle_round('KPR_casing', loose=True)
+    casing.location = (0.05, -0.05, 0.05)
+    extra = []
+    marks(extra, 0.01855, [('KEEPER', 0.0075, 0.2, 0.006), ('KEEPER ARMS  VANCOUVER BC', 0.0024, 0.19, 0.019), ('5.56', 0.0028, 0.19, 0.0235)])
+    marks(extra, -0.01855, [('BH22 000322', 0.0026, 0.1, 0.006)])
+    body = cad.join('KPR_body', [body] + extra)
+    base = [lower, body, top, guard, under, barrel, front_sight, rear_sight, tube_, stock, butt, bolt, handle, trigger, rel, mag, rnd]
+    return finish(root, 'KPR', base, [casing], {
+        'muzzle': (0.642, 0, KBZ), 'eject': (0.065, -0.021, 0.032), 'aim_iron': (-0.04, 0, 0.075),
+        'mount_muzzle': (0.642, 0, KBZ), 'mount_optic': (0.06, 0, 0.0565), 'mount_rail': (0.44, 0, -0.0125), 'mount_mag': (0.123, 0, -0.078),
+    })
+
+
+# ---------- the Longview: a bolt-action rifle on a chassis, a round receiver, a heavy barrel, a five-round box ----------
+LBZ = 0.034
+M['sand'] = cad.material('G_Sand', (0.16, 0.13, 0.085), 0.62, 0.0, SPECKLE, 60, 0.14)
+
+
+def heavy_round(name, loose=False):
+    r = build_round(name, loose)
+    r.data.transform(Matrix.Diagonal((2.25, 1.22, 1.22, 1.0)))
+    return r
+
+
+def longview_mag(name):
+    body = done(cad.outline('mag', [(0.097, 0.006), (0.163, 0.006), (0.163, -0.07), (0.097, -0.07)], 0.0115, M['dark']), 0.0007, 2)
+    pad = done(cad.outline('pad', [(0.094, -0.068), (0.166, -0.068), (0.166, -0.082), (0.094, -0.082)], 0.0132, M['poly']), 0.002, 3)
+    return cad.origin(cad.join(name, [body, pad]), (0.13, 0, -0.035))
+
+
+def longview():
+    root = bpy.data.objects.new('LNG', None)
+    cad.SC().objects.link(root)
+    lower = long_lower('LNG_lower', [(-0.09, 0.0), (0.21, 0.0), (0.21, -0.012), (0.17, -0.016), (0.171, -0.066), (0.165, -0.071), (0.093, -0.071), (0.089, -0.058),
+                                     (0.0835, -0.0525), (0.037, -0.0525), (0.0285, -0.049), (0.0245, -0.058), (-0.0335, -0.058), (-0.0235, -0.020), (-0.09, -0.014)],
+                       M['poly'], well=(0.097, 0.163, 0.0118, -0.075))
+    base = cad.box('LNG_base', (0.2, 0.032, 0.03), (0.05, 0, 0.015), M['slide'])
+    tube_ = cad.cyl('tube', 0.017, 0.2, (0.05, 0, LBZ), M['slide'], seg=40)
+    cad.union(base, [tube_])
+    cad.cut(base, [
+        cad.cyl('c', 0.0102, 0.21, (0.04, 0, LBZ), seg=28),                    # the bolt's way
+        cad.box('c', (0.065, 0.03, 0.017), (0.0325, -0.018, LBZ + 0.004)),     # the ejection port, on the right
+        cad.box('c', (0.066, 0.0236, 0.04), (0.13, 0, 0.0)),                    # the magazine's way up
+    ])
+    done(base, 0.0006)
+    extra = []
+    marks(extra, 0.0161, [('LONGVIEW', 0.0068, 0.13, 0.004), ('KEEPER ARMS  VANCOUVER BC', 0.0022, 0.12, 0.016)])
+    marks(extra, -0.0161, [('BH22 000422', 0.0024, 0.075, 0.004)])
+    body = cad.join('LNG_body', [base] + extra)
+    top = rail('LNG_rail', -0.045, 0.14, 0.051, M['dark'])
+    fore = cad.section('LNG_fore', [(-0.016, -0.014), (0.016, -0.014), (0.02, -0.006), (0.02, 0.02), (0.014, 0.026), (-0.014, 0.026), (-0.02, 0.02), (-0.02, -0.006)], 0.17, 0.52, M['sand'])
+    cuts = [cad.cyl('c', 0.0135, 0.4, (0.36, 0, LBZ), seg=24)]
+    for i in range(6):                                                                        # long slots down each side
+        cuts.append(cad.box('c', (0.03, 0.06, 0.007), (0.21 + i * 0.048, 0, 0.007)))
+    cad.cut(fore, cuts)
+    done(fore, 0.0012, 2)
+    under = rail('LNG_underrail', 0.44, 0.51, -0.014, M['dark'], axis='under')
+    barrel = cad.tube('LNG_barrel', 0.0105, 0.0032, 0.61, (0.455, 0, LBZ), M['slide'], seg=36)
+    brake = cad.box('brake', (0.045, 0.026, 0.022), (0.782, 0, LBZ), M['dark'])
+    cad.cut(brake, [cad.cyl('c', 0.004, 0.06, (0.782, 0, LBZ), seg=16)] + [cad.box('c', (0.007, 0.04, 0.012), (0.768 + i * 0.012, 0, LBZ)) for i in range(3)])
+    done(barrel, 0.0004)
+    done(brake, 0.0008, 2)
+    barrel = cad.join('LNG_barrel', [barrel, brake])
+    front_sight = post('LNG_front', 0.735, 0.08, LBZ + 0.0105, M['dark'])
+    rear_sight = peep('LNG_rear', -0.03, 0.08, M['dark'], 0.0575)
+    # A precision stock: a thumbhole, a raised cheek rest, a thick rubber butt.
+    stock = cad.outline('LNG_stock', [(-0.09, 0.03), (-0.13, 0.04), (-0.39, 0.04), (-0.405, 0.03), (-0.405, -0.095), (-0.39, -0.103), (-0.3, -0.07), (-0.2, -0.06), (-0.12, -0.065), (-0.09, -0.02)], 0.017, M['sand'])
+    cad.cut(stock, [cad.outline('c', [(-0.115, 0.012), (-0.2, 0.014), (-0.215, -0.005), (-0.2, -0.042), (-0.125, -0.045), (-0.108, -0.02)], 0.03)])
+    done(stock, 0.002, 2)
+    cheek = done(cad.box('LNG_cheek', (0.13, 0.03, 0.012), (-0.27, 0, 0.046), M['dark']), 0.003, 3)
+    butt = done(cad.outline('LNG_butt', [(-0.403, 0.042), (-0.42, 0.04), (-0.423, 0.028), (-0.423, -0.098), (-0.42, -0.108), (-0.403, -0.106)], 0.019, M['poly']), 0.003, 3)
+    # The bolt: its body, a shroud at the back, the handle's stalk and its ball; it turns about the bore.
+    bbody = cad.cyl('LNG_bolt', 0.0095, 0.22, (0.0, 0, LBZ), M['steel'], seg=28)
+    shroud = cad.cyl('shroud', 0.0122, 0.018, (-0.115, 0, LBZ), M['dark'], seg=28)
+    stalk = cad.capsule('stalk', (-0.062, -0.012, LBZ), (-0.07, -0.042, LBZ - 0.02), 0.0035, M['steel'], seg=12, rings=3)
+    ball = cad.capsule('ball', (-0.072, -0.046, LBZ - 0.024), (-0.0721, -0.0461, LBZ - 0.0241), 0.0075, M['poly'], seg=16, rings=6)
+    for o in (bbody, shroud):
+        done(o, 0.0005, 1)
+    for o in (stalk, ball):
+        cad.smooth(o, 40)
+        cad.box_uv(o)
+    bolt = cad.origin(cad.join('LNG_bolt', [bbody, shroud, stalk, ball]), (-0.062, 0, LBZ))
+    trigger = rename(build_trigger(), 'LNG_trigger')
+    stop, rel = build_controls()
+    bpy.data.objects.remove(stop)
+    rel = rename(rel, 'LNG_magrelease')
+    mag = longview_mag('LNG_mag')
+    rnd = heavy_round('LNG_round')
+    seat_round(rnd, mag, (0.128, 0, 0.012), -1)
+    casing = heavy_round('LNG_casing', loose=True)
+    casing.location = (0.05, -0.05, 0.05)
+    base_parts = [lower, body, top, fore, under, barrel, front_sight, rear_sight, stock, cheek, butt, bolt, trigger, rel, mag, rnd]
+    return finish(root, 'LNG', base_parts, [casing], {
+        'muzzle': (0.806, 0, LBZ), 'eject': (0.03, -0.019, LBZ + 0.006), 'aim_iron': (-0.03, 0, 0.08),
+        'mount_muzzle': (0.806, 0, LBZ), 'mount_optic': (0.05, 0, 0.0575), 'mount_rail': (0.475, 0, -0.0205), 'mount_mag': (0.13, 0, -0.071),
+    })
+
+
+# ---------- the Gatekeeper: a belt-fed machine gun, a feed cover that lifts, a box hung under it, a shrouded barrel ----------
+GBZ = 0.042
+M['ember'] = cad.material('G_Ember', (0.075, 0.022, 0.018), 0.58, 0.0, SPECKLE, 60, 0.14)
+
+
+def gatekeeper_box(name):
+    box_ = cad.box('box', (0.1, 0.07, 0.12), (0.155, 0.015, -0.065), M['ember'])
+    cad.cut(box_, [cad.box('c', (0.106, 0.08, 0.002), (0.155, 0.015, -0.03))] + [cad.box('c', (0.002, 0.08, 0.07), (0.12 + i * 0.023, 0.015, -0.075)) for i in range(4)])
+    done(box_, 0.003, 2)
+    latch = done(cad.box('latch', (0.02, 0.006, 0.012), (0.155, 0.0515, -0.02), M['steel']), 0.001, 1)
+    grip_ = cad.outline('carry', [(0.125, -0.06), (0.185, -0.06), (0.185, -0.09), (0.125, -0.09)], 0.004, M['dark'], y=0.053)
+    cad.cut(grip_, [cad.outline('c', [(0.133, -0.066), (0.177, -0.066), (0.177, -0.084), (0.133, -0.084)], 0.02, y=0.053)])
+    done(grip_, 0.001, 2)
+    return cad.origin(cad.join(name, [box_, latch, grip_]), (0.155, 0.015, -0.065))
+
+
+def gatekeeper_belt(name):
+    """Five rounds and their links going up from the box's mouth into the feed port on the left."""
+    parts = []
+    for i in range(5):
+        r = heavy_round('r')
+        r.location = (0.14, 0.036, -0.002 + i * 0.012)
+        bpy.context.view_layer.update()
+        r.data.transform(r.matrix_world)
+        r.matrix_world = Matrix.Identity(4)
+        link = done(cad.box('link', (0.016, 0.004, 0.009), (0.142, 0.0295, -0.002 + i * 0.012), M['steel']), 0.0006, 1)
+        parts += [r, link]
+    return cad.origin(cad.join(name, parts), (0.14, 0.036, 0.022))
+
+
+def gatekeeper():
+    root = bpy.data.objects.new('GTK', None)
+    cad.SC().objects.link(root)
+    lower = long_lower('GTK_lower', [(-0.11, 0.0), (0.095, 0.0), (0.095, -0.012), (0.0875, -0.017), (0.088, -0.046), (0.0835, -0.0525), (0.037, -0.0525),
+                                     (0.0285, -0.049), (0.0245, -0.058), (-0.0335, -0.058), (-0.0235, -0.020), (-0.11, -0.014)], M['poly'])
+    body = cad.section('GTK_body', [(-0.024, 0.0), (0.024, 0.0), (0.024, 0.062), (0.02, 0.066), (-0.02, 0.066), (-0.024, 0.062)], -0.115, 0.22, M['slide'])
+    cad.cut(body, [
+        cad.box('c', (0.3, 0.034, 0.05), (0.06, 0, 0.034)),             # the inside
+        cad.box('c', (0.07, 0.02, 0.026), (0.14, 0.02, 0.042)),         # the feed port, on the left
+        cad.box('c', (0.05, 0.02, 0.02), (0.06, -0.02, 0.03)),          # the ejection port, on the right
+        cad.box('c', (0.11, 0.02, 0.008), (0.16, 0.02, 0.016)),         # the charging handle's slot, on the left
+    ])
+    done(body, 0.0008)
+    extra = []
+    marks(extra, 0.02405, [('GATEKEEPER', 0.0062, 0.07, 0.004), ('KEEPER ARMS  VANCOUVER BC', 0.0022, 0.06, 0.054)])
+    marks(extra, -0.02405, [('BH22 000522', 0.0024, 0.12, 0.006)])
+    body = cad.join('GTK_body', [body] + extra)
+    # The feed cover, hinged at its front: its rail and the rear sight ride on it.
+    lid = done(cad.box('GTK_cover', (0.22, 0.044, 0.014), (0.05, 0, 0.073), M['slide']), 0.001, 2)
+    top = rail('rail', -0.04, 0.13, 0.08, M['dark'])
+    rear_sight = peep('rear', -0.03, 0.1, M['dark'], 0.0865)
+    hinge = cad.cyl('hinge', 0.005, 0.046, (0.158, 0, 0.073), M['steel'], axis='Y', seg=16)
+    cad.box_uv(hinge)
+    cover = cad.origin(cad.join('GTK_cover', [lid, top, rear_sight, hinge]), (0.158, 0, 0.073))
+    guard = cad.section('GTK_guard', [(-0.017, -0.03), (0.017, -0.03), (0.022, -0.022), (0.022, 0.02), (-0.022, 0.02), (-0.022, -0.022)], 0.22, 0.45, M['ember'])
+    cad.cut(guard, [cad.box('c', (0.024, 0.06, 0.006), (0.245 + i * 0.04, 0, -0.01)) for i in range(5)])
+    done(guard, 0.0012, 2)
+    under = rail('GTK_underrail', 0.37, 0.44, -0.03, M['dark'], axis='under')
+    shroud = cad.tube('GTK_shroud', 0.024, 0.0205, 0.25, (0.345, 0, GBZ), M['dark'], seg=32)
+    cad.cut(shroud, [cad.box('c', (0.013, 0.06, 0.009), (0.25 + i * 0.03, 0, GBZ)) for i in range(7)] +
+            [cad.box('c', (0.013, 0.009, 0.06), (0.265 + i * 0.03, 0, GBZ)) for i in range(6)])
+    done(shroud, 0.0005, 1)
+    barrel = cad.tube('GTK_barrel', 0.0115, 0.0035, 0.48, (0.44, 0, GBZ), M['steel'], seg=32)
+    hider = cad.cyl('hider', 0.0125, 0.05, (0.705, 0, GBZ), M['dark'], seg=24)
+    cad.cut(hider, [cad.cyl('c', 0.0075, 0.06, (0.705, 0, GBZ), seg=20)] + [cad.box('c', (0.032, 0.003, 0.04), (0.715, 0, GBZ), rot=('X', k * math.pi / 3)) for k in range(3)])
+    done(barrel, 0.0004)
+    done(hider, 0.0005, 1)
+    barrel = cad.join('GTK_barrel', [barrel, hider])
+    tower = done(cad.box('GTK_tower', (0.016, 0.014, 0.034), (0.655, 0, GBZ + 0.0115 + 0.017), M['dark']), 0.001, 2)
+    front_sight = post('GTK_front', 0.655, 0.1, GBZ + 0.0115 + 0.034, M['dark'])
+    # The bipod, folded along the barrel.
+    clamp = cad.tube('GTK_bipod', 0.0145, 0.0115, 0.016, (0.48, 0, GBZ), M['dark'], seg=24)
+    legs = [cad.capsule('leg', (0.49, s * 0.012, GBZ - 0.016), (0.63, s * 0.012, GBZ - 0.012), 0.0042, M['dark'], seg=12, rings=3) for s in (1, -1)]
+    feet = [cad.capsule('foot', (0.632, s * 0.012, GBZ - 0.013), (0.64, s * 0.016, GBZ - 0.019), 0.005, M['poly'], seg=12, rings=3) for s in (1, -1)]
+    for o in [clamp] + legs + feet:
+        cad.smooth(o, 40)
+        cad.box_uv(o)
+    bipod = cad.join('GTK_bipod', [clamp] + legs + feet)
+    stock = cad.outline('GTK_stock', [(-0.115, 0.06), (-0.4, 0.05), (-0.415, 0.04), (-0.415, -0.09), (-0.4, -0.1), (-0.3, -0.07), (-0.2, -0.04), (-0.115, -0.02)], 0.018, M['ember'])
+    cad.cut(stock, [cad.outline('c', [(-0.15, 0.03), (-0.33, 0.03), (-0.34, -0.03), (-0.2, -0.012), (-0.15, -0.004)], 0.03)])
+    done(stock, 0.002, 2)
+    butt = done(cad.outline('GTK_butt', [(-0.413, 0.052), (-0.43, 0.05), (-0.433, 0.038), (-0.433, -0.093), (-0.43, -0.103), (-0.413, -0.103)], 0.02, M['poly']), 0.003, 3)
+    arm = cad.box('GTK_handle', (0.01, 0.016, 0.007), (0.205, 0.03, 0.016), M['dark'])
+    knob = cad.cyl('knob', 0.006, 0.014, (0.205, 0.04, 0.016), M['poly'], axis='Y', seg=20)
+    done(arm, 0.0006)
+    done(knob, 0.001, 2)
+    handle = cad.origin(cad.join('GTK_handle', [arm, knob]), (0.205, 0.024, 0.016))
+    trigger = rename(build_trigger(), 'GTK_trigger')
+    mag = gatekeeper_box('GTK_mag')
+    rnd = heavy_round('GTK_round')
+    seat_round(rnd, mag, (0.14, 0.036, -0.014), 0)
+    belt = gatekeeper_belt('GTK_belt')
+    casing = heavy_round('GTK_casing', loose=True)
+    casing.location = (0.05, -0.05, 0.05)
+    base = [lower, body, cover, guard, under, shroud, barrel, tower, front_sight, bipod, stock, butt, handle, trigger, mag, rnd, belt]
+    return finish(root, 'GTK', base, [casing], {
+        'muzzle': (0.73, 0, GBZ), 'eject': (0.06, -0.025, 0.03), 'aim_iron': (-0.03, 0, 0.1),
+        'mount_muzzle': (0.73, 0, GBZ), 'mount_optic': (0.045, 0, 0.0865), 'mount_rail': (0.405, 0, -0.0365), 'mount_mag': (0.155, 0.015, -0.005),
+    })
+
+
+FILES = {'pistol': 'p22', 'smg': 'vesper', 'rifle': 'keeper', 'sniper': 'longview', 'lmg': 'gatekeeper'}
+BUILD = {'pistol': pistol, 'smg': vesper, 'rifle': keeper, 'sniper': longview, 'lmg': gatekeeper}
+root = BUILD[GUN]()
 
 if PREVIEW:
     scn = bpy.context.scene
@@ -364,13 +841,15 @@ if PREVIEW:
         scn.view_settings.view_transform = 'AgX'
     except TypeError:
         pass
+    # A long gun is looked at from further off, about its middle.
+    k, mid = (1.0, Vector((0.06, 0, -0.03))) if GUN == 'pistol' else (2.6, Vector((0.05 + (0.15 if GUN in ('sniper', 'rifle') else 0.0), 0, 0.0)))
     for name, energy, loc, size in (('key', 14, (0.15, 0.35, 0.4), 0.5), ('fill', 5, (-0.35, 0.3, 0.1), 0.6), ('rim', 16, (0.1, -0.4, 0.3), 0.4), ('under', 2, (0.1, 0.1, -0.4), 0.6)):
         l = bpy.data.lights.new(name, 'AREA')
-        l.energy, l.size = energy, size
+        l.energy, l.size = energy * k * k, size * k
         o = bpy.data.objects.new(name, l)
         cad.SC().objects.link(o)
-        o.location = loc
-        o.rotation_euler = (Vector((0.06, 0, -0.03)) - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
+        o.location = Vector(loc) * k
+        o.rotation_euler = (mid - o.location).to_track_quat('-Z', 'Y').to_euler()
     cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam'))
     cad.SC().objects.link(cam)
     cam.data.lens = 85
@@ -380,20 +859,30 @@ if PREVIEW:
     def shot(tag, eye, at=(0.06, 0, -0.035), show=()):
         for o in ATT:
             o.hide_render = not any(o.name.endswith(s) for s in show)
-        bpy.data.objects['P22_mag'].hide_render = 'mag' in show
-        bpy.data.objects['P22_round'].hide_render = 'mag' in show
+        if GUN == 'pistol':
+            bpy.data.objects['P22_mag'].hide_render = 'mag' in show
+            bpy.data.objects['P22_round'].hide_render = 'mag' in show
         cam.location = eye
         cam.rotation_euler = (Vector(at) - Vector(eye)).to_track_quat('-Z', 'Y').to_euler()
         scn.render.filepath = f'{PREVIEW}-{tag}.png'
         bpy.ops.render.render(write_still=True)
-    bpy.data.objects['P22_casing'].hide_render = True
-    shot('left', (0.06, 0.62, 0.02))
-    shot('right', (0.06, -0.62, 0.02))
-    shot('3q', (-0.28, 0.42, 0.2))
-    shot('top', (0.06, 0.12, 0.6), (0.06, 0, 0))
-    shot('rear', (-0.5, 0.06, 0.1), (0.0, 0, 0.0))
-    shot('kit', (-0.3, 0.5, 0.2), (0.12, 0, -0.01), show=('light', 'suppressor', 'holo', 'mag', 'round_ext'))
-    shot('scope', (-0.3, 0.5, 0.25), (0.06, 0, 0.01), show=('scope',))
+    for o in bpy.data.objects:
+        if o.name.endswith('_casing'):
+            o.hide_render = True
+    if GUN == 'pistol':
+        shot('left', (0.06, 0.62, 0.02))
+        shot('right', (0.06, -0.62, 0.02))
+        shot('3q', (-0.28, 0.42, 0.2))
+        shot('top', (0.06, 0.12, 0.6), (0.06, 0, 0))
+        shot('rear', (-0.5, 0.06, 0.1), (0.0, 0, 0.0))
+        shot('kit', (-0.3, 0.5, 0.2), (0.12, 0, -0.01), show=('light', 'suppressor', 'holo', 'mag', 'round_ext'))
+        shot('scope', (-0.3, 0.5, 0.25), (0.06, 0, 0.01), show=('scope',))
+    else:
+        c, d = tuple(mid), (2.4 if GUN in ('sniper', 'rifle', 'lmg') else 1.8)
+        shot('left', (mid.x, d, 0.02), c)
+        shot('right', (mid.x, -d, 0.02), c)
+        shot('3q', (mid.x - 0.45 * d, 0.62 * d, 0.3 * d), c)
+        shot('front', (mid.x + 0.8 * d, -0.35 * d, 0.16 * d), c)
     for o in bpy.data.objects:
         o.hide_render = False
     for n in ('key', 'fill', 'rim', 'under', 'cam'):
@@ -402,6 +891,7 @@ if PREVIEW:
 out = ROOT + '/blender/build'
 os.makedirs(out, exist_ok=True)
 bpy.ops.object.select_all(action='SELECT')
-bpy.ops.export_scene.gltf(filepath=out + '/p22.glb', export_format='GLB', use_selection=True, export_yup=True, export_apply=True,
+path = f'{out}/{FILES[GUN]}.glb'
+bpy.ops.export_scene.gltf(filepath=path, export_format='GLB', use_selection=True, export_yup=True, export_apply=True,
                           export_image_format='WEBP', export_vertex_color='ACTIVE', export_all_vertex_colors=False, export_active_vertex_color_when_no_material=True)
-print('exported', out + '/p22.glb', os.path.getsize(out + '/p22.glb'), 'bytes')
+print('exported', path, os.path.getsize(path), 'bytes')

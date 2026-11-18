@@ -3,7 +3,7 @@ import { gunSound, SR } from './pure/gunsound.js';
 import { makeBank } from './pure/gunbank.js';
 
 // The gun's sounds are made in pure/gunsound.js and played as samples at these levels against the shot; the rest are live.
-const LEVEL = { shot: 0.8, shotQuiet: 0.8, dry: 0.9, magRelease: 0.8, magOut: 0.9, magDrop: 0.7, magIn: 1, slideRelease: 1, slideHome: 0.9, slidePull: 0.9, grab: 0.8, handle: 0.8, cloth: 0.7, draw: 0.8 };
+const LEVEL = { shot: 0.8, shotQuiet: 0.8, dry: 0.9, magRelease: 0.8, magOut: 0.9, magDrop: 0.7, magIn: 1, slideRelease: 1, slideHome: 0.9, slidePull: 0.9, grab: 0.8, handle: 0.8, cloth: 0.7, draw: 0.8, boltOpen: 0.9, boltClose: 0.95, coverOpen: 0.85, coverClose: 1, beltIn: 0.85 };
 
 // The samples become buffers any sound card can play, so one copy serves.
 function toBuffer(L, R, ctx) {

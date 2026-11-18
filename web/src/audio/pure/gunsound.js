@@ -3,6 +3,8 @@ import { makeRng } from './rng.js';
 // Made sample by sample, nothing recorded, with the hall already in them; each gun sets its own in GUN_SOUNDS.
 export const SR = 48000;
 
+// What a gun with a slide or a charging handle is heard doing (the clips cue these names).
+const HANDLED = ['shot', 'shotQuiet', 'dry', 'magRelease', 'magOut', 'magDrop', 'magIn', 'slideRelease', 'slideHome', 'slidePull', 'grab', 'handle', 'cloth', 'draw'];
 // The P-22: a 9 mm-ish crack and blast, a light slide. The other guns give their own numbers here.
 export const GUN_SOUNDS = {
   pistol: {
@@ -16,6 +18,54 @@ export const GUN_SOUNDS = {
     quiet: { crack: 0.06, blast: 0.2, lp: 1100, hall: 0.35 },
     // The action's own metal: the slide (heavy), the magazine and its catch (light), the frame (polymer, dull).
     slide: [1780, 2610, 3720, 5230], latch: [3150, 4420, 6900], frame: [880, 1650, 2440],
+    sounds: HANDLED,
+  },
+  // The Vesper: the same round from a heavier gun with a short barrel: a duller crack, a quick blast, its bolt clacking
+  // in the steel receiver at every shot. Its handle's sounds take the pistol's slide names (the clips cue those).
+  smg: {
+    crack: 0.75,
+    blast: { lp: 2900, body: 640, q: 0.9, decay: 0.034, level: 1 },
+    thump: { from: 105, to: 40, decay: 0.07, level: 0.7 },
+    cycle: [{ at: 0.01, f: [2650, 4150, 5900], d: 0.016, level: 0.24 }, { at: 0.034, f: [1950, 3150, 4800, 6600], d: 0.022, level: 0.3 }],
+    hall: { rt: 1.1, level: 0.3, slap: 0.18 },
+    quiet: { crack: 0.06, blast: 0.18, lp: 1000, hall: 0.35 },
+    slide: [1420, 2290, 3380, 4710], latch: [2860, 4060, 6300], frame: [760, 1420, 2210],
+    sounds: HANDLED,
+  },
+  // The Keeper: a rifle round, so the sharpest crack and the biggest, brightest blast; a long carrier's clank; a longer hall.
+  rifle: {
+    crack: 1,
+    blast: { lp: 3500, body: 820, q: 0.75, decay: 0.05, level: 1 },
+    thump: { from: 125, to: 44, decay: 0.09, level: 0.8 },
+    cycle: [{ at: 0.012, f: [2200, 3580, 5160, 7050], d: 0.022, level: 0.2 }, { at: 0.045, f: [1720, 2940, 4380], d: 0.03, level: 0.26 }],
+    hall: { rt: 1.45, level: 0.33, slap: 0.18 },
+    quiet: { crack: 0.1, blast: 0.24, lp: 1200, hall: 0.35 },
+    slide: [1310, 2140, 3170, 4420], latch: [2980, 4230, 6600], frame: [690, 1310, 2050],
+    sounds: HANDLED,
+  },
+  // The Longview: a heavy round from a long barrel: a deep blast and a long boom down the hall, nothing cycling after
+  // it; the bolt worked by hand is the loudest metal it makes.
+  sniper: {
+    crack: 1,
+    blast: { lp: 2700, body: 560, q: 0.7, decay: 0.075, level: 1.15 },
+    thump: { from: 92, to: 34, decay: 0.14, level: 1 },
+    cycle: [],
+    hall: { rt: 1.9, level: 0.4, slap: 0.2 },
+    quiet: { crack: 0.12, blast: 0.26, lp: 1100, hall: 0.4 },
+    slide: [1180, 1960, 2900, 4150], latch: [2620, 3880, 6020], frame: [610, 1180, 1880],
+    sounds: ['shot', 'shotQuiet', 'dry', 'magRelease', 'magOut', 'magDrop', 'magIn', 'boltOpen', 'boltClose', 'grab', 'handle', 'cloth', 'draw'],
+  },
+  // The Gatekeeper: a full-power round at a steady clip, a heavy bolt slamming in a big receiver, a long hall; the
+  // box is heavy metal, the cover a spring-loaded lid.
+  lmg: {
+    crack: 0.95,
+    blast: { lp: 2600, body: 590, q: 0.75, decay: 0.06, level: 1.1 },
+    thump: { from: 98, to: 36, decay: 0.11, level: 0.9 },
+    cycle: [{ at: 0.008, f: [1650, 2700, 3950], d: 0.026, level: 0.3 }, { at: 0.04, f: [1280, 2140, 3300, 4700], d: 0.03, level: 0.34 }],
+    hall: { rt: 1.7, level: 0.36, slap: 0.19 },
+    quiet: { crack: 0.12, blast: 0.26, lp: 1100, hall: 0.38 },
+    slide: [1100, 1820, 2710, 3880], latch: [2400, 3560, 5600], frame: [520, 1000, 1640],
+    sounds: [...HANDLED, 'coverOpen', 'coverClose', 'beltIn'],
   },
 };
 
@@ -170,12 +220,31 @@ const SOUNDS = {
   handle: (g, rng) => finish(small(rng, [[ring(rng, g.frame, 0.01), 0, 0.5], [cloth(rng, 0.15, 0.5), 0, 1]], 0.2), 0.22),
   cloth: (g, rng) => finish(small(rng, [[cloth(rng, 0.3), 0, 1]], 0.35, 0.4, 0.05), 0.2),
   draw: (g, rng) => finish(small(rng, [[cloth(rng, 0.22), 0, 1], [ring(rng, g.frame, 0.008), 0.18, 0.6], [ring(rng, g.latch, 0.003), 0.2, 0.25]], 0.32, 0.4, 0.06), 0.3),
+  // A feed cover: its latch let go and the lid swinging up on its spring; then slapped down and caught.
+  coverOpen: (g, rng) => finish(small(rng, [[ring(rng, g.latch, 0.006), 0, 0.7], [burst(rng, 0.1, 0.02, 0.04, [['bp', 1500, 1.2]]), 0.02, 0.5], [ring(rng, g.slide.map(f => f * 0.8), 0.02), 0.11, 0.5]], 0.35, 0.5, 0.1), 0.45),
+  coverClose: (g, rng) => finish(small(rng, [[burst(rng, 0.04, 0.0006, 0.01, [['lp', 700]]), 0, 1.3], [thump(170, 85, 0.03), 0, 0.6], [ring(rng, g.slide, 0.024), 0.002, 0.8], [ring(rng, g.latch, 0.005), 0.03, 0.6]], 0.4, 0.6, 0.14), 0.7, 1.1),
+  // The belt laid in the tray: links rattling one after another.
+  beltIn: (g, rng) => {
+    const parts = [];
+    for (let i = 0; i < 6; i++) parts.push([ring(rng, g.latch.map(f => f * (0.9 + 0.2 * rng.next())), 0.004), 0.02 + i * 0.028 + rng.next() * 0.01, 0.5 - i * 0.05]);
+    return finish(small(rng, [...parts, [burst(rng, 0.2, 0.01, 0.07, [['bp', 3200, 1.5]]), 0, 0.35]], 0.35), 0.4);
+  },
+  // A bolt worked by hand: up off its lugs with a click, drawn back on a long rasp to its stop.
+  boltOpen: (g, rng) => {
+    const rasp = burst(rng, 0.2, 0.04, 0.09, [['bp', 2900, 1.8]]);
+    return finish(small(rng, [[ring(rng, g.latch, 0.005), 0, 0.7], [rasp, 0.08, 0.8], [ring(rng, g.slide, 0.014), 0.25, 0.6]], 0.42, 0.5, 0.1), 0.5);
+  },
+  // Forward, a round stripped into the chamber, then turned down and locked.
+  boltClose: (g, rng) => {
+    const rasp = burst(rng, 0.14, 0.02, 0.06, [['bp', 2500, 1.6]]);
+    return finish(small(rng, [[rasp, 0, 0.7], [ring(rng, g.slide, 0.02), 0.12, 0.9], [thump(200, 110, 0.02), 0.12, 0.4], [ring(rng, g.latch, 0.006), 0.2, 0.6]], 0.4, 0.5, 0.1), 0.55);
+  },
 };
 export const SOUND_NAMES = Object.keys(SOUNDS);
 // How many takes of each sound, so a run of shots never sounds like one sample played again.
 export const TAKES = { shot: 3, shotQuiet: 2, magDrop: 2 };
 
-const soundsOf = g => g.sounds || SOUND_NAMES;
+const soundsOf = g => g.sounds;
 // One take of a sound for a gun: two channels at SR.
 export function gunSound(name, gunId = 'pistol', take = 0) {
   const g = Object.hasOwn(GUN_SOUNDS, gunId) ? GUN_SOUNDS[gunId] : null, make = Object.hasOwn(SOUNDS, name) ? SOUNDS[name] : null;

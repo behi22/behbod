@@ -9,7 +9,8 @@ import { makeHud } from './hud.js';
 import { makeFlashlight } from './flashlight.js';
 import { makeBolts } from './bolts.js';
 import { BOLT, boltAt, reach, strikes } from '../pure/bolts.js';
-import { stats, damageAt, nextGun } from '../pure/arsenal.js';
+import { stats, damageAt, nextGun, gunsFor, GUN } from '../pure/arsenal.js';
+import { RIGS } from '../pure/rigs.js';
 import { newWeapon, step as stepWeapon, spreadNow, scatter } from '../pure/weapon.js';
 import { STAGES, STAGE, DIFFICULTIES, openStages, totalStars, starScores } from '../pure/stages.js';
 import { newRun, step as stepRun, fired, hit as hitRun, quit as quitRun, parry } from '../pure/rangegame.js';
@@ -28,7 +29,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   let room = null, gun = null, fx = null, targets = null, loading = null, hud = null;
   let active = false, state = 'off', enterK = 0, baseFov = camera.fov;
   let along = 0, yaw = 0, pitch = 0, duck = 0, lastYaw = 0, lastPitch = 0, alongV = 0;
-  let s = stats('pistol', []), w = newWeapon(s), run = null, countT = 0, countN = 0;
+  let held = 'pistol', s = stats(held, []), w = newWeapon(s), run = null, countT = 0, countN = 0;
   const pick = { stage: 'warmup', difficulty: 'normal' };
   let aimHeld = false;
   const input = { fire: false, aim: false, reload: false, left: false, right: false, crouch: false, step: 0 };
@@ -47,7 +48,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     loading ||= (async () => {
       const r = await loadRangeRoom(meta, engine.renderer, { small: coarse });
       await breathe();
-      const g = await makeGun({ env: r.env, onCue: (name, id) => sfx?.gunCue(name, id) });
+      const g = await makeGun({ env: r.env, onCue: cue });
       await breathe();
       // The bench's top and the floor are what a spent case lands on.
       const b0 = b2t(R.strafe[0] - 1, R.line[1] - 0.3, 0), b1 = b2t(R.strafe[1] + 1, R.line[1] + 0.3, 0);
@@ -74,7 +75,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       room = r; gun = g;
       engine.addLayer({ scene: r.scene, under: true, on: () => active || visible() });
       engine.addLayer({ scene: r.stage, under: true, on: () => active || visible() });
-      engine.addLayer({ scene: g.scene, camera: g.camera, clearDepth: true, on: () => active });
+      layer(guns.pistol = g);
       drawBoard();
       onReady?.(r);
       return r;
@@ -82,6 +83,50 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     // A fetch that failed can be tried again (the bookcase asks each time it is pulled).
     loading.catch(() => { loading = null; });
     return loading;
+  }
+
+  // ---------- the guns in the hands ----------
+  // Each gun is fetched the first time it is taken (the pistol with the rooms), its shaders made ready before it shows.
+  const guns = {}, fetching = {};
+  const cue = (name, id) => (name === 'eject' ? throwCase(camera.getWorldDirection(fwd)) : sfx?.gunCue(name, id));
+  // The spent case, out of the port to the right and a little back.
+  const fwd = new THREE.Vector3();
+  function throwCase(ahead) {
+    if (!active) return;
+    gun.axes(v1, v3);
+    const at = gun.inRoom(gun.anchor.eject, camera, v2).clone();
+    const vel = v1.multiplyScalar(1.5 + Math.random() * 0.9).addScaledVector(v3, 1.3 + Math.random() * 0.8).addScaledVector(ahead, -0.5 - Math.random() * 0.4);
+    fx.casing(gun.newCasing(), at, vel, new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(40));
+  }
+  const layer = g => engine.addLayer({ scene: g.scene, camera: g.camera, clearDepth: true, on: () => active && gun === g });
+  function loadGun(id) {
+    fetching[id] ||= (async () => {
+      const g = await makeGun({ env: room.env, id, onCue: cue });
+      await breathe();
+      await prepare(engine.renderer, g.scene, g.camera);
+      layer(guns[id] = g);
+      return g;
+    })();
+    fetching[id].catch(e => { delete fetching[id]; console.warn('[range] gun not loaded', id, e); });
+    return fetching[id];
+  }
+  // The guns a visitor may pick: those the stars have earned (or every built one with ?allguns, for trying them out).
+  // Item 16's gun wall takes this over.
+  const allGuns = typeof location !== 'undefined' && new URLSearchParams(location.search).has('allguns');
+  const owned = () => (allGuns ? Object.keys(GUN) : gunsFor(totalStars(progress.rangeBest()))).filter(id => RIGS[id]);
+  // The gun put in the hands, between runs: drawn fresh, the old one's sounds let go.
+  let asked = 0;
+  async function take(id) {
+    if (!RIGS[id] || !room || (active && state !== 'menu' && state !== 'over')) return false;
+    // Of two guns picked while the first is still coming, the later pick wins.
+    const mine = ++asked, g = guns[id] || await loadGun(id);
+    if (mine !== asked || (active && state !== 'menu' && state !== 'over')) return false;
+    held = id; gun = g;
+    s = stats(id, []); w = newWeapon(s);
+    g.setAttachments([]); g.setLights(lights);
+    if (look) g.setLook(look());
+    if (active) { g.draw(); sfx?.gunTake?.(id); }
+    return true;
   }
 
   // ---------- the board by the line ----------
@@ -130,9 +175,12 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     }
     const seg = el('div', 'rg-seg');
     for (const [id, d] of Object.entries(DIFFICULTIES)) { const bt = el('button', pick.difficulty === id ? 'on' : '', d.name); bt.addEventListener('click', () => { pick.difficulty = id; menu(); }); seg.append(bt); }
+    const mine = owned(), kit = mine.length > 1 ? el('div', 'rg-seg rg-guns') : null;
+    for (const id of kit ? mine : []) { const bt = el('button', held === id ? 'on' : '', GUN[id].name); bt.addEventListener('click', () => { bt.disabled = true; take(id).then(() => { if (state === 'menu') menu(); }, () => { bt.disabled = false; }); }); kit.append(bt); }
     const stars = totalStars(best), next = nextGun(stars);
     hud.card([el('h2', '', 'THE RANGE'), el('h3', '', 'Pick a stage'), el('p', '', `${stars} of ${STAGES.length * 3} stars. Stars unlock guns${next ? `: ${next.need} more for the ${next.name} (${next.kind.toLowerCase()})` : ''}. On Hard the drones shoot back: step aside, duck or shoot the bolt. The other guns are still being built.`), list, seg],
       [['Start', () => start(pick.stage, pick.difficulty), true], ['Leave', () => api.exit()]]);
+    if (kit) seg.after(kit);
     hud.set({ playing: false });
   }
   function start(stage, difficulty, seed) {
@@ -226,7 +274,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
 
   // ---------- shooting ----------
   function shoot(ev) {
-    sfx?.gunShot(ev.loud);
+    sfx?.gunShot(ev.loud, s.id);
     if (run && state === 'play') fired(run);
     // The shot leaves along the eye's line, off by its share of the spread.
     const [sx, sy] = scatter(ev.spread);
@@ -259,11 +307,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       fx.impact(wall.point, v3, steel ? 'steel' : 'concrete');
       sfx?.thud(wall.point, steel);
     }
-    // The spent case, out of the port to the right and a little back.
-    gun.axes(v1, v3);
-    const at = gun.inRoom(gun.anchor.eject, camera, v2).clone();
-    const vel = v1.multiplyScalar(1.5 + Math.random() * 0.9).addScaledVector(v3, 1.3 + Math.random() * 0.8).addScaledVector(dir, -0.5 - Math.random() * 0.4);
-    fx.casing(gun.newCasing(), at, vel, new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(40));
+    // A bolt worked by hand throws its case when it is drawn back, not at the shot.
+    if (gun.spec.action !== 'turn') throwCase(dir);
     // The kick: the view jumps and mostly comes back; a little of the climb stays, so a string of shots walks upward.
     const calm = 1 - 0.35 * gun.aim;
     kick(kickUp, rad(ev.up) * calm * Math.sqrt(kickUp.k) * Math.E); kick(kickSide, rad(ev.side) * calm * Math.sqrt(kickSide.k) * Math.E);
@@ -340,7 +385,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       release();
       from.p.copy(camera.position); from.q.copy(camera.quaternion);
       engine.showBackground(false);
-      s = stats('pistol', []); w = newWeapon(s); gun.setAttachments([]); gun.draw();
+      s = stats(held, []); w = newWeapon(s); gun.setAttachments([]); gun.draw();
       if (look) gun.setLook(look());
       hud = makeHud({ coarse, onPad });
       hud.show();
@@ -463,6 +508,10 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     start(stage = 'warmup', difficulty = 'normal', seed) { if (active) start(stage, difficulty, seed); },
     get debug() { return { state, run, weapon: w, stats: s, targets: targets?.live().map(o => ({ id: o.id, kind: o.kind })) || [], fx: fx?.counts, aim: gun?.aim, along, duck }; },
     get gun() { return gun; },
+    // The gun in the hands and the ones on offer; take(id) swaps it between runs (for the checks, any built gun).
+    get held() { return held; },
+    get owned() { return owned(); },
+    take,
   };
   return api;
 }
