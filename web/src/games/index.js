@@ -4,8 +4,8 @@ import { injectStyles, h, button } from './ui.js';
 const GAMES = {
   // The arcade cabinet's own menu: its two games side by side.
   arcade: { title: 'ARCADE', menu: [['skills', 'Skills Shooter', 'The Claude game. Shoot the skills, dodge the bugs, catch Claude.'], ['striker', 'Striker 22', 'Five penalties to take, five to save, then sudden death.']] },
-  // The TV's menu: join the live match in either role, or put my videos on instead.
-  tv: { title: 'MATCH NIGHT', menu: [['match-striker', 'Join as striker', 'Ninety seconds up front for BEHI FC. Score what you can.'], ['match-keeper', 'Join as keeper', 'Ninety seconds in goal. The bots are coming.'], ['@videos', 'Watch my videos', 'Switch the TV over to my channel.']] },
+  // The TV's menu: join the live match in either role, or put my videos or my film on instead.
+  tv: { title: 'MATCH NIGHT', menu: [['match-striker', 'Join as striker', 'Ninety seconds up front for BEHI FC. Score what you can.'], ['match-keeper', 'Join as keeper', 'Ninety seconds in goal. The bots are coming.'], ['@videos', 'Watch my videos', 'Switch the TV over to my channel.'], ['@film', 'Watch my film', 'Two minutes: how I got here, from day one.']] },
   'match-striker': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'striker') })) },
   'match-keeper': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'keeper') })) },
   skills: { title: 'SKILLS SHOOTER', load: () => import('./skills.js') },

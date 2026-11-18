@@ -23,6 +23,7 @@ import { makePrinter } from './src/printer.js';
 import { makeRubik } from './src/rubik.js';
 import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
+import { makeFilm } from './src/film.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -238,6 +239,7 @@ screens.command('music', (say, arg) => {
   if (!sound.on) { say('sound is off. turn it on at the top right.'); return; }
   audio.music.play(r.id); world.setRecord(true); earn('record'); say(`now playing: ${r.title}`);
 });
+screens.command('film', say => { say('rolling the film.'); playFilm(); });
 addEventListener('loft:cmd', e => {
   if (e.detail.cmd !== 'whoami' || me.mosaicUnlocked) return;
   me.unlockMosaic();
@@ -436,8 +438,8 @@ function act(it) {
   if (it.id === 'about' || it.id === 'guestbook' || it.id === 'mailbox') return panels[it.id]();
   if (it.id === 'printer' && printer) return panels.printer(printer);
   if (it.id === 'secret_room' && progress.unlocked().includes('vault')) { earn('vault'); return toast('The secret room is yours. It opens in the next build.'); }
-  // The TV shows the live match: join it as striker or keeper, or switch to my videos, which it flips through in turn.
-  if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); } });
+  // The TV shows the live match: join it as striker or keeper, switch to my videos (it flips through them in turn), or play my film.
+  if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
   if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
   toast(SAY[it.id] || it.label);
 }
@@ -464,6 +466,21 @@ function playVideo(i) {
   addEventListener('keydown', onKey, true);
   box.append(frame, close);
   document.body.append(box);
+}
+// My film over the room. The house goes quiet and the screening wall pauses while it plays; with the house's sound
+// switched off it starts muted, and its own controls can turn it up.
+const film = makeFilm();
+function playFilm(closeLabel, muted = !sound.on) {
+  if (film.playing) return Promise.resolve();
+  keys.clear(); route = null;
+  liveVideo.pause(); hush(true);
+  return film.open({ closeLabel, muted }).then(() => { hush(false); liveVideo.resume(); });
+}
+function hush(quiet) {
+  if (!sound.ctx) return;
+  const g = sound.master.gain, t = sound.ctx.currentTime;
+  g.cancelScheduledValues(t);
+  if (quiet) g.setValueAtTime(0, t); else g.setTargetAtTime(sound.on ? 0.9 : 0, t, 0.3);
 }
 
 // ---------- input ----------
@@ -737,6 +754,9 @@ const qualityNotice = makeQualityNotice({ seen: () => !!store.get('home.qnote'),
 // The automatic quality moves to another level (the judge in the frame loop calls this).
 function autoTierTo(next) { qualityNotice.stepped(tierName, next); tierName = next; engine.setTier(next); }
 function step() {
+  // While my film plays over the room, the room stops drawing so a weak phone spends itself on the film; the pause
+  // must not count as slow frames, or the automatic quality would step down.
+  if (film.playing) { clock.getDelta(); lastFrame = performance.now(); frameTimes = []; requestAnimationFrame(step); return; }
   const dt = Math.min(clock.getDelta(), 1 / 20), now = performance.now(), t = now / 1000;
   renderer.info.reset();
   const hs = mode === 'walk' ? walk(dt, now) : 0;
@@ -838,13 +858,18 @@ camera.position.copy(start.p); camLook.copy(start.l);
 $('note').textContent = 'Getting the room ready';
 await engine.warmUp();
 $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
+function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }
 $('enter').classList.add('ready');
-$('enter').addEventListener('click', () => { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); });
+$('film').classList.add('ready');
+$('enter').addEventListener('click', goIn);
+// The film first, then in. The house's sound is started by this click (browsers allow sound only from one) and waits, silent, for the film to end.
+$('film').addEventListener('click', () => { if (film.playing) return; sound.start(); playFilm('Skip', false).then(goIn); });
 if (params.has('auto')) { $('gate').classList.add('gone'); qualityNotice.opened(); rangeLater(); }
 window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, printer, rubik, act: id => act(things.items.find(i => i.id === id)), stand,
   walkTo: (x, y, z) => walkTo(b2t(x, y, z)), goTo, chair, get route() { return route ? route.points.length : 0; }, wardrobe,
   get near() { return near?.id ?? null; }, get facing() { return facing; },
   get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, autoTierTo, get physics() { return physName; },
   get weights() { return me.weights; }, get headVisible() { return me.root.visible; }, get headMeshesShown() { return me.headMeshesShown; },
-  set yaw(v) { yaw = v; lastLook = performance.now(); }, screens, deskView, screenCentre: () => b2t(...meta.screens.main.center) };
+  set yaw(v) { yaw = v; lastLook = performance.now(); }, screens, deskView, screenCentre: () => b2t(...meta.screens.main.center),
+  playFilm, get filmPlaying() { return film.playing; }, get houseGain() { return sound.ctx ? sound.master.gain.value : null; } };
 requestAnimationFrame(step);
