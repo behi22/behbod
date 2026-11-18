@@ -21,13 +21,14 @@ export const GUNS = [
 export const GUN = Object.fromEntries(GUNS.map(g => [g.id, g]));
 
 // What each attachment changes. The long scope magnifies by `zoom`, per gun; the holo sight does not magnify (the gun
-// keeps its own aimed zoom) but comes up faster and steadies the hip.
+// keeps its own aimed zoom) but comes up faster and steadies the hip. `ads` is how much slower (over 1) or quicker the
+// gun comes up to the aim with it on: weight out front slows it.
 export const ATTACHMENTS = {
-  light: { name: 'Flashlight', slot: 'rail' },
-  suppressor: { name: 'Suppressor', slot: 'muzzle', damage: 0.94, loud: 0.22, flash: 0.15, kick: 0.9 },
+  light: { name: 'Flashlight', slot: 'rail', ads: 1.04 },
+  suppressor: { name: 'Suppressor', slot: 'muzzle', damage: 0.94, loud: 0.22, flash: 0.15, kick: 0.9, ads: 1.05 },
   holo: { name: 'Holo sight', slot: 'optic', ads: 0.92, hip: 0.9 },
   scope: { name: 'Long scope', slot: 'optic', zoom: { pistol: 2.5, smg: 2.5, rifle: 4, sniper: 8, lmg: 4 }, ads: 1.25 },
-  mag: { name: 'Extended mag', slot: 'mag', size: { pistol: 21, smg: 45, rifle: 42, sniper: 8, lmg: 150 }, reload: 1.08 },
+  mag: { name: 'Extended mag', slot: 'mag', size: { pistol: 21, smg: 45, rifle: 42, sniper: 8, lmg: 150 }, reload: 1.08, ads: 1.05 },
 };
 export const ATTACHMENT_IDS = Object.keys(ATTACHMENTS);
 
@@ -60,7 +61,7 @@ export function stats(gunId, attachments = []) {
     spread: { ...g.spread, hip: g.spread.hip * (o?.hip || 1) },
     kick: { up: g.kick.up * (sup ? sup.kick : 1), side: g.kick.side * (sup ? sup.kick : 1), back: g.kick.back, climb: g.kick.climb },
     reload: Object.fromEntries(Object.entries(g.reload).map(([k, v]) => [k, v * (big ? big.reload : 1)])),
-    ads: g.ads * (o?.ads || 1), draw: g.draw,
+    ads: on.reduce((k, id) => k * (ATTACHMENTS[id].ads || 1), g.ads), draw: g.draw,
     zoom: optic === 'scope' ? o.zoom[g.id] : g.zoom,
     loud: sup ? sup.loud : 1, flash: sup ? sup.flash : 1,
     stars: g.stars,
