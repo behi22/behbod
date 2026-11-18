@@ -63,8 +63,7 @@ export function makeCanvases(meta, opts = {}) {
   const term = { lines: [], input: '', focus: false, blink: 0 };
   const desk = { st: newDesktop(), ctx: { wallpaper: loadWallpaper() }, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), reader: newReader(), sfx: null, dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
-  // The chosen wallpaper and the reader's picture, painted once and kept: each is many shapes, and the monitor is
-  // repainted every second. Only the one in use is kept; they are painted again once the Persian font has come.
+  // Painted once and kept: each is many shapes, and the monitor repaints every second.
   let wall = null, pic = null;
   const wallpaper = () => {
     const id = desk.ctx.wallpaper;

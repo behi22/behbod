@@ -82,8 +82,7 @@ function drawPlaque({ title, text, fa }, short) {
   };
 }
 
-// The Shahnameh pieces that live in the room: Ferdowsi's note on the monitor, and the two plaques telling the story
-// of chess and backgammon by their tables.
+// Ferdowsi's note on the monitor, and the plaques telling the story of chess and backgammon by their tables.
 export function makeShahnameh(scene, meta) {
   const screen = meta.screens?.main;
   const note = screen ? quad(noteCorners(screen), texture(512, 512, drawNote)) : null;

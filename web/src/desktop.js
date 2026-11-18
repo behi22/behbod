@@ -154,8 +154,7 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
 
   // The game being played draws on one canvas that is carried over from redraw to redraw.
   let gameCanvas = null, gameArea = null, scoreEl = null, scoreW = 0, lastTick = 0;
-  // The reader's picture is kept from redraw to redraw while its story and size stay the same; `readerAt` is the story
-  // and page last shown, so a new one starts at the top of a scrolled window. `wallAt`: the wallpaper laid behind.
+  // `readerAt`: the story and page last shown, so a new one starts at the top of a scrolled window.
   let readerPic = null, readerAt = '', wallAt = '';
   document.fonts?.load("500 40px 'Noto Nastaliq Urdu'", 'زال و سیمرغ').then(() => { readerPic = null; D.changed(); }).catch(() => {});
   const G = D.games;

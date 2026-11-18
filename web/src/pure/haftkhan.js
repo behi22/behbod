@@ -1,5 +1,4 @@
-// Haft Khan, Rostam's seven labours, as seven quick rounds: the rules, with no drawing. A round won scores 100 and a
-// little more for speed; a round lost costs one of three lives and is tried again. Field units: 720 by 420, y down.
+// Haft Khan's rules, with no drawing. Field units: 720 by 420, y down.
 export const FIELD = { w: 720, h: 420, ground: 340 };
 export const LABOURS = [
   { id: 'lion', name: 'The lion', how: 'Rostam sleeps. Strike as the lion leaps into the ring.', par: 7 },
@@ -49,8 +48,7 @@ function walk(x, input, speed, dt) {
   return Math.max(40, Math.min(FIELD.w - 40, x));
 }
 
-// One step of `dt` seconds. input: { x (the pointer across the field, or null), left, right, presses: [{ x, y } or {}] }.
-// Returns what happened: hit, miss, hurt, won (a labour), end.
+// input: { x (the pointer, or null), left, right, presses: [{ x, y } or {} from a key] }.
 export function step(st, dt, input = {}) {
   const ev = [], presses = input.presses || [];
   if (st.done || !(dt > 0)) return ev;

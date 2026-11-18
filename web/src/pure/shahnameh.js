@@ -1,5 +1,4 @@
-// The Shahnameh in the house: Ferdowsi's book of kings, finished about 1010. Every retelling and translation here is
-// our own, kept short and plain. Blender axes where there are places: the desk chair looks along +x, z is up.
+// Every retelling and translation here is our own. Places in Blender axes: the desk chair looks along +x, z is up.
 
 // The couplet on the second sticky note on the monitor, and what the terminal's `ferdowsi` prints.
 export const COUPLET = {
@@ -62,17 +61,13 @@ export const PLAQUES = {
   plaque_nard: { title: "Bozorgmehr's answer", fa: 'نرد', text: 'Then Bozorgmehr invents a game of his own, nard, played with two dice, and it goes to India as a riddle in return. Its sages cannot work it out, and India pays the tribute. Nard is the backgammon on this table.' },
 };
 
-// Where the plaques are: on the sunken lounge's north step face behind the holochess table (blender/zones/lounge.py),
-// and as a small angled plate on the backgammon table's near edge (blender/zones/balcony.py). Corners top left, top
-// right, bottom left, bottom right as seen by someone reading it; `spot` is where E reads it, beside the game's own.
+// Corners top left, top right, bottom left, bottom right as read; placed from blender/zones/lounge.py and balcony.py.
 export const PLAQUE_AT = {
   plaque_chess: { corners: [[7.86, 13.595, -0.06], [8.34, 13.595, -0.06], [7.86, 13.595, -0.36], [8.34, 13.595, -0.36]], size: [1024, 640], spot: [8.8, 12.05, -0.45] },
   plaque_nard: { corners: [[14.89, 16.316, 0.8235], [15.11, 16.316, 0.8235], [14.89, 16.27, 0.758], [15.11, 16.27, 0.758]], size: [1024, 372], spot: [15.6, 15.75, 0], short: true },
 };
 
-// The second sticky note: beside the tattoo post-it (blender/zones/studio.py) on the right-hand end of the curved
-// monitor's bottom bezel, a little further in and leaning the other way. Corners top left, top right, bottom left,
-// bottom right, as seen from the chair.
+// Beside the tattoo post-it (blender/zones/studio.py), further in and leaning the other way so the two read apart.
 export const NOTE = { size: 0.095, inset: 0.215, lean: 7, tilt: 3 };
 const rad = d => d * Math.PI / 180;
 const turn = (v, k, t) => {
@@ -90,7 +85,6 @@ export function noteCorners({ center: [cx, cy, cz], w, h, r }) {
   });
 }
 
-// By the fire: the lounge's sitting group in front of the fireplace on its west wall (blender/zones/lounge.py), on the
-// ground floor. x and north in Blender metres, h the height.
+// The sitting group before the lounge's fireplace (blender/zones/lounge.py), in Blender metres.
 export const FIRE = { x0: 0.4, x1: 7.2, y0: 8.0, y1: 13.2 };
 export const byFire = (x, north, h) => x > FIRE.x0 && x < FIRE.x1 && north > FIRE.y0 && north < FIRE.y1 && h < 1.5;

@@ -49,8 +49,7 @@ test('the launcher: a card per game, inside the window, its words and buttons in
   const wide = launcherLayout({ x, y, w, h });
   assert.ok(wide.cards.every(c => c.y === wide.cards[0].y && c.pic && c.pic.h >= 100), 'side by side, with pictures');
   assert.ok(wide.bottom <= y + h, `fits its height: ${wide.bottom} against ${y + h}`);
-  // On a phone they stack, and the window scrolls if it must: on one held upright the first three fit as before, and
-  // the fourth's top shows under them.
+  // On a phone they stack and the window scrolls: the first three fit as before, the fourth's top shows under them.
   const phone = launcherLayout({ x: 0, y: 34, w: 540, h: 821 });
   assert.ok(phone.cards[1].y > phone.cards[0].y + phone.cards[0].h && phone.cards[2].y + phone.cards[2].h <= 34 + 821 && phone.cards[3].y < 34 + 821 - 60, 'stacked, scrolling a little on a phone held upright');
 });

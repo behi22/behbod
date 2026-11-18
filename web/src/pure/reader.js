@@ -1,6 +1,4 @@
-// The Shahnameh reader on the computer: a tab for each story, its picture, and the story itself. Laid out in desktop
-// pixels, so the monitor and the seated view draw it alike. `scroll` (the seated view on a phone): the window scrolls,
-// so the story runs on in one piece; otherwise it is cut into pages that fit the window.
+// In desktop pixels so the monitor and the seated view draw it alike; `scroll` (a phone) keeps the story in one piece.
 import { TITLE, STYLE, textWidth, fit, wrap } from './desktop.js';
 import { STORIES, storyById } from './shahnameh.js';
 

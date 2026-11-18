@@ -1,5 +1,4 @@
-// Nowruz, the Persian new year, turns at the moment of the March equinox. The equinox is found as in Meeus,
-// Astronomical Algorithms, chapter 27 (the mean equinox and its periodic terms), good to about a minute.
+// Nowruz turns at the March equinox, found as in Meeus, Astronomical Algorithms, chapter 27 (to about a minute).
 const TERMS = [
   [485, 324.96, 1934.136], [203, 337.23, 32964.467], [199, 342.08, 20.186], [182, 27.85, 445267.112],
   [156, 73.14, 45036.886], [136, 171.52, 22518.443], [77, 222.54, 65928.934], [74, 296.72, 3034.906],
@@ -46,8 +45,7 @@ function left(ms) {
   return (parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts.at(-1) : parts[0]) + ' to go.';
 }
 
-// What the terminal's `nowruz` prints: when the year turns, in Vancouver and in Tehran, and how long until then. In
-// the thirteen days after, a happy new year instead. The Persian year that starts is the Gregorian one less 621.
+// The Persian year that starts at the March equinox is the Gregorian one less 621.
 export function nowruzLines(now = new Date()) {
   const at = nextNowruz(now), year = at.getUTCFullYear() - 621;
   if (now >= at) {

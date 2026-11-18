@@ -1,6 +1,4 @@
-// Paintings in the manner of Persian miniatures, drawn with the 2D canvas: flat colour, gold skies, outlined rocks,
-// figures and horses in profile. The reader's pictures, the desktop's wallpapers and the Haft Khan game are made from
-// these pieces. Every function draws in its own units; `cover` fits a scene to any box.
+// Pieces of Persian-miniature paintings, drawn in code so nothing is downloaded; `cover` fits a scene to any box.
 export const C = {
   ink: '#2a1d14', gold: '#d9ad4a', goldHi: '#f0d27c', goldLo: '#a77c25', lapis: '#1d3a85', lapisLo: '#122554', night: '#0c1430',
   ochre: '#d3923a', saffron: '#e8b04a', vermilion: '#c43d2b', rose: '#d98c84', lilac: '#a58bb5', jade: '#3f8f5f', jadeLo: '#2b6a45',
@@ -88,8 +86,7 @@ export function ground(g, w, y, h, colour, seed = 1, flowers = true) {
 // The lumpy, outlined rocks of the miniatures, piled into a hill or a peak: x, base y, width, height.
 export function rocks(g, x, y, w, h, colour, seed = 2, steps = 5) {
   const r = rng(seed), lumps = [];
-  // Lumps scattered through a peak's outline, wide at the foot and narrow at the top, drawn from the top down so the
-  // nearer ones overlap the ones behind.
+  // Drawn from the top down so the nearer lumps overlap the ones behind.
   for (let i = 0; i < steps * 4; i++) {
     const k = Math.pow(r(), 0.8), cy = y - h * k, half = w / 2 * (1 - k * 0.82);
     const size = (w * 0.16 + r() * w * 0.1) * (1 - k * 0.55);
@@ -129,9 +126,7 @@ export function tree(g, x, y, s, seed = 4) {
 }
 
 // ---------- people, horses, beasts ----------
-// A figure in profile from the feet up, about 100 units tall at s = 1, facing right (dir -1: left).
-// o: robe, coat ('tiger' for Rostam's tiger-skin), head ('helmet', 'turban', 'crown', 'veil'), beard, arm ('down', 'up', 'forward'),
-// hold ('mace', 'sword', 'lasso', 'lute'), skin.
+// About 100 units tall at s = 1, facing right; coat 'tiger' is Rostam's tiger-skin.
 export function figure(g, x, y, s, o = {}) {
   const dir = o.dir || 1, robe = o.robe || C.vermilion, skin = o.skin || C.skin;
   g.save(); g.translate(x, y); g.scale(s * dir, s);

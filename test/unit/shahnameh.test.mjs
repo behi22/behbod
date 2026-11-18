@@ -75,8 +75,7 @@ test('the second note sits beside the tattoo post-it, apart from it, below the s
   for (const c of [tl, tr, bl, br]) assert.ok(c[2] < bottom, 'below the screen');
   const e1 = sub(bl, tl), e2 = sub(br, tl), n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
   assert.ok(n[0] < 0 && tl[1] > tr[1], 'faces the chair');
-  // The tattoo note is 8.5 cm square, centred 11 cm in from the bezel's right-hand end; this one is further in, a
-  // centimetre or two clear of it, and on the other side of the screen's middle from Aria's.
+  // The tattoo note is 8.5 cm square, 11 cm in from the bezel's end; this one must clear it and stay off Aria's half.
   const tattooInner = tattoo[1] + 0.0425, mine = Math.min(...[tl, tr, bl, br].map(c => c[1]));
   assert.ok(mine - tattooInner > 0.005 && mine - tattooInner < 0.03, `gap ${(mine - tattooInner).toFixed(3)}`);
   assert.ok(Math.max(tl[1], bl[1]) < screen.center[1], 'right of the middle');

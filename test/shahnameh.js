@@ -1,6 +1,4 @@
-// The Shahnameh pieces on the computer and around the house, in a real Chrome at a desk and on phones: Ferdowsi's
-// note on the monitor, the terminal's ferdowsi and nowruz, the plaques by the holochess and backgammon tables, the
-// reader app, the wallpapers, Haft Khan in the Games app, and BH-22's stories by the fire.
+// The Shahnameh pieces in a real Chrome, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8814 node test/shahnameh.js [outdir] [only]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -270,8 +268,7 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     const lines = await termLines(p);
     check(`${tag}: ferdowsi and nowruz from the phone's command box`, lines.includes('$ ferdowsi') && lines.includes('$ nowruz') && lines.some(l => l.startsWith('Nowruz 14')), lines.slice(-4).join(' | '));
     await p.screenshot({ path: `${OUT}/${tag}-terminal.png` });
-    // The reader on a phone: the window in front fills the space, the story runs on under its picture and scrolls,
-    // and a new story starts at the top.
+    // On a phone the story runs on under its picture and scrolls; a new story starts at the top.
     await p.evaluate(() => document.activeElement?.blur());
     await p.tap('.dt-icon[aria-label="Open Shahnameh"]'); await p.waitForTimeout(500);
     const r = await p.evaluate(() => {

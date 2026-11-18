@@ -68,8 +68,7 @@ export function paintStory(g, id, w, h) {
   border(g, w, h, k);
 }
 
-// ---------- the desktop's wallpapers, painted at the desktop's size and fitted to the box ----------
-// Dark enough that windows and their writing stay easy to read on top.
+// The wallpapers: dark enough that windows and their writing stay easy to read on top.
 const WALLS = {
   persepolis(g, w, h) {
     const s = g.createLinearGradient(0, 0, 0, h);
@@ -79,8 +78,7 @@ const WALLS = {
     for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(255,240,210,${0.2 + r() * 0.5})`; g.beginPath(); g.arc(r() * w, r() * h * 0.4, 0.6 + r() * 1.2, 0, Math.PI * 2); g.fill(); }
     // The low mountain behind the terrace, under the last of the light.
     g.fillStyle = '#2a1a2a'; g.beginPath(); g.moveTo(0, h * 0.78); g.lineTo(w * 0.18, h * 0.68); g.lineTo(w * 0.34, h * 0.72); g.lineTo(w * 0.52, h * 0.63); g.lineTo(w * 0.7, h * 0.7); g.lineTo(w * 0.88, h * 0.66); g.lineTo(w, h * 0.72); g.lineTo(w, h); g.lineTo(0, h); g.fill();
-    // The terrace with its double stair in the middle, and the tall columns of the Apadana, some still standing and
-    // some broken, a few still carrying their twin-bull capitals.
+    // The Apadana's columns, some broken, the whole ones with their twin-bull capitals.
     const base = h * 0.84, col = '#140d18';
     g.fillStyle = col; g.fillRect(0, base, w, h - base);
     for (let i = 0; i < 8; i++) { g.fillRect(w * 0.44 - i * 7, base - 4 - i * 4, w * 0.12 + i * 14, 4); }
