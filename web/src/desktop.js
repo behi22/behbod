@@ -420,7 +420,8 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
     if (used || e.key.length === 1 || e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
   addEventListener('keyup', e => { G.key(e.code, false); }, true);
-  addEventListener('blur', () => G.release());
+  // Losing the window loses every press with it: none of them will be heard lifting.
+  addEventListener('blur', () => { G.release(); fingers.clear(); if (down) { down = false; want(); } });
 
   // Lays the desktop on the screen as the camera sees it, or across the view when the screen does not fit.
   function fitView() {

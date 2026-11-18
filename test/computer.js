@@ -384,7 +384,7 @@ window.__probe = (async () => {
   const pclimb = await pp.evaluate(() => [__loft.screens.desktop.games.playing.id, __loft.screens.desktop.games.playing.st.vr]);
   // Two fingers down, then one lifts: the other still holds the ship up.
   await touch('touchEnd');
-  await pp.evaluate(() => Object.assign(__loft.screens.desktop.games.playing.st, { r: 100, vr: 0 }));
+  await pp.evaluate(() => Object.assign(__loft.screens.desktop.games.playing.st, { r: 100, vr: 0, rocks: [] }));
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tx, y: ty, id: 0 }, { x: tx + 30, y: ty + 30, id: 1 }] });
   await pp.waitForTimeout(100);
   await pp.evaluate(() => { window.__gamesWin = document.querySelector('.dt-win[data-app="games"]'); });
@@ -401,13 +401,24 @@ window.__probe = (async () => {
   check('phone: Orbit climbs while a finger is down; lifting one of two does not let go or redraw, the last one off lets go wherever it lifts', pclimb[0] === 'orbit' && pclimb[1] > 0 && held > 0 && kept && fell < 0, `${pclimb[1].toFixed(0)}, with one of two fingers lifted ${held.toFixed(0)} (window kept ${kept}), the last lifted off the game ${fell.toFixed(0)}`);
   // A finger holds the ship up while the mouse clicks elsewhere (a touch screen with a mouse): lifting the finger
   // still lets go.
-  await pp.evaluate(() => Object.assign(__loft.screens.desktop.games.playing.st, { r: 100, vr: 0 }));
+  await pp.evaluate(() => Object.assign(__loft.screens.desktop.games.playing.st, { r: 100, vr: 0, rocks: [] }));
   await touch('touchStart', tx, ty); await pp.waitForTimeout(200);
   await pp.mouse.click(barBox.x + barBox.width / 2, barBox.y + barBox.height / 2); await pp.waitForTimeout(200);
   const mixedHeld = await pp.evaluate(() => __loft.screens.desktop.games.playing.st.vr);
   await touch('touchEnd'); await pp.waitForTimeout(700);
   const mixedFell = await pp.evaluate(() => [__loft.screens.desktop.games.playing.st.vr, __loft.screens.desktop.games.playing.done]);
   check('phone: a mouse click elsewhere while a finger holds the ship, then the finger lifts: it lets go', mixedHeld > 0 && mixedFell[0] < 0 && !mixedFell[1], `held ${mixedHeld.toFixed(0)}, after the finger lifted ${mixedFell[0].toFixed(0)}`);
+  // The mouse is held on the game when the window loses focus, and its button is let go somewhere else: no lift is
+  // ever heard for it. A finger afterwards still holds the ship, and still lets go.
+  await pp.evaluate(() => Object.assign(__loft.screens.desktop.games.playing.st, { r: 100, vr: 0, rocks: [] }));
+  await pp.mouse.move(tx, ty); await pp.mouse.down(); await pp.waitForTimeout(100);
+  await pp.evaluate(() => dispatchEvent(new Event('blur')));
+  await touch('touchStart', tx, ty); await pp.waitForTimeout(300);
+  const lostHeld = await pp.evaluate(() => __loft.screens.desktop.games.playing.st.vr);
+  await touch('touchEnd'); await pp.waitForTimeout(700);
+  const lostFell = await pp.evaluate(() => [__loft.screens.desktop.games.playing.st.vr, __loft.screens.desktop.games.playing.done]);
+  await pp.mouse.up();
+  check('phone: after the window loses a held mouse press, a finger still holds the ship and lets go', lostHeld > 0 && lostFell[0] < 0 && !lostFell[1], `held ${lostHeld.toFixed(0)}, after the finger lifted ${lostFell[0].toFixed(0)}${lostFell[1] ? " (the game had ended)" : ""}`);
   await pp.tap('.dt-win[data-app="games"] .dt-pill:text-is("← Games")'); await pp.waitForTimeout(250);
   await pp.tap('.dt-win[data-app="games"] .dt-pill:text-is("Easy")'); await pp.waitForTimeout(300);
   const [ax, ay] = await pgame(560, 380), [zx, zy] = await pgame(600, 380);
