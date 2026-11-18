@@ -147,7 +147,7 @@ function earn(id) {
 // ---------- the range, the telescope and the piano ----------
 const UNLOCK_NAMES = { kit: 'the keeper kit', gold: 'the gold colourway', visor: 'the red visor', vault: 'the secret room' };
 const range = makeRange({
-  engine, camera, meta, canvas, coarse, sfx: audio.sfx, progress,
+  engine, camera, meta, canvas, coarse, sfx: audio.sfx, music: audio.runMusic, progress,
   // The sleeves in the hand are the hoodie I am wearing.
   look: () => { const c = wornColours(me.look); return { M_Hoodie: c.hoodie, M_Hoodie_Rib: c.rib }; },
   // A star earns the achievement; what a run unlocks shows up on the unlock stands and in the wardrobe at once.
@@ -158,7 +158,7 @@ const range = makeRange({
   },
   // Its rooms are drawn while I am in them or the bookcase door stands open.
   visible: () => pos.z > 0.05 || (world.doors.secret?.k || 0) > 0.002,
-  onReady: room => walkable.push(room.group),
+  onReady: room => { walkable.push(room.group); things.items.push(...range.spots); },
   // Back to walking, at the line, with the camera behind me.
   onExit: ({ at }) => { mode = 'walk'; pos.copy(at); vel.set(0, 0, 0); facing = prevFacing = 0; yaw = Math.PI; pitch = 0.2; lastLook = performance.now(); me.root.visible = true; me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos); },
 });
@@ -454,6 +454,7 @@ function act(it) {
   // The TV shows the live match: join it as striker or keeper, switch to my videos (it flips through them in turn), or play my film.
   if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
   if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
+  { const said = range.poke(it.id); if (said) return toast(said); }
   toast(SAY[it.id] || it.label);
 }
 // YouTube's own player over the room, so nothing is copied; only real video ids ever reach the address.

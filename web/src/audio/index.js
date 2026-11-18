@@ -4,6 +4,7 @@ import { makePiano } from './piano.js';
 import { makeSfx } from './sfx.js';
 import { makeAmbience } from './ambience.js';
 import { makeSaberAudio } from './saber.js';
+import { makeRunMusic } from './runmusic.js';
 
 // Rides on the Sound's own context and master gain, and stays silent until sound.start() has made them.
 export function makeAudio(sound) {
@@ -16,11 +17,20 @@ export function makeAudio(sound) {
       return eng;
     },
     ready() { return sound && sound.on ? env.eng() : null; },
+    // Two reasons to fade the records (the piano, a run), so one ending never brings them back while the other holds.
+    duck(who, level, seconds) {
+      ducks[who] = Math.max(0, Math.min(1, level));
+      const e = env.eng();
+      if (!e) return;
+      e.musicIn.gain.setTargetAtTime(Math.min(ducks.house, ducks.run), e.ctx.currentTime, seconds / 3);
+      if (who === 'run') e.pianoIn.gain.setTargetAtTime(ducks.run, e.ctx.currentTime, seconds / 3);
+    },
   };
-  const music = makeMusic(env), piano = makePiano(env), sfx = makeSfx(env), amb = makeAmbience(env), saber = makeSaberAudio(env);
+  const ducks = { house: 1, run: 1 };
+  const music = makeMusic(env), piano = makePiano(env), sfx = makeSfx(env), amb = makeAmbience(env), saber = makeSaberAudio(env), runMusic = makeRunMusic(env);
 
   return {
-    music, piano, sfx, saber,
+    music, piano, sfx, saber, runMusic,
     ambience: { set: amb.set },
     setListener(pos, forward) {
       const e = env.eng(), p = vec(pos);
@@ -41,7 +51,7 @@ export function makeAudio(sound) {
     // Fades the records toward `level` over about `seconds`, so the piano and the music never play over each other.
     // How loud the records are let through right now (1 full, 0 faded out).
     musicLevel() { const e = env.eng(); return e ? e.musicIn.gain.value : 1; },
-    duckMusic(level, seconds = 1.2) { const e = env.eng(); if (!e) return; e.musicIn.gain.setTargetAtTime(Math.max(0, Math.min(1, level)), e.ctx.currentTime, seconds / 3); },
+    duckMusic(level, seconds = 1.2) { env.duck('house', level, seconds); },
     tick() {
       if (!env.eng()) return;
       amb.sync();
