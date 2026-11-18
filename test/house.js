@@ -1,5 +1,6 @@
-// House-wide checks, computer and phones: a hidden tab goes quiet and pauses a run.
-//   LOFT_URL=http://127.0.0.1:8815 node test/house.js [hidden|all]
+// House-wide checks, computer and phones: a hidden tab goes quiet and pauses a run; the wardrobe closes when something
+// else takes the screen.
+//   LOFT_URL=http://127.0.0.1:8815 node test/house.js [hidden|wardrobe|all]
 // Headless browsers never hide a page, so the test says it is hidden itself (document.hidden and a visibilitychange).
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -132,6 +133,58 @@ async function hiddenRun(b, opts, label) {
   await ctx.close();
 }
 
+// ---------- the wardrobe ----------
+const wd = p => p.evaluate(() => !!document.querySelector('.wd'));
+const toWalk = p => p.waitForFunction(() => __loft.mode === 'walk' && !__loft.filmPlaying && !document.querySelector('.g-overlay, .video'), null, { timeout: 10000 }).then(() => true, () => false);
+async function wardrobe(b) {
+  const { ctx, p, errs } = await open(b, DESK);
+  const esc = () => p.keyboard.press('Escape');
+  const cases = [
+    ['the saber', () => p.evaluate(() => __loft.act('vader')), esc],
+    ['the telescope', () => p.evaluate(() => __loft.act('telescope')), esc],
+    ['the penalties', () => p.evaluate(() => __loft.act('penalties')), esc],
+    ['the TV menu', () => p.evaluate(() => __loft.act('tv')), esc],
+    ['a game', () => p.evaluate(() => __loft.act('arcade')), esc],
+    ['the film', () => p.evaluate(() => { __loft.playFilm(); }), esc],
+    ['a video', () => p.evaluate(() => __loft.act('video0')), esc],
+    ['the desk', () => p.evaluate(() => __loft.useDesk()), () => p.evaluate(() => __loft.leaveDesk())],
+    ['the range', async () => { await toLine(p); }, () => p.evaluate(() => __loft.range.exit())],
+  ];
+  for (const [name, enter, leave] of cases) {
+    await p.evaluate(() => __loft.wardrobe.show());
+    const before = await wd(p);
+    await enter(); await p.waitForTimeout(900);
+    const during = await wd(p), mode = await p.evaluate(() => __loft.mode);
+    await leave(); const back = await toWalk(p); await p.waitForTimeout(300);
+    const after = await wd(p);
+    check(`the wardrobe closes when ${name} takes the screen, and stays closed after`, before && !during && !after && back, JSON.stringify({ before, during, after, mode, back }));
+  }
+  // It still opens and closes as before while walking.
+  await p.evaluate(() => __loft.wardrobe.hide());
+  await p.keyboard.press('KeyO'); await p.waitForTimeout(200);
+  const o1 = await wd(p);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+  const o2 = await wd(p);
+  check('O opens it and Esc closes it while walking', o1 && !o2, JSON.stringify({ o1, o2 }));
+  check('wardrobe, desktop: no page errors, console errors or failed requests', errs.length === 0, errs.slice(0, 6).join(' | '));
+  await ctx.close();
+}
+async function wardrobePhone(b, opts, label) {
+  const { ctx, p, errs } = await open(b, opts);
+  for (const [name, id] of [['the telescope', 'telescope'], ['the penalties', 'penalties']]) {
+    await p.evaluate(() => __loft.wardrobe.hide());
+    await p.tap('#closet'); await p.waitForTimeout(300);
+    const before = await wd(p);
+    await p.evaluate(i => __loft.act(i), id); await p.waitForTimeout(900);
+    const during = await wd(p);
+    await p.keyboard.press('Escape'); const back = await toWalk(p);
+    const after = await wd(p);
+    check(`${label}: the wardrobe opened from its chip closes when ${name} takes the screen`, before && !during && !after && back, JSON.stringify({ before, during, after, back }));
+  }
+  check(`${label}: no page errors, console errors or failed requests`, errs.length === 0, errs.slice(0, 6).join(' | '));
+  await ctx.close();
+}
+
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
@@ -140,6 +193,11 @@ async function hiddenRun(b, opts, label) {
       await hiddenRun(b, DESK, 'desktop');
       await hiddenRun(b, UPRIGHT, 'phone upright');
       await hiddenRun(b, SIDEWAYS, 'phone sideways');
+    }
+    if (ONLY === 'all' || ONLY === 'wardrobe') {
+      await wardrobe(b);
+      await wardrobePhone(b, UPRIGHT, 'phone upright');
+      await wardrobePhone(b, SIDEWAYS, 'phone sideways');
     }
   } finally { await b.close(); }
   console.log(fails ? `${fails} FAILED` : 'ALL PASS');
