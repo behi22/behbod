@@ -171,18 +171,14 @@ const MOON_F = /* glsl */ `
     ${OUT}
   }`;
 
-// New shaders are built off the main thread where the browser can (so the first look through does not freeze): the
-// things are shown to the renderer for a moment to collect them, and stay hidden until it says they are ready. Each is
-// built twice, for drawing straight to the screen and into the effects' buffer (the higher qualities), which differ.
-async function prepare(renderer, outside, things) {
+// Only root's own shaders: waiting on the outside's too hangs for good if a quality change disposes one meanwhile.
+async function prepare(renderer, outside, root) {
   if (!renderer?.compileAsync) return;
-  const was = things.map(o => o.visible), prev = renderer.getRenderTarget(), buffer = new THREE.WebGLRenderTarget(1, 1);
-  for (const o of things) o.visible = true;
-  const ready = [renderer.compileAsync(outside.scene, outside.camera)];
+  const prev = renderer.getRenderTarget(), buffer = new THREE.WebGLRenderTarget(1, 1);
+  const ready = [renderer.compileAsync(root, outside.camera, outside.scene)];
   renderer.setRenderTarget(buffer);
-  ready.push(renderer.compileAsync(outside.scene, outside.camera));
+  ready.push(renderer.compileAsync(root, outside.camera, outside.scene));
   renderer.setRenderTarget(prev);
-  things.forEach((o, i) => { o.visible = was[i]; });
   await Promise.all(ready).catch(() => {});
   buffer.dispose();
 }
@@ -210,8 +206,8 @@ export function makeScopeKit({ outside, renderer }) {
   group.add(moon);
   outside.extras.add(group);
   let on = false, city = null, ready = false;
-  prepare(renderer, outside, [moon, ...Object.values(planets)]).then(() => { ready = true; });
-  makeScopeCity({ outside }).then(async c => { await prepare(renderer, outside, [c.group]); city = c; city.show(on); }).catch(e => console.warn('[loft] the close-up city could not be built', e));
+  prepare(renderer, outside, group).then(() => { ready = true; });
+  makeScopeCity({ outside }).then(async c => { await prepare(renderer, outside, c.group); city = c; city.show(on); }).catch(e => console.warn('[loft] the close-up city could not be built', e));
   // The sky's own moon steps aside while the close-up one is drawn (a rebuild brings a fresh one back at full).
   const plainMoon = v => { const m = outside.parts?.sky?.moon?.material?.uniforms?.uBright; if (m) m.value = v; };
   return {

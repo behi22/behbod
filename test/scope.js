@@ -46,11 +46,14 @@ const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
     const ids = await p.evaluate(() => __loft.scope.stops.map(s => s.id));
     for (const id of ['moon', 'saturn', 'bridge', 'lions', 'grouse', 'lonsdale', 'seymour']) check(`stop: ${id}`, ids.includes(id), ids.join(' '));
     check('one button for each stop', await p.evaluate(() => document.querySelectorAll('.ts-stops button').length === __loft.scope.stops.length));
-    // Every stop it offers is one it can see: none behind a tower.
-    check('nothing offered behind the towers', await p.evaluate(async () => {
-      const S = await import('./src/pure/scope.js'), eye = __loft.camera.position.toArray();
-      return __loft.scope.stops.filter(s => s.point).every(s => S.clearLine(eye, s.point.toArray(), __loft.out3d.towers));
-    }));
+    // Every stop it offers is one it can see: none behind a tower, nothing in the sky behind the slopes either.
+    const blocked = () => p.evaluate(async () => {
+      const S = await import('./src/pure/scope.js'), eye = __loft.camera.position.toArray(), T = __loft.out3d.towers;
+      const seen = s => (s.point ? S.clearLine(eye, s.point.toArray(), T) && (s.kind !== 'water' || S.clearGround(eye, s.point.toArray())) : S.clearSky(eye, s.dir.toArray(), T));
+      return __loft.scope.stops.filter(s => !seen(s)).map(s => s.id);
+    });
+    const hidden = await blocked();
+    check('nothing offered behind the towers', !hidden.length, hidden.join(' '));
 
     // Nothing of the balcony shows through the eyepiece (the old fix for the telescope seeing itself): with the house
     // drawn alone on a marker colour, the round view is all marker, level, low, to either side and looking up. (The
@@ -198,6 +201,31 @@ const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
     check('leave: nothing of the telescope left drawn', back.scope === 0 && back.moon === 1 && back.shown === 0, JSON.stringify(back));
     check('no page errors (computer)', !errs.length, errs.join(' | '));
     await p.close();
+
+    // 2 am on 19 November: the moon and Jupiter low behind towers, Mars far round to the east.
+    const late = await open(b, { viewport: { width: 1280, height: 800 } }, '&time=02:00&date=2026-11-19&weather=clear');
+    await enter(late.p);
+    const lateIds = await late.p.evaluate(() => __loft.scope.stops.map(s => s.id));
+    check('a moon or planet behind a tower is not offered', !lateIds.includes('moon') && !lateIds.includes('jupiter') && lateIds.includes('mars') && lateIds.includes('saturn'), lateIds.join(' '));
+    // From the far left of the mount to Mars is more than half a turn: the swing still goes round by the north.
+    const edge = await late.p.evaluate(async () => {
+      const L = __loft.scope, S = await import('./src/pure/scope.js'), out = [];
+      L.nudge(-5, 0);
+      L.goTo('mars');
+      for (let i = 0; i < 300 && L.target === 'mars'; i++) { await new Promise(r => requestAnimationFrame(r)); out.push(L.aim.yaw); if (Math.abs(S.wrap(L.aim.yaw - L.stops.find(s => s.id === 'mars').yaw)) < 1e-4 && i > 10) break; }
+      return { widest: Math.max(...out.map(Math.abs)), limit: S.LIMIT.yaw, last: out[out.length - 1], mars: L.stops.find(s => s.id === 'mars').yaw };
+    });
+    check('a swing from one end of the mount to the other never turns through the house', edge.widest <= edge.limit + 1e-6 && Math.abs(edge.last - edge.mars) < 1e-3, JSON.stringify(edge));
+    check('no page errors (2 am)', !late.errs.length, late.errs.join(' | '));
+    await late.p.close();
+
+    // Twenty past the hour the cruise ship is just west of the bridge, behind Stanley Park's trees.
+    const park = await open(b, { viewport: { width: 1280, height: 800 } }, '&time=22:20&date=2026-11-17&weather=clear');
+    await enter(park.p);
+    const ship = await park.p.evaluate(() => ({ on: __loft.out3d.vessels[0].on, dx: Math.round(__loft.out3d.vessels[0].dx), ids: __loft.scope.stops.map(s => s.id) }));
+    check('a ship behind the park is not offered', ship.on && ship.dx < -2300 && !ship.ids.includes('craft0'), JSON.stringify(ship));
+    check('no page errors (the park)', !park.errs.length, park.errs.join(' | '));
+    await park.p.close();
 
     // ---------- a phone ----------
     const ph = await open(b, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }, NIGHT);

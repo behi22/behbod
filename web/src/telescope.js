@@ -118,12 +118,13 @@ export function makeTelescope(scene, camera, meta, { sky, outside, renderer, coa
     if (outside) {
       const U = outside.U, m = U.uMoonDir.value, cloudy = U.uCloud.value > 0.8 || U.uFog.value > 0.5;
       const veiled = note => (cloudy ? `${note}, behind cloud` : note);
-      if (m.y > Math.sin(1.5 * RAD)) add({ id: 'moon', kind: 'sky', short: 'Moon', name: 'The moon', note: veiled(`${Math.round(litFraction(moonPhase(date)) * 100)}% lit`), fov: 1.6, min: 0.6, dir: m.clone(), ...S.aimOf(m.x, m.y, m.z) });
+      const clear = d => !outside.towers || S.clearSky(eye.toArray(), d, outside.towers);
+      if (m.y > Math.sin(1.5 * RAD) && clear(m.toArray())) add({ id: 'moon', kind: 'sky', short: 'Moon', name: 'The moon', note: veiled(`${Math.round(litFraction(moonPhase(date)) * 100)}% lit`), fov: 1.6, min: 0.6, dir: m.clone(), ...S.aimOf(m.x, m.y, m.z) });
       planets = kit ? S.planets(date, U.uLst.value) : [];
       const sun = sunElev(date);
       for (const p of planets) {
         p.shows = S.planetShows(p, sun);
-        if (!p.shows) continue;
+        if (!p.shows || !clear(p.dir)) continue;
         const across = p.radius * 2 * (p.id === 'saturn' ? 2.3 : 1) * S.PLANET_SCALE / RAD;
         const note = p.id === 'jupiter' ? `${S.distance(p.metres)}, four of its moons beside it` : p.id === 'saturn' ? `${S.distance(p.metres)}, rings and all` : S.distance(p.metres);
         add({ id: p.id, kind: 'sky', short: p.name, name: p.name, note: veiled(note), fov: THREE.MathUtils.clamp(across * 6, S.FOV.sky, 0.6), dir: new THREE.Vector3(...p.dir), ...S.aimOf(...p.dir) });
@@ -133,9 +134,10 @@ export function makeTelescope(scene, camera, meta, { sky, outside, renderer, coa
         if (!v?.on) continue;
         const s = { id: `craft${i}`, kind: 'water', short, name, craft: i, up, len };
         locate(s);
-        // Seen whole: its middle and both ends clear of the towers (at the cruise berth a tower hides most of it).
+        // Seen whole: its middle and both ends clear of the towers and of Stanley Park's trees west of the bridge.
         const along = tmp.set(Math.sin(v.heading || 0), 0, -Math.cos(v.heading || 0)).multiplyScalar(len * 0.42).clone();
-        if (![0, 1, -1].every(k => inSight(s.point.clone().addScaledVector(along, k)))) continue;
+        const seenAt = q => inSight(q) && S.clearGround(eye.toArray(), q.toArray());
+        if (![0, 1, -1].every(k => seenAt(s.point.clone().addScaledVector(along, k)))) continue;
         s.fov = S.fovFor(len, s.metres);
         add(s);
       }
@@ -379,7 +381,7 @@ export function makeTelescope(scene, camera, meta, { sky, outside, renderer, coa
         if (lock?.craft !== undefined && outside) locate(lock);
         slewT += dt;
         // A moving stop is chased: the swing's end is moved to where it is now.
-        if (lock) { slew.dyaw = S.wrap(lock.yaw - slew.from.yaw); slew.dpitch = lock.pitch - slew.from.pitch; }
+        if (lock) { slew.dyaw = S.turn(slew.from.yaw, lock.yaw); slew.dpitch = lock.pitch - slew.from.pitch; }
         S.slewAt(slew, slewT, step);
         yaw = step.yaw; pitch = step.pitch; fov = step.fov;
         if (step.done) { slew = null; fovT = fov; }

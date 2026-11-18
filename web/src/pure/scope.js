@@ -14,6 +14,8 @@ export const PLANET_SCALE = 4;
 export const LIMIT = { yaw: 1.7, low: -0.05, high: 1.2 };
 
 export const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+// The mount cannot turn through the house behind it, so from one aim to another is always round by the north.
+export const turn = (from, to) => wrap(to) - wrap(from);
 
 // A direction (x east, y up, z = minus north) as the mount's two angles: yaw from north towards east, pitch above level.
 export function aimOf(x, y, z) {
@@ -43,10 +45,10 @@ export function easeFov(fov, target, dt, tau = 0.12) {
 
 const easeInOut = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-// A swing from one aim and field to another: always the short way round, a little wider in the middle so the eye can
+// A swing from one aim and field to another: never through the house, a little wider in the middle so the eye can
 // follow (a far swing pulls back more), eased at both ends like a motor mount.
 export function slewPlan(from, to) {
-  const dyaw = wrap(to.yaw - from.yaw), dpitch = to.pitch - from.pitch;
+  const dyaw = turn(from.yaw, to.yaw), dpitch = to.pitch - from.pitch;
   const angle = Math.hypot(dyaw * Math.cos((from.pitch + to.pitch) / 2), dpitch);
   const mid = Math.max(from.fov, to.fov);
   // How much wider the field gets halfway: enough to keep both ends of a long swing in sight, never past the widest.
@@ -214,6 +216,20 @@ export function clearLine(a, b, towers) {
     if (t0 <= t1) return false;
   }
   return true;
+}
+
+// Whether the straight line from `a` to `b` stays over the ground, Stanley Park's trees and the North Shore included.
+export function clearGround(a, b) {
+  for (let k = 0.02; k < 0.995; k += 0.005) {
+    const x = a[0] + (b[0] - a[0]) * k, z = a[2] + (b[2] - a[2]) * k;
+    if (a[1] + (b[1] - a[1]) * k < WATER_Y + landHeight(x - EYE[0], EYE[2] - z)) return false;
+  }
+  return true;
+}
+// Whether something in the sky, in direction `d` from `a`, clears the towers (all within 6 km) and the ground (28 km).
+export function clearSky(a, d, towers) {
+  const far = s => [a[0] + d[0] * s, a[1] + d[1] * s, a[2] + d[2] * s];
+  return clearLine(a, far(8000), towers) && clearGround(a, far(28000));
 }
 
 // ---------- the close-up city ----------

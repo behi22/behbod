@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as S from '../../web/src/pure/scope.js';
-import { astro, moonView, rng, towerLayout, landHeight, landKind, shoreN, inPark, EYE, WATER_Y } from '../../web/src/pure/outside.js';
+import { astro, moonView, rng, towerLayout, landHeight, landKind, shoreN, inPark, vanDate, EYE, WATER_Y } from '../../web/src/pure/outside.js';
 
 const RAD = Math.PI / 180;
 const near = (a, b, tol, what = '') => assert.ok(Math.abs(a - b) <= tol, `${what} ${a} is not within ${tol} of ${b}`);
@@ -50,6 +50,32 @@ test('a swing goes the short way round, ends exactly on the stop, and pulls back
   const long = S.slewPlan({ yaw: -1.5, pitch: 0, fov: 5 }, { yaw: 1.5, pitch: 0.9, fov: 0.4 });
   assert.ok(short.time < long.time && short.time >= 0.5 && long.time <= 2, `${short.time} ${long.time}`);
   near(short.hop, 0, 1e-9, 'no pull-back for a nudge');
+});
+
+test('a swing never turns through the back of the house, even from one end of the mount to the other', () => {
+  // Hard left to a stop far right is more than half a turn: the short way would go through the room.
+  const to = { yaw: 1.52, pitch: 0.35, fov: 1.6 }, plan = S.slewPlan({ yaw: -S.LIMIT.yaw, pitch: 0.1, fov: 16 }, to);
+  for (let t = 0; t <= plan.time; t += plan.time / 60) {
+    const y = S.slewAt(plan, t).yaw;
+    assert.ok(Math.abs(y) <= S.LIMIT.yaw + 1e-9, `outside the mount at t=${t}: ${y / RAD}`);
+  }
+  near(S.slewAt(plan, plan.time + 1).yaw, to.yaw, 1e-12, 'arrives');
+  near(S.turn(-S.LIMIT.yaw, to.yaw), to.yaw + S.LIMIT.yaw, 1e-12);
+});
+
+test('a moon, a planet or a boat out of sight behind a tower, the park or the slopes is no stop', () => {
+  // The telescope's eye on the balcony (its point in world.json and the lens in front of it).
+  const eye = [7.58, 1.6, -17.3], towers = towerLayout(7);
+  const moonAt = (h, d = 20) => { const a = astro(vanDate(2026, 11, d, h)); return moonView(a.moon, a.sun).slice(0, 3); };
+  assert.ok(!S.clearSky(eye, moonAt(17), towers), 'low in the east at 5 pm on 20 November, behind a tower');
+  assert.ok(S.clearSky(eye, moonAt(22), towers), 'high and clear at 10 pm');
+  const dir = (yaw, pitch) => [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
+  assert.ok(!S.clearSky(eye, dir(-3 * RAD, 4 * RAD), []), 'just over Grouse');
+  assert.ok(S.clearSky(eye, dir(-3 * RAD, 12 * RAD), []), 'well above it');
+  // The cruise ship's middle just west of the bridge is behind Stanley Park's trees; the SeaBus at the quay is in sight.
+  const at = (dx, dn, up) => [EYE[0] + dx, WATER_Y + up, EYE[2] - dn];
+  assert.ok(!S.clearGround(eye, at(-2748, 2179, 24)), 'behind the park');
+  assert.ok(S.clearGround(eye, at(410, 2225, 3)), 'at Lonsdale Quay');
 });
 
 test('the zoom eases by ratios, the same speed in and out, and keeps to its limits', () => {
