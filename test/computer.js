@@ -387,15 +387,27 @@ window.__probe = (async () => {
   await pp.evaluate(() => Object.assign(__loft.screens.desktop.games.playing.st, { r: 100, vr: 0 }));
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tx, y: ty, id: 0 }, { x: tx + 30, y: ty + 30, id: 1 }] });
   await pp.waitForTimeout(100);
+  await pp.evaluate(() => { window.__gamesWin = document.querySelector('.dt-win[data-app="games"]'); });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: tx, y: ty, id: 0 }] });
   await pp.waitForTimeout(400);
   const held = await pp.evaluate(() => __loft.screens.desktop.games.playing.st.vr);
+  // Nothing is redrawn while the other finger is still on the game: its window is the very same one.
+  const kept = await pp.evaluate(() => document.querySelector('.dt-win[data-app="games"]') === window.__gamesWin);
   // The finger left slides off the game, up onto the desktop's top bar, and lifts there.
   const barBox = await pp.locator('.dt-bar').boundingBox();
   for (let i = 1; i <= 6; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: tx, y: ty + (barBox.y + barBox.height / 2 - ty) * i / 6, id: 0 }] }); await pp.waitForTimeout(16); }
   await touch('touchEnd'); await pp.waitForTimeout(700);
   const fell = await pp.evaluate(() => __loft.screens.desktop.games.playing.st.vr);
-  check('phone: Orbit climbs while a finger is down; lifting one of two does not let go, the last one off lets go wherever it lifts', pclimb[0] === 'orbit' && pclimb[1] > 0 && held > 0 && fell < 0, `${pclimb[1].toFixed(0)}, with one of two fingers lifted ${held.toFixed(0)}, the last lifted off the game ${fell.toFixed(0)}`);
+  check('phone: Orbit climbs while a finger is down; lifting one of two does not let go or redraw, the last one off lets go wherever it lifts', pclimb[0] === 'orbit' && pclimb[1] > 0 && held > 0 && kept && fell < 0, `${pclimb[1].toFixed(0)}, with one of two fingers lifted ${held.toFixed(0)} (window kept ${kept}), the last lifted off the game ${fell.toFixed(0)}`);
+  // A finger holds the ship up while the mouse clicks elsewhere (a touch screen with a mouse): lifting the finger
+  // still lets go.
+  await pp.evaluate(() => Object.assign(__loft.screens.desktop.games.playing.st, { r: 100, vr: 0 }));
+  await touch('touchStart', tx, ty); await pp.waitForTimeout(200);
+  await pp.mouse.click(barBox.x + barBox.width / 2, barBox.y + barBox.height / 2); await pp.waitForTimeout(200);
+  const mixedHeld = await pp.evaluate(() => __loft.screens.desktop.games.playing.st.vr);
+  await touch('touchEnd'); await pp.waitForTimeout(700);
+  const mixedFell = await pp.evaluate(() => [__loft.screens.desktop.games.playing.st.vr, __loft.screens.desktop.games.playing.done]);
+  check('phone: a mouse click elsewhere while a finger holds the ship, then the finger lifts: it lets go', mixedHeld > 0 && mixedFell[0] < 0 && !mixedFell[1], `held ${mixedHeld.toFixed(0)}, after the finger lifted ${mixedFell[0].toFixed(0)}`);
   await pp.tap('.dt-win[data-app="games"] .dt-pill:text-is("← Games")'); await pp.waitForTimeout(250);
   await pp.tap('.dt-win[data-app="games"] .dt-pill:text-is("Easy")'); await pp.waitForTimeout(300);
   const [ax, ay] = await pgame(560, 380), [zx, zy] = await pgame(600, 380);

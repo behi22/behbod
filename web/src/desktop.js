@@ -157,13 +157,14 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
     const [x, y] = G.at(ev.offsetX, ev.offsetY, gameArea.w, gameArea.h);
     G.point(x, y, kind);
   }
-  // Every finger down on the game counts: lifting one while another is still down does not let go.
-  const fingers = new Set();
+  // Every finger (or mouse, or pen) down on the game counts, by its id and kind: lifting one while another is still
+  // down does not let go.
+  const fingers = new Map();
   function makeGameCanvas() {
     const c = el('canvas', 'dt-game');
     c.setAttribute('role', 'img');
     // Lifting is heard by the page itself (see `lift`), wherever the finger has wandered by then.
-    c.addEventListener('pointerdown', ev => { fingers.add(ev.pointerId); c.setPointerCapture(ev.pointerId); gamePoint(ev, 'down'); });
+    c.addEventListener('pointerdown', ev => { fingers.set(ev.pointerId, ev.pointerType); c.setPointerCapture(ev.pointerId); gamePoint(ev, 'down'); });
     c.addEventListener('pointermove', ev => gamePoint(ev, 'move'));
     c.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') gamePoint(ev, 'leave'); });
     return c;
@@ -245,7 +246,7 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
       if (drag.app === 'browser' && frameOff) { frameAt = { ...frameAt, x: m.x + frameOff.x, y: m.y + frameOff.y }; place(frameHost, frameAt.x, frameAt.y); }
       D.changed();
     });
-    const end = e2 => { if (drag && e2.pointerId === drag.id) { drag = null; bar.style.cursor = ''; frameHost.style.pointerEvents = ''; down = false; D.changed(); } };
+    const end = e2 => { if (drag && e2.pointerId === drag.id) { drag = null; bar.style.cursor = ''; frameHost.style.pointerEvents = ''; if (!fingers.size) down = false; D.changed(); } };
     bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
     e.append(bar);
     if (w.app === 'terminal') {
@@ -379,12 +380,18 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
   // Typing in the notes repaints the monitor but leaves the page alone, so the caret stays put.
   D.listen(() => { if (typing) { typing = false; return; } want(); });
   // The last finger off the game lets it go. While one is still on it nothing is redrawn, as a redraw would take the
-  // game's picture from under that finger. The first finger of a new touch (or the mouse) starts the count afresh.
+  // game's picture from under that finger. The first press of a kind (a new touch, the mouse, a pen) means none of
+  // that kind is still down, so any of that kind still counted was lost along the way and is let go.
   const lift = e => {
     if (fingers.delete(e.pointerId) && !fingers.size) G.point(NaN, NaN, 'up');
     if (!fingers.size && down) { down = false; want(); }
   };
-  addEventListener('pointerdown', e => { if (e.isPrimary) fingers.clear(); }, true);
+  addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return;
+    let lost = false;
+    for (const [id, kind] of fingers) if (kind === e.pointerType) { fingers.delete(id); lost = true; }
+    if (lost && !fingers.size) G.point(NaN, NaN, 'up');
+  }, true);
   addEventListener('pointerup', lift, true);
   addEventListener('pointercancel', lift, true);
 
