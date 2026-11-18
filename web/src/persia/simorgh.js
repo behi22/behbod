@@ -2,9 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { paint, plain, paperMaterial, toShape, ellipse, ribbon, leaf, scallops, curve, bounds } from './kit.js';
 
-// The Simorgh over the stairs: an original paper-craft, five layers of cut paper standing off the west wall, flying up
-// toward the mezzanine with her tail trailing down the stairs. Drawn in the wall's own frame: u runs north along the
-// wall (to the right, seen from the room), v is height, and each layer sits a little further from the wall.
+// In the wall's own frame: u runs north along it, v is height, each of the five layers further off the wall.
 const C = {
   indigo: '#2b3b7c', lapis: '#22306a', teal: '#2f9a93', jade: '#1f6f6b', saffron: '#e7a83e', gold: '#f2c96b',
   vermilion: '#c64a30', rose: '#dc8a74', cream: '#f3e6c6', ink: '#1b1a28', edge: '#efe5cf',
@@ -76,8 +74,7 @@ function layers() {
   return L;
 }
 
-// Each layer's paper as extruded card, its face coloured and its cut edges pale, lit brighter toward the top as if
-// by the high glass; behind each layer, a faint shadow of the one in front.
+// Pale cut edges and a faint shadow on the layer behind are what make flat card read as layered paper.
 export function makeSimorgh(place) {
   const x0 = place.wall, [z0, z1] = place.z;
   const m = new THREE.Matrix4(), paper = [], shade = [];

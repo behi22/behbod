@@ -1,6 +1,4 @@
-// The Shahnameh pieces: the Simorgh over the stairs, the library shelf, the painting on the mezzanine, the haft-sin and
-// Yalda tables on their days, and the Simorgh feather at the gunsmith's bench; on a computer and on phones both ways up.
-//   LOFT_URL=http://127.0.0.1:8815 node test/persia.js [outdir]
+// The Shahnameh pieces in a browser:  LOFT_URL=http://127.0.0.1:8815 node test/persia.js [outdir]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');

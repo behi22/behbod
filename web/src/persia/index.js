@@ -5,9 +5,7 @@ import { makeShelf } from './relics.js';
 import { makeMiniature } from './miniature.js';
 export { addPersia, feastAt } from '../pure/persia.js';
 
-// The Shahnameh and ancient Persia through the house: the Simorgh over the stairs, the Cyrus Cylinder and a Persepolis
-// bookend in the library, the miniature on the mezzanine, and on their days the haft-sin or the Yalda table in the
-// lounge (its code is fetched only then). `day` is the daylight outside, 0 to 1, which the baked room follows too.
+// `day` is the daylight outside, 0 to 1, so these pieces brighten with the baked room.
 export function makePersia(scene, { feast = null, day = () => 0 } = {}) {
   const group = new THREE.Group();
   group.name = 'persia';

@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// The house's light is baked, so these pieces carry theirs in their vertex colours, like the printer's prints and the
-// cube: one plain material for all of them, one mesh per piece.
+// The house's light is baked, so these pieces carry theirs in vertex colours: one plain material, one mesh each.
 let shared = null;
 export function paperMaterial() {
   shared ||= new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -18,8 +17,7 @@ export function soft(n, p, o = {}) {
   return k;
 }
 
-// Paints every vertex of a (non-indexed) geometry: `color` (sRGB hex or a function of normal and position) times the
-// light at that vertex.
+// The geometry must be non-indexed; `color` may be a function of normal and position.
 const _n = new THREE.Vector3(), _p = new THREE.Vector3(), _c = new THREE.Color();
 export function paint(geo, color, light = soft, o = {}) {
   const pos = geo.attributes.position, nor = geo.attributes.normal, n = pos.count, out = new Float32Array(n * 3);

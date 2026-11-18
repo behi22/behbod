@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { makeKit, paint } from './kit.js';
 import { paintMiniature, DESIGN } from './paint.js';
 
-// The painting on the mezzanine's back wall: a black lacquer frame with a gold lip, a brass picture light over it,
-// and the picture itself, painted in the page once the house is up (a moment of work kept off the first frames).
+// The picture is painted once the house is up, to keep that work off the first frames.
 export function makeMiniature({ center: [x, y, z], w, h, frame }) {
   const kit = makeKit(), F = frame, D = 0.035, BLACK = '#1f1a19', GOLD = '#c9a24a', z0 = -y;
   for (const s of [-1, 1]) {
@@ -25,8 +24,7 @@ export function makeMiniature({ center: [x, y, z], w, h, frame }) {
   geo.rotateY(Math.PI);
   geo.translate(x, z, z0 - 0.009);
   paint(geo, '#ffffff', (n, p) => 0.78 + 0.2 * (p.y - (z - h / 2)) / h);
-  // Until it is painted, a dark board in its place; never hidden, since the loading screen briefly shows every hidden
-  // thing to build its shaders and would hide it again after.
+  // A dark board until painted, not hidden: the loading warm-up re-hides whatever was hidden when it began.
   const board = document.createElement('canvas');
   board.width = board.height = 4;
   const bg = board.getContext('2d'); bg.fillStyle = '#2a2420'; bg.fillRect(0, 0, 4, 4);

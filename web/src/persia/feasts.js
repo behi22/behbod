@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { makeKit, paint, paperMaterial } from './kit.js';
 
-// The two holiday tables on the lounge's coffee table, made only on their days (or with ?holiday=nowruz, suri, sizdah
-// or yalda): the haft-sin for Nowruz and the table for Shab-e Yalda. Blender positions in, three's axes out.
+// Fetched only on its days or a ?holiday= preview. Blender positions in, three's axes out.
 const P = (x, y, z) => [x, z, -y];
 const rnd = seed => { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
 

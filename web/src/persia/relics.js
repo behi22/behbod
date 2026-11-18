@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { makeKit, paint } from './kit.js';
 
-// The shelf in the library's corner: a walnut étagère like the bookcase beside it, with a replica of the Cyrus Cylinder
-// and its card on the middle shelf, and a bookend after a Persepolis bull capital holding a row of books above it.
+// Walnut, to match the bookcase beside it.
 const WALNUT = '#8f6748', DARK = '#4e3524', BLACK = '#1d1c1f', STONE = '#8a8278', CLAY = '#a98d6c', BRASS = '#c89b4a';
 const BOOKS = ['#5b1d1f', '#20382c', '#1f2747', '#3a2418', '#6a2a1c', '#1b1b1f'];
 
@@ -133,8 +132,7 @@ function drawCard(g, w, h) {
   ['Babylon, 539 BCE', 'Clay, Akkadian cuneiform', 'Original: British Museum'].forEach((l, i) => g.fillText(l, 18, 92 + i * 22));
 }
 
-// The twin-bull capital, small: an abacus, two kneeling bulls joined at the back with the saddle between their necks,
-// folded forelegs, curled locks on the chest, horns and ears.
+// The twin-bull capital, small: two kneeling bulls back to back, the saddle between their necks.
 function capital(kit, [x, y, z]) {
   const o = { floor: y, reach: 0.05, ao: 0.3 }, S = STONE;
   kit.box(0.16, 0.03, 0.075, '#6d665e', { at: [x, y + 0.015, z] });

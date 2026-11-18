@@ -1,6 +1,4 @@
-// An original painting in the manner of a Persian miniature: Rostam and the White Div in the cave, the last of the
-// Seven Labours, with Rakhsh waiting outside. Flat, high-horizon space, a gold sky, pastel rocks, a lapis border with a
-// gold vine, and a plane tree that grows out over the rules into the margin. Drawn in a 768 x 1024 design space.
+// Drawn in a 768 x 1024 design space and scaled to whatever canvas it is given.
 export const DESIGN = [768, 1024];
 
 const INK = '#2b1a10', LAPIS = '#1d3888', GOLD = '#d4a43e', GOLD_L = '#efce78', GOLD_D = '#9c7022';
@@ -35,8 +33,7 @@ function capsule(g, a, b, wa, wb) {
   g.closePath();
 }
 const shapeOf = s => g => (s.limb ? capsule(g, ...s.limb) : s.circle ? g.arc(s.circle[0], s.circle[1], s.circle[2], 0, Math.PI * 2) : s.ellipse ? g.ellipse(...s.ellipse, 0, Math.PI * 2) : trace(g, s.pts));
-// A part drawn the way a painter outlines: one dark line round the outside of all its pieces, none where they join;
-// `pattern` paints inside each piece afterwards.
+// Every piece is stroked before any is filled, so the outline goes round the part and not where its pieces join.
 function part(g, pieces, fill, { line = INK, lw = 2.2, pattern = null } = {}) {
   const fns = pieces.map(shapeOf);
   if (line) { g.strokeStyle = line; g.lineWidth = lw * 2; g.lineJoin = 'round'; for (const f of fns) { g.beginPath(); f(g); g.stroke(); } }

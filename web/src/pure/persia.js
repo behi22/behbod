@@ -1,10 +1,7 @@
-// The Shahnameh and ancient Persia in the house: where each piece stands, what it says when pressed, and which
-// holiday table is out today. Blender axes (x east, y north, z up), metres.
+// No browser APIs, so the unit tests can run it. Blender axes (x east, y north, z up), metres.
 import { EVENTS, vanTime } from './calendar.js';
 
-// The Simorgh in paper over the stairs, on the west wall above the project frames; the shelf in the library's
-// south-east corner, between the bookcase and the partition; the painting on the mezzanine's back wall over the
-// Shahnameh on its side table; the holiday tables on the lounge's coffee table.
+// Each place is checked against the house's colliders and wall pieces in test/unit/persia.test.mjs.
 export const PLACES = {
   simorgh: { wall: 0.02, u: [4.75, 9.0], z: [3.85, 6.1] },
   shelf: { min: [10.44, 0.0, 0], max: [11.06, 0.34, 1.86] },
@@ -34,8 +31,7 @@ export const SAYS = {
   yalda: ['Shab-e Yalda, the longest night of the year: up late with family over pomegranates and watermelon, a book of Hafez opened at random for a fortune, waiting for the light to come back.'],
 };
 
-// The haft-sin is set out from Chaharshanbe Suri to Sizdah Bedar, the thirteenth day of the new year; the Yalda table
-// on the house's Yalda days. `force` is the house's ?holiday= preview: one of a table's holidays shows that table.
+// Days are Vancouver's, like the rest of the house; `force` is the ?holiday= preview.
 const spanOf = (id, y) => EVENTS.find(e => e.id === id).span(y);
 export const FEASTS = {
   haftsin: { holidays: ['suri', 'nowruz', 'sizdah'], from: y => spanOf('suri', y)[0], to: y => spanOf('sizdah', y)[1] },
@@ -48,8 +44,7 @@ export function feastAt(date, force = null) {
   return null;
 }
 
-// The shelf stands on the floor, so it joins the colliders before the walls, the physics and the walk grid are built;
-// the E spots join the house's own. Returns what was added.
+// Must run before the collision, physics and walk grid are built from meta, so the shelf is solid in all three.
 export function addPersia(meta, feast = null) {
   const { min, max } = PLACES.shelf, f = Object.hasOwn(FEAST_SPOTS, feast ?? '') ? feast : null;
   const collider = { name: 'persia_shelf', min: [...min], max: [...max], kind: 'solid' };
