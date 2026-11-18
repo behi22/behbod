@@ -200,3 +200,18 @@ test('the dock holds every app, on the monitor and on a narrow phone', () => {
     assert.ok(icons.every(d => d.size >= 24), 'still big enough to tap');
   }
 });
+
+test('the browser and the games open at sizes their layouts are made for', async () => {
+  const { browserLayout } = await import('../../web/src/pure/browser.js');
+  const { launcherLayout, playLayout, GAMES } = await import('../../web/src/pure/arcade.js');
+  const { appById } = await import('../../web/src/pure/desktop.js');
+  const [bx, by, bw, bh] = appById('browser').rect, b = browserLayout({ x: bx, y: by, w: bw, h: bh });
+  assert.ok(b.page.w >= 1000 && b.page.h >= 350, `the page is roomy: ${b.page.w} by ${b.page.h}`);
+  const [gx, gy, gw, gh] = appById('games').rect, win = { x: gx, y: gy, w: gw, h: gh };
+  const L = launcherLayout(win);
+  assert.ok(L.bottom <= gy + gh && L.cards.every(c => c.pic), 'the cards fit, side by side with their pictures');
+  for (const g of GAMES) {
+    const P = playLayout(win, g.id), k = Math.min(P.area.w / g.size[0], P.area.h / g.size[1]);
+    assert.ok(k >= 0.9, `${g.id} is drawn near full size (${k.toFixed(2)})`);
+  }
+});
