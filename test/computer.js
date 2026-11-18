@@ -207,6 +207,19 @@ window.__probe = (async () => {
   await p.click('.dt-icon[aria-label="Open Calculator"]');
   const redrawn = await p.waitForSelector('.dt-win.focus[data-app="calc"]', { timeout: 3000 }).then(() => true, () => false);
   check('a window dragged over the page: the page lets the pointer through, and the desktop keeps drawing', during === 'none' && afterDrag === 'auto' && redrawn, `during ${during}, after ${afterDrag}, redrawn ${redrawn}`);
+  // A drag whose button is let go outside the page (the window lost on the way) ends where it got to: the window
+  // stops following the mouse, the page takes clicks again and the desktop keeps drawing.
+  await p.click('.dt-icon[aria-label="Open Terminal"]');
+  await p.waitForSelector('.dt-win.focus[data-app="terminal"]'); await p.waitForTimeout(100);
+  const td = await p.locator('.dt-win.focus[data-app="terminal"] .dt-title span').boundingBox();
+  await p.mouse.move(td.x + td.width + 40, td.y + td.height / 2); await p.mouse.down();
+  await p.mouse.move(td.x + td.width + 80, td.y + td.height / 2 + 10, { steps: 3 });
+  const lostAt = await p.evaluate(() => { window.__termWin = document.querySelector('.dt-win[data-app="terminal"]'); dispatchEvent(new Event('blur')); return __loft.screens.desktop.st.wins.find(w => w.app === 'terminal').x; });
+  await p.mouse.move(td.x + td.width + 200, td.y + td.height / 2 + 10, { steps: 3 });
+  await p.waitForTimeout(200);
+  const lost = await p.evaluate(() => [__loft.screens.desktop.st.wins.find(w => w.app === 'terminal').x, getComputedStyle(document.querySelector('.dt-frame')).pointerEvents, document.querySelector('.dt-win[data-app="terminal"]') !== window.__termWin]);
+  await p.mouse.up();
+  check('a drag lost with the window ends where it got to, and the desktop keeps drawing', lost[0] === lostAt && lost[1] === 'auto' && lost[2], `moved after the loss by ${Math.round(lost[0] - lostAt)} desktop px, the page takes clicks: ${lost[1]}, redrawn ${lost[2]}`);
   await p.click('.dt-icon[aria-label="Open Browser"]');
   await p.click('.dt-win[data-app="browser"] .dt-dot[aria-label="Close Browser"]');
   await p.waitForFunction(() => !document.querySelector('iframe[sandbox]'), null, { timeout: 5000 }).catch(() => {});
