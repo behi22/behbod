@@ -89,3 +89,8 @@ export function noteCorners({ center: [cx, cy, cz], w, h, r }) {
     return v.map((q, i) => top[i] + toward[i] * 0.004 + q);
   });
 }
+
+// By the fire: the lounge's sitting group in front of the fireplace on its west wall (blender/zones/lounge.py), on the
+// ground floor. x and north in Blender metres, h the height.
+export const FIRE = { x0: 0.4, x1: 7.2, y0: 8.0, y1: 13.2 };
+export const byFire = (x, north, h) => x > FIRE.x0 && x < FIRE.x1 && north > FIRE.y0 && north < FIRE.y1 && h < 1.5;

@@ -202,6 +202,59 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     await ctx.close();
   }
 
+  if (want('bh22')) {
+    const { ctx, p } = await open(b, DESK, 'bh22');
+    const visits = [];
+    // Each visit starts with a different story: three page loads.
+    for (let v = 0; v < 3; v++) {
+      if (v) { await p.reload(); await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 }); await p.evaluate(() => { const g = document.getElementById('gate'); if (g) g.style.display = 'none'; }); await p.waitForTimeout(800); }
+      // Stand by the fire, BH-22 beside me, its turn to talk.
+      await p.evaluate(() => { const l = __loft; l.pos.set(2.0, 0.05, -11.8); l.creatures.bh22.pos.set(2.3, 0, -11.5); });
+      await p.waitForTimeout(900);
+      const label = await p.evaluate(() => document.getElementById('prompt').lastChild.nodeValue);
+      await p.keyboard.press('KeyE'); await p.waitForTimeout(400);
+      const first = await toast(p);
+      visits.push(first);
+      if (!v) {
+        check('by the fire, BH-22 offers a story', label === 'Ask BH-22 for a story', label);
+        check('and tells one, starting with where it is from', /^BH-22: A story from the Shahnameh\. /.test(first), first);
+        await p.screenshot({ path: `${OUT}/bh22-fire.png` });
+        await p.waitForTimeout(5200);
+        const second = await toast(p);
+        check('a line at a time', second.startsWith('BH-22: ') && second !== first && !second.includes('A story from'), second);
+      }
+    }
+    check('each visit begins with a different story', new Set(visits).size === 3, visits.map(s => s.slice(43, 80)).join(' | '));
+    // Walking off ends the story; away from the fire it gives its tips as before.
+    await p.evaluate(() => { __loft.pos.set(12, 0.05, -6); });
+    await p.waitForTimeout(1200);
+    const left = await p.evaluate(() => __loft.creatures.bh22.state);
+    await p.evaluate(() => { __loft.creatures.bh22.pos.set(12.4, 0, -6.3); });
+    const quiet = await toast(p); await p.waitForTimeout(5000);
+    check('walking off ends the story', left !== 'story' && (await toast(p)) === quiet, `state ${left}`);
+    // BH-22 has gone back to its rounds by now: bring it over and hold it still while it is asked, turn by turn.
+    const here = () => p.evaluate(() => { Object.assign(__loft.creatures.bh22, { state: 'pause', timer: 30, route: [] }); __loft.creatures.bh22.pos.set(12.4, 0, -6.3); });
+    for (let i = 0; i < 3; i++) {
+      await here(); await p.waitForTimeout(400);
+      const lab = await p.evaluate(() => document.getElementById('prompt').lastChild.nodeValue);
+      if (lab === 'Talk to BH-22') break;
+      await p.keyboard.press('KeyE'); await p.waitForTimeout(4200);
+    }
+    await here(); await p.waitForTimeout(400);
+    await p.keyboard.press('KeyE'); await p.waitForTimeout(300);
+    const tip = await toast(p), st = await p.evaluate(() => __loft.creatures.bh22.state), why = await p.evaluate(() => [__loft.mode, document.getElementById('prompt').lastChild.nodeValue, __loft.pos.toArray().map(v => v.toFixed(2)).join(','), __loft.creatures.bh22.pos.toArray().map(v => v.toFixed(2)).join(',')].join(' / '));
+    check('away from the fire, a tip as before', /^BH-22: /.test(tip) && st === 'talk', `${st}: ${tip} (${why})`);
+    // Sitting on the couch by the fire calls it over (no tea this time).
+    await p.evaluate(() => { const l = __loft, at = l.meta.interact.find(i => i.id === 'couch_east').at; Math.random = () => 0.9; Object.assign(l.creatures.bh22, { state: 'home', route: [] }); l.creatures.bh22.pos.set(9, 0, -3.6); l.pos.set(at[0], at[2] + 0.05, -at[1]); });
+    await p.waitForTimeout(600);
+    await p.evaluate(() => { window.__r2log = []; const r2 = __loft.creatures.bh22; window.__r2t = setInterval(() => __r2log.push(__loft.mode + ':' + r2.state), 1000); __loft.act('couch_east'); });
+    await p.waitForFunction(() => /^BH-22: A story from the Shahnameh/.test(document.getElementById('toast').textContent), null, { timeout: 25000 }).catch(() => {});
+    const sat = await p.evaluate(() => [__loft.mode, document.getElementById('toast').textContent, __loft.creatures.bh22.state]);
+    check('sitting by the fire, BH-22 comes over and tells a story', sat[0] === 'sit' && sat[1].startsWith('BH-22: A story from the Shahnameh') && sat[2] === 'story', sat.join(' | ') + ' / ' + (await p.evaluate(() => __r2log.slice(0, 8).join(' '))));
+    await p.screenshot({ path: `${OUT}/bh22-couch.png` });
+    await ctx.close();
+  }
+
   for (const [tag, opts] of [['upright', UPRIGHT], ['sideways', SIDEWAYS]]) {
     if (!want('phone')) break;
     const { ctx, p } = await open(b, opts, tag);

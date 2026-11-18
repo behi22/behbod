@@ -163,3 +163,13 @@ test('settings: the wallpaper row, and every row fits the window', async () => {
   assert.ok(L.bottom <= y + h, `bottom ${L.bottom} within ${y + h}`);
   for (const p of L.pills) assert.ok(p.x + p.w <= x + w && p.y + p.h <= y + h, p.label);
 });
+
+test('by the fire: the lounge seats round the fireplace, not the holochess corner, the desk or the mezzanine', () => {
+  const seat = id => meta.interact.find(i => i.id === id).seat;
+  for (const id of ['couch_east', 'couch_north', 'couch_south', 'beanbag']) { const [x, y, z] = seat(id); assert.ok(S.byFire(x, y, z), id); }
+  for (const id of ['window_seat', 'egg_chair', 'piano', 'mezz_bean0', 'read_chair']) { const [x, y, z] = seat(id); assert.ok(!S.byFire(x, y, z), id); }
+  const [hx, hy, hz] = meta.points.holochess;
+  assert.ok(!S.byFire(hx, hy, hz), 'the holochess table');
+  assert.ok(!S.byFire(...meta.spots.desk), 'the desk');
+  assert.ok(S.byFire(1.4, 10.6, 3.5) === false, 'not from the floor above');
+});

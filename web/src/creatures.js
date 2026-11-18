@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { piece, mesh, glow, sph, cyl, box, rbox, torus, PAINT } from './shapes.js';
 import { b2t } from './engine.js';
+import { firesideAt, byFire } from './pure/shahnameh.js';
 
 // The loft's residents, built from simple shapes: BH-22 the droid, the mouse droid it chases, Pishi the grey tabby
 // and Jessi the white Shih Tzu. They walk the same path grid I do and run small daily routines.
@@ -186,6 +187,7 @@ function bubble(parent, y) {
 // BH-22's tips, in order, one each time you talk to it.
 const TIPS = [
   'Beep. Welcome in. Walk up to anything glowing and press E.',
+  'Sit by the fire and I will tell you a story from the Shahnameh.',
   'The red book in the library is not a book.',
   'Press G to flip your hood, O for the wardrobe.',
   'Three stars on a stage at the range unlocks the gold kit.',
@@ -330,8 +332,35 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         if (!ok2 || lastMode !== 'sit' || r2.pos.distanceTo(lastPlayer) > 2.5) { r2.bub.say('oh', now); giveUp(); return; }
         r2.bub.say('tea!', now); blip(sfx.chirp, r2);
         toast('BH-22 brought you a glass of tea.'); onEvent('tea');
-        wait(r2, 2.5, giveUp);
+        // By the fire, the tea comes with a story.
+        wait(r2, 2.5, () => (nearFire(lastPlayer) ? tellStory() : giveUp()));
       }));
+    });
+  }
+  // A story from the Shahnameh by the fire, a line at a time; each visit starts with a different one (the count of
+  // visits is kept in the browser), and asking again goes on to the next. Anything else BH-22 is given to do ends it.
+  let visit = 0, told = 0;
+  try { visit = (parseInt(localStorage.getItem('home.bh22.visit'), 10) || 0) + 1; localStorage.setItem('home.bh22.visit', String(visit)); } catch (e) { visit = Math.floor(Math.random() * 60); }
+  const nearFire = p => byFire(p.x, -p.z, p.y);
+  const STORY_LINE = 4.8;
+  // `earn`: told because I asked, so it counts as saying hi, once the story is over (an achievement's own note would
+  // otherwise cover its first line).
+  function tellStory(earn = false) {
+    endR2Fun();
+    const lines = firesideAt(visit, told++);
+    r2.state = 'story'; r2.timer = lines.length * STORY_LINE + 0.5; r2.route = []; r2.pending = null; r2.epoch++;
+    r2.cup.visible = false; r2.speed = r2.base;
+    r2.bub.say('story time', now); sfx.word('hello', r2.pos);
+    lines.forEach((l, i) => wait(r2, i * STORY_LINE, () => { if (r2.state === 'story') toast(`BH-22: ${i ? '' : 'A story from the Shahnameh. '}${l}`); }));
+    if (earn) wait(r2, lines.length * STORY_LINE, () => onEvent('bh22'));
+  }
+  // Sitting down by the fire calls it over to tell one.
+  function comeTell(stand) {
+    if (!['dock', 'pause', 'patrol', 'home'].includes(r2.state)) return;
+    r2.state = 'toStory';
+    goTo(r2, stand, ok => {
+      if (!ok || lastMode !== 'sit' || r2.pos.distanceTo(lastPlayer) > 2.5) { r2.state = 'pause'; r2.timer = 1; return; }
+      tellStory();
     });
   }
   // Ends a pet or a play early or on time: its eye colour, dome tilt and hop height go back to normal.
@@ -390,7 +419,11 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (r2.state === 'dock' && (r2.timer -= dt) < 0) { r2.stops = 2 + Math.floor(rnd(0, 3)); r2Next(); }
     else if (r2.state === 'pause' && (r2.timer -= dt) < 0) r2Next();
     else if (r2.state === 'petted' || r2.state === 'play') tickR2Fun(dt, ctx);
-    else if (r2.state === 'talk') {
+    else if (r2.state === 'story') {
+      faceTo(r2, ctx.player, dt);
+      // Walking off ends the story; the lines not yet told are dropped.
+      if ((r2.timer -= dt) < 0 || r2.pos.distanceTo(ctx.player) > 5) { r2.state = 'pause'; r2.timer = 2; }
+    } else if (r2.state === 'talk') {
       faceTo(r2, ctx.player, dt);
       if ((r2.timer -= dt) < 0) { r2.state = 'pause'; r2.timer = 1; }
     } else if (r2.state === 'chase') {
@@ -787,7 +820,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       if (purring && now > purring) { fx?.purr(false); purring = 0; }
       lastPlayer.copy(ctx.player);
       for (let i = waits.length - 1; i >= 0; i--) { const w = waits[i]; if (w.at > t) continue; waits.splice(i, 1); if (w.a.epoch === w.epoch) w.fn(); }
-      if (ctx.mode === 'sit' && lastMode !== 'sit' && ctx.stand && Math.random() < 0.6) bringTea(ctx.stand);
+      if (ctx.mode === 'sit' && lastMode !== 'sit' && ctx.stand) { if (Math.random() < 0.6) bringTea(ctx.stand); else if (byFire(...ctx.stand)) comeTell(ctx.stand); }
       lastMode = ctx.mode;
       tickR2(dt, ctx); tickMouse(dt, ctx); tickPishi(dt, ctx); tickJessi(dt, ctx);
       for (const a of agents) {
@@ -816,7 +849,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       for (const [a, id] of [[r2, 'bh22'], [pishi, 'pishi'], [jessi, 'jessi']]) {
         if (a.hop || Math.abs(p.y - a.pos.y) > 1.0 || (id === 'jessi' && a.state === 'fetch')) continue;
         if (id === 'bh22' && r2.state.startsWith('keeper')) continue;
-        const label = id === 'jessi' && jessi.state === 'nap' ? 'Wake Jessi' : LABELS[id][actionFor(id)];
+        const label = id === 'jessi' && jessi.state === 'nap' ? 'Wake Jessi' : id === 'bh22' && actionFor(id) === 'talk' && nearFire(p) ? 'Ask BH-22 for a story' : LABELS[id][actionFor(id)];
         const d = Math.hypot(p.x - a.pos.x, p.z - a.pos.z);
         if (d <= 1.1 && d < bd) { bd = d; best = items[id]; Object.assign(best, { label, x: a.pos.x, y: a.pos.y, z: a.pos.z }); }
       }
@@ -830,6 +863,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         if (r2.state.startsWith('keeper')) return null;
         turnAt.bh22++;
         if (what !== 'talk') { r2Fun(what); return { crouch: what === 'pet' }; }
+        if (nearFire(ctx.player)) { tellStory(true); return null; }
         // Talking interrupts whatever it was doing, so drop the errand's leftovers too.
         endR2Fun();
         r2.state = 'talk'; r2.timer = 3.5; r2.route = []; r2.pending = null; r2.epoch++;
