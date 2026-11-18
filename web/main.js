@@ -21,6 +21,7 @@ import { makeLiveVideo } from './src/livevideo.js';
 import { makeFleet } from './src/fleet.js';
 import { makePrinter } from './src/printer.js';
 import { makeRubik } from './src/rubik.js';
+import { makeAria } from './src/aria.js';
 import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
 import { makeFilm } from './src/film.js';
@@ -105,7 +106,7 @@ try {
 } catch (e) { console.warn('[loft] the 3D outside could not start', e); out3d = null; }
 const outside = makeOutside(scene, meta, screens, { traffic: !out3d });
 const progress = makeProgress(store);
-world.showUnlocks(progress.unlocked());
+world.showUnlocks(progress.unlocked()); screens.showUnlocks(progress.unlocked());
 
 let savedLook = null, wardrobe = null;
 try { savedLook = JSON.parse(store.get('loft.look') || 'null'); } catch (e) { savedLook = null; }
@@ -153,7 +154,7 @@ const range = makeRange({
   // A star earns the achievement; what a run unlocks shows up on the unlock stands and in the wardrobe at once.
   onResult: (res, got) => {
     if (res.stars > 0) earn('range');
-    world.showUnlocks(progress.unlocked()); wardrobe.render();
+    world.showUnlocks(progress.unlocked()); screens.showUnlocks(progress.unlocked()); wardrobe.render();
     return got.unlocks.map(u => UNLOCK_NAMES[u]);
   },
   // Its rooms are drawn while I am in them or the bookcase door stands open.
@@ -173,6 +174,7 @@ const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
 const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
+const aria = makeAria(scene, meta);
 world.retireFighters();
 const tvMatch = meta.screens.tv ? makeTvMatch({ texture: screens.textures.tv, at: b2t(...meta.screens.tv.center).toArray(), normal: [1, 0, 0], fps: () => (tierName === 'low' ? 5 : 10) }) : null;
 // The range is fetched behind the scenes, with no click: as soon as I head for the library, where its door is, or
@@ -569,8 +571,8 @@ canvas.addEventListener('pointerup', e => {
   // Only the finger that started the drag counts, so a second finger never turns into a tap.
   if (!dragging || e.pointerId !== dragging.id) return;
   if (dragging.moved < 6 && mode === 'walk') tapMove(e);
-  // At the desk a click on Pishi shoos her off the keyboard.
-  else if (dragging.moved < 6 && mode === 'desk') { aim(e); if (creatures.hit(ray) === 'pishi') creatures.shoo(); }
+  // At the desk a click on Pishi shoos her off the keyboard, and Aria answers a click on her.
+  else if (dragging.moved < 6 && mode === 'desk') { aim(e); if (creatures.hit(ray) === 'pishi') creatures.shoo(); else if (aria?.hit(ray)) toast(aria.say()); }
   dragging = null;
 });
 canvas.addEventListener('pointercancel', e => { if (dragging && e.pointerId === dragging.id) dragging = null; });
@@ -636,6 +638,7 @@ const walkable = zoneGltfs.map(g => g.scene);
 const aim = e => ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
 function tapMove(e) {
   aim(e);
+  if (aria?.hit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(aria.say()); }); return; }
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
   // Clicking a resident walks me over to them and says hello on arrival.
   const who = creatures.hit(ray);
