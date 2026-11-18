@@ -26,6 +26,7 @@ import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
+import { makePersia, addPersia } from './src/persia/index.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -51,6 +52,7 @@ engine.onTier(name => { world?.setGloss(name === 'high' || name === 'ultra'); wo
 // ---------- loading ----------
 const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
 const meta = await load.json('assets/world.json');
+addPersia(meta);
 // Where each sitting style puts the hips, and which poses build its motions.
 const sitInfo = await load.json('assets/sitposes.json').catch(() => null);
 // My YouTube videos for the TV and the screening wall: [{ id, title, by }].
@@ -172,6 +174,7 @@ const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: ()
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
+const persia = makePersia(scene, { day: () => out3d?.light.dayK ?? 0 }); window.__persia = persia;
 const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
@@ -444,6 +447,7 @@ function act(it) {
   }
   if (it.id === 'wardrobe') { world.openWardrobe(performance.now() / 1000); audio.sfx.door('wardrobe', at); return wardrobe.show(); }
   if (it.id === 'holiday') return toast(screens.holiday ? screens.holiday.text : 'No holiday today.');
+  { const said = persia.poke(it.id); if (said) return toast(said); }
   if (it.id === 'bh22' || it.id === 'pishi' || it.id === 'jessi') {
     // A pet or a treat: I crouch down to them for a moment.
     if (creatures.act(it.id, cctx)?.crouch) petCrouch = performance.now() / 1000 + 2.4;
@@ -829,6 +833,7 @@ function step() {
   fleet.tick(dt, t, camera.position);
   printer?.tick(dt, camera.position);
   rubik?.tick(dt, camera.position);
+  persia.tick(dt, t);
   tvMatch?.tick(dt, camera);
   pens?.tick(dt);
   me.drawFace(now);
