@@ -5,9 +5,6 @@ import { knightMaterials, buildHilt, buildBlade, bladeGlowMaterial, HILT } from 
 import { BLADE, guard, bladeEnds, meets, hum, newTraining, stepTraining, blocked, stung, returned, rest, levelOf } from './pure/saber.js';
 export { makeKnight } from './knight.js';
 
-// Taking the knight's saber: the lid lifts, the saber is in your hand, and his training drone floats out of the case
-// to throw slow bolts at you. The blade follows the mouse or a finger; light it and swing, and block what comes. The
-// rules (where the blade is, whether a bolt meets it, the drone's run of shots) are in pure/saber.js.
 const CSS = `
 .sb-hud { position: fixed; left: calc(16px + env(safe-area-inset-left, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); z-index: 25; display: flex; gap: 8px; align-items: center; pointer-events: none;
   font: 600 12px/1.2 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; color: #e8edf5; letter-spacing: .04em; }
@@ -29,19 +26,16 @@ body[data-mode="saber"] .keys, body[data-mode="saber"] .joy, body[data-mode="sab
 body[data-mode="saber"] #who, body[data-mode="saber"] #hood, body[data-mode="saber"] #closet { display: none; }
 body[data-mode="saber"] canvas#view { cursor: none; }
 `;
-// AWAY: how much bigger the drone is drawn once out of the case, so it reads at training distance.
+// Drawn bigger once out of the case, so it reads at training distance.
 const EYE = 1.55, GLIDE = 0.75, AHEAD = 2.4, AWAY = 1.6, BOLTS = 8, SPARKS = 64, LIGHT_UP = 0.16, GO_OUT = 0.26;
 const UP = new THREE.Vector3(0, 1, 0);
 const smooth = k => k * k * (3 - 2 * k);
 
 function buildDrone(env) {
   const std = (color, roughness, metalness) => new THREE.MeshStandardMaterial({ color, roughness, metalness, envMap: env, envMapIntensity: 1.2 });
-  // A ball the size of a grapefruit: a graphite shell with a steel belt, one amber eye in a dark hood, two small
-  // thrusters and an aerial with a status light.
   const g = new THREE.Group(), shell = std(0x34383f, 0.3, 0.6), steel = std(0x9096a0, 0.26, 1), dark = std(0x111216, 0.5, 0.3);
   const lens = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 0.55, 0.1) }), status = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 1.4, 1.6) });
   const R = 0.046, at = (geo, p, r = [0, 0, 0], s = [1, 1, 1]) => geo.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(...p), new THREE.Quaternion().setFromEuler(new THREE.Euler(...r)), new THREE.Vector3(...s)));
-  // One mesh per material: the parts of each are merged.
   const steelParts = [at(new THREE.TorusGeometry(R + 0.001, 0.0035, 8, 40), [0, 0, 0], [Math.PI / 2, 0, 0]), at(new THREE.CylinderGeometry(0.0016, 0.0016, 0.026, 6), [0.012, R * 0.92 + 0.01, -0.012])];
   for (const s of [-1, 1]) steelParts.push(at(new THREE.CylinderGeometry(0.009, 0.011, 0.024, 12), [s * (R + 0.004), -0.008, -0.004]));
   const parts = [
@@ -51,7 +45,7 @@ function buildDrone(env) {
     [at(new THREE.SphereGeometry(0.004, 10, 8), [0.012, R * 0.92 + 0.024, -0.012]), status],
   ];
   for (const [geo, m] of parts) g.add(new THREE.Mesh(geo, m));
-  // The eye is its own mesh: the bolts leave from it.
+  // Separate so the bolts can leave from it.
   const eye = new THREE.Mesh(new THREE.SphereGeometry(0.0085, 14, 10), lens);
   eye.position.z = R + 0.004;
   g.add(eye);
@@ -64,15 +58,12 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
   if (!knight || !c || !it) return null;
   const { renderer, scene } = engine;
   if (!document.getElementById('sb-css')) { const s = document.createElement('style'); s.id = 'sb-css'; s.textContent = CSS; document.head.append(s); }
-  // Where you stand to train: the spot in front of the case, looking out over the open floor to the east.
   const eyeAt = b2t(it.at[0], it.at[1], EYE), ahead = new THREE.Vector3(1, 0, 0);
   const station = eyeAt.clone().addScaledVector(ahead, AHEAD).add(new THREE.Vector3(0, -0.08, 0));
   const facing = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(eyeAt, station, UP));
-  // The drone waits on a small steel ring on the plinth, in a corner of the case at the knight's feet.
   const cx = (c.min[0] + c.max[0]) / 2, cy = (c.min[1] + c.max[1]) / 2, home = b2t(cx + 0.21, cy - 0.2, 1.0 + 0.046);
   const above = home.clone().add(new THREE.Vector3(0, 0.75, 0));
 
-  // ---------- the saber in your hand: its own little scene, drawn over the room, in eye space ----------
   const env = knight.env, M = knightMaterials(env);
   const hand = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.01, 10) };
   hand.scene.add(new THREE.HemisphereLight(0xcdd8ff, 0x1c1410, 1.1));
@@ -87,7 +78,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
   blade.scale.y = 0.001; blade.visible = false;
   saber.add(hilt, blade);
   hand.scene.add(saber);
-  // The swing's trail: where the blade was over the last few frames, fading, drawn only while it moves fast.
   const TRAIL = 9, trailPos = new Float32Array(TRAIL * 2 * 3), trailCol = new Float32Array(TRAIL * 2 * 3), trailIdx = [];
   for (let i = 0; i < TRAIL - 1; i++) { const a = i * 2; trailIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
   const trailGeo = new THREE.BufferGeometry();
@@ -101,7 +91,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
   engine.addLayer({ scene: hand.scene, camera: hand.camera, clearDepth: true, on: () => active && enterK > 0.35 });
   try { renderer.compile(hand.scene, hand.camera); } catch (e) { /* built on first sight instead */ }
 
-  // ---------- the drone, its bolts and the sparks, out in the room ----------
   const drone = buildDrone(env);
   const cradle = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.004, 8, 32), M.steel);
   cradle.rotation.x = Math.PI / 2; cradle.position.copy(home).setY(home.y - 0.04);
@@ -132,13 +121,12 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
   scene.add(sparks);
   let sparkNext = 0;
 
-  // ---------- state ----------
   let active = false, enterK = 0, lit = false, litK = 0, tr = null, best = Number(store?.get('home.saber.best')) || 0;
   let hud = null, bar = null, pop = null, sting = null, lightBtn = null, wasLevel = 0;
   const from = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
   const pointer = { x: 0.2, y: -0.2 }, held = new Set();
   const view = { tanX: 1, tanY: 1 };
-  // The blade as drawn: the hand and the way it points follow the guard a moment behind, which is the swing.
+  // Lagging the guard a little is what makes the swing.
   const handAt = new THREE.Vector3(), dirAt = new THREE.Vector3(0, 1, 0), was = { a: [0, 0, 0], b: [0, 0, 0] }, now = { a: [0, 0, 0], b: [0, 0, 0] };
   let shake = 0, swingK = 0, flight = null, hold = false;
   const dronePos = new THREE.Vector3().copy(home), droneGoal = new THREE.Vector3().copy(station), droneWob = new THREE.Vector3();
@@ -174,7 +162,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
     drawHud();
   }
 
-  // ---------- input ----------
   const toPointer = e => { pointer.x = (e.clientX / innerWidth) * 2 - 1; pointer.y = 1 - (e.clientY / innerHeight) * 2; };
   // The mouse guards wherever it is; a finger or pen only while it is the one that touched the picture.
   const onMove = e => { if (active && (e.pointerType === 'mouse' || e.pointerId === touchId)) toPointer(e); };
@@ -196,11 +183,10 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
     window[f]('blur', onBlur);
   }
 
-  // ---------- bolts ----------
   function fire(ev) {
     const b = bolts.find(x => !x.live);
     if (!b) return;
-    // The place it passes is on the blade you would hold for that pointer place, so every bolt can be blocked.
+    // On the blade you would hold for that aim, so every bolt can be blocked.
     const g = guard(ev.aim[0], ev.aim[1], view), { a, dir } = bladeEnds(g);
     tmp.set(a[0] + dir[0] * BLADE * ev.along, a[1] + dir[1] * BLADE * ev.along, a[2] + dir[2] * BLADE * ev.along);
     camera.localToWorld(tmp);
@@ -219,11 +205,9 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
     }
     sparks.visible = true;
   }
-  // The blade's way in the room, for sending a bolt back.
   const bladeDir = new THREE.Vector3();
   function deflect(b) {
     bladeDir.copy(dirAt).transformDirection(camera.matrixWorld);
-    // Off the blade's face back the way it came, a little scattered; close enough to the drone, it finds it.
     const v = b.vel, along = bladeDir.clone().multiplyScalar(v.dot(bladeDir));
     v.sub(along).negate().add(along).multiplyScalar(1.5);
     v.add(tmp.set((Math.random() - 0.5), (Math.random() - 0.5) * 0.6, (Math.random() - 0.5)).multiplyScalar(v.length() * 0.35));
@@ -286,18 +270,16 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
     sparks.visible = any;
   }
 
-  // ---------- the drone ----------
   function stepDrone(dt, t) {
     if (flight) {
       flight.t = Math.min(1, flight.t + dt / flight.time);
       const k = smooth(flight.t), [p0, p1, p2] = flight.path;
       dronePos.set(0, 0, 0).addScaledVector(p0, (1 - k) * (1 - k)).addScaledVector(p1, 2 * k * (1 - k)).addScaledVector(p2, k * k);
-      // It grows as it leaves the case and shrinks as it settles back in.
       const g = flight.grow ? smooth(Math.min(1, flight.t * 2)) : smooth(Math.max(0, flight.t * 2 - 1));
       drone.group.scale.setScalar(flight.s0 + ((flight.grow ? AWAY : 1) - flight.s0) * g);
       if (flight.t >= 1) { const done = flight.done; flight = null; done?.(); }
     } else if (active) {
-      // It drifts about in front of you while it works, never so far to the side that it leaves a narrow screen.
+      // Kept narrow enough to stay on a phone's screen.
       if ((wanderT -= dt) <= 0) {
         wanderT = 1.2 + Math.random() * 1.4;
         const side = Math.min(0.7, view.tanX * AHEAD * 0.55);
@@ -319,7 +301,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
   }
   function flyTo(path, time, grow, done) { flight = { path, time, t: 0, grow, done, s0: drone.group.scale.x }; }
 
-  // ---------- the blade ----------
   function stepBlade(dt) {
     const k = dt > 0 ? dt : 0;
     if (held.size) {
@@ -340,7 +321,7 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
     const speed = k > 0 ? Math.hypot(now.b[0] - was.b[0], now.b[1] - was.b[1], now.b[2] - was.b[2]) / k : 0;
     const h = hum(litK > 0.9 ? speed : 0);
     swingK = Math.max(h.swing, swingK - k * 3);
-    // The view comes in from below on the way in, so the saber rises into the hand.
+    // Rises in from below so it reads as picked up.
     const rise = (1 - smooth(Math.min(1, enterK * 1.3))) * 0.35;
     saber.position.set(handAt.x, handAt.y - rise, handAt.z);
     saber.quaternion.setFromUnitVectors(UP, dirAt);
@@ -350,7 +331,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
     glowMat.uniforms.k.value = fl * (1 + 0.35 * swingK);
     redLight.intensity = 0.25 * litK * fl;
     redLight.position.set(handAt.x + dirAt.x * 0.25, handAt.y + dirAt.y * 0.25, handAt.z + dirAt.z * 0.25);
-    // The trail runs from halfway up the blade to its tip, oldest faintest, brightest along the tip's path.
     trailAt.unshift([now.a.map((v, i) => v + (now.b[i] - v) * 0.5), now.b.slice()]);
     if (trailAt.length > TRAIL) trailAt.pop();
     trail.visible = litK > 0.9 && swingK > 0.1 && trailAt.length > 2;
@@ -385,7 +365,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
       knight.setOut(true);
       for (const b of bolts) { b.live = false; b.g.visible = false; }
       showHud(); listen(true);
-      // The drone lifts off its plinth, up through the open lid, and out to its spot.
       flyTo([dronePos.clone(), above, station], 1.5, true);
       wanderT = 1.5; trailAt.length = 0; hold = false;
       return true;
@@ -401,7 +380,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
       flyTo([dronePos.clone(), above, home], 1.6, false, () => { if (!active) { knight.setOut(false); dronePos.copy(home); drone.group.position.copy(home); drone.group.lookAt(tmp.copy(home).add(new THREE.Vector3(1, 0, 0.6))); } });
       onExit?.();
     },
-    // Keys while holding it: Space or F lights it or puts it out, the arrows or WASD move the blade, Esc or E put it back.
     key(e, down) {
       const c = e.code, dirs = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down' };
       if (dirs[c]) { if (down) held.add(dirs[c]); else held.delete(dirs[c]); return true; }
@@ -410,7 +388,6 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
       if (c === 'Space' || c === 'KeyF') { if (enterK >= 1) setLit(!lit); return true; }
       return false;
     },
-    // Puts the camera at my eye, looking out at the drone's spot, gliding there from wherever it was.
     pose(dt, lookAt) {
       enterK = Math.min(1, enterK + dt / GLIDE);
       const k = smooth(enterK);
@@ -424,7 +401,7 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
     },
     tick(dt, t, eye) {
       const step = Math.min(dt, 0.05);
-      // The view's reach, for keeping the blade and the drone on screen whatever its shape.
+      // Recomputed each frame so the blade and the drone fit any screen shape.
       view.tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)); view.tanX = view.tanY * camera.aspect;
       if (hand.camera.fov !== camera.fov || hand.camera.aspect !== camera.aspect) { hand.camera.fov = camera.fov; hand.camera.aspect = camera.aspect; hand.camera.updateProjectionMatrix(); }
       stepDrone(step, t);
@@ -439,12 +416,10 @@ export function makeSaber({ engine, camera, canvas, coarse, knight, meta, audio,
       stepBolts(step);
       stepSparks(step);
       knight.tick(step, t, active ? null : eye);
-      // The case's own saber hums softly when you are close to it.
       const near = !knight.out && eye && eye.distanceTo(knight.root.position) < 3;
       audio?.caseHum(near ? 0.05 : 0, near ? knight.saberAt() : null);
     },
-    // For the checks: hold the pointer at a place, keep the drone from firing by itself, and fire a bolt straight at
-    // the blade or wide of it.
+    // For test/saber.js.
     point(x, y) { pointer.x = x; pointer.y = y; },
     hold(on) { hold = !!on; },
     test(kind) {

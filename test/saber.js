@@ -1,7 +1,3 @@
-// The knight's case and his saber, in a real browser on a computer and on a phone: the old stand-in is gone and the
-// knight stands in its place, the saber comes out of the case and lights, a bolt aimed at the blade is blocked and one
-// aimed wide gets through, the drone keeps firing on its own, and Esc or the button puts it all back. No page errors,
-// no console errors, no failed requests. Pictures go to the out folder.
 //   LOFT_URL=http://127.0.0.1:8815 node test/saber.js [outdir]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -26,18 +22,15 @@ async function open(b, opts) {
   await p.waitForTimeout(1200);
   return { p, errs };
 }
-// Stand on the spot in front of the case.
 const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, b2t(...(require('../web/assets/world.json').interact.find(i => i.id === 'vader').at)));
 
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
-    // ---------- a computer ----------
     const { p, errs } = await open(b, { viewport: { width: 1280, height: 800 } });
     const built = await p.evaluate(() => {
       const k = __saber.knight, THREE = __loft.camera.constructor;
-      // Nothing of the old stand-in left inside the case: every triangle there now belongs to the knight, his base,
-      // the case's own glass and steel, or his drone.
+      // Anything left inside the case that is not ours is the old stand-in.
       const box = { min: k.root.position.clone(), max: k.root.position.clone() };
       box.min.x -= 0.32; box.min.z -= 0.32; box.min.y += 0.01; box.max.x += 0.32; box.max.z += 0.32; box.max.y += 0.7;
       let stray = 0;
@@ -60,7 +53,7 @@ const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, 
     });
     check('the stand-in is cut out of the room and the knight stands in the case', built.removed > 100 && built.stray === 0 && built.figure && !built.out, JSON.stringify(built));
 
-    // The sound on (the test browser sends it all into a silent node), so every sound below really runs.
+    // Sound on so every sound below really runs (the test browser mutes it).
     await p.click('#snd');
     await toStand(p);
     await p.waitForTimeout(500);
@@ -87,7 +80,7 @@ const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, 
     check('the blade follows the mouse', a1[0] > a0[0] + 0.1 && a1[1] > a0[1], `${a0.map(v => v.toFixed(2))} -> ${a1.map(v => v.toFixed(2))}`);
     await p.screenshot({ path: `${OUT}/desk-lit.png` });
 
-    // A bolt straight at the blade is blocked; one wide of it gets through (the drone holds its own fire meanwhile).
+    // The drone holds its own fire so only these two bolts count.
     await p.evaluate(() => __saber.hold(true));
     await p.waitForTimeout(1500);
     const before = await p.evaluate(() => ({ ...__saber.training }));
@@ -100,7 +93,6 @@ const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, 
     const afterWide = await p.evaluate(() => ({ stung: __saber.training.stung, streak: __saber.training.streak }));
     check('a bolt wide of the blade gets through', afterWide.stung === before.stung + 1 && afterWide.streak === 0, JSON.stringify(afterWide));
 
-    // Left alone, the drone warns and fires by itself.
     await p.evaluate(() => __saber.hold(false));
     const shots0 = await p.evaluate(() => __saber.training.shots);
     await p.waitForTimeout(6000);
@@ -114,7 +106,6 @@ const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, 
     await p.waitForTimeout(1800);
     const back = await p.evaluate(() => ({ out: __saber.knight.out, drone: __saber.drone.distanceTo(__saber.knight.root.position) }));
     check('Esc puts it back: walking again, the saber and the drone back in the case', left.mode === 'walk' && !left.hud && left.head && !back.out && back.drone < 0.4, JSON.stringify({ ...left, ...back }));
-    // Twice in a row, to be sure it can be taken again.
     await p.keyboard.press('KeyE');
     await p.waitForTimeout(900);
     const again = await p.evaluate(() => __loft.mode);
@@ -124,7 +115,6 @@ const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, 
     check('computer: no page errors, console errors or failed requests', !errs.length, errs.slice(0, 5).join(' | '));
     await p.close();
 
-    // ---------- a phone ----------
     const ph = await open(b, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
     const q = ph.p;
     await toStand(q);

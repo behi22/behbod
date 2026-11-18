@@ -1,9 +1,6 @@
 import { shot, makePanner, setPos, stats } from './core.js';
 import { tone, noisy } from './drums.js';
 
-// The saber's sounds, all made here: a hum that climbs and brightens as the blade swings, with the rush of air on top;
-// the snap of it lighting and the sigh of it going out; the crack when a bolt meets it; the drone's warning, its shot,
-// the sting of a bolt that gets through, and the zap of one sent back into the drone.
 const BASE = 88;
 
 export function makeSaberAudio(env) {
@@ -18,7 +15,6 @@ export function makeSaberAudio(env) {
     return S;
   };
 
-  // A live hum: two buzzing saws a hair apart through a filter, a low body under them, and hiss for the swing.
   const voices = {};
   function voice(name, pos) {
     const e = env.ready();
@@ -51,7 +47,6 @@ export function makeSaberAudio(env) {
     for (const o of [v.a, v.b, v.c, v.n]) o.stop(t + 0.3);
     v.n.onended = () => { for (const x of [v.a, v.b, v.c, v.n, v.lp, v.bp, v.ng, v.body, v.out, v.pan]) x?.disconnect(); stats.loops--; };
   }
-  // level 0 lets it go. pitch, swing (0..1) and bright (the filter, Hz) come from the swing (pure/saber.js hum()).
   function set(name, level, { pitch = 1, swing = 0, bright = 700 } = {}, pos) {
     if (!(level > 0)) { silence(name); return; }
     const v = voice(name, pos);
@@ -68,7 +63,7 @@ export function makeSaberAudio(env) {
   }
 
   return {
-    // The saber in the hand (no place: it is right in front of you), and the one in the case, heard from close by.
+    // The hand's hum has no place in the room: it is right in front of you.
     hum(level, swing) { set('hand', level, swing); },
     caseHum(level, pos) { set('case', level, undefined, pos); },
     get humming() { return Object.keys(voices); },
