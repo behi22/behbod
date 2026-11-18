@@ -5,15 +5,17 @@ import { textWidth, TITLE } from '../../web/src/pure/desktop.js';
 import { COURT, LEVELS } from '../../web/src/pure/paddle.js';
 import { SKY } from '../../web/src/pure/orbit.js';
 import { FIELD } from '../../web/src/pure/bughunt.js';
+import { FIELD as KHAN } from '../../web/src/pure/haftkhan.js';
 
 // The size the Games window opens at on the monitor.
-const GAMES_WIN = [300, 48, 820, 520];
+const GAMES_WIN = [178, 44, 1180, 532];
 const inside = (r, w) => r.x >= w.x - 1e-6 && r.x + r.w <= w.x + w.w + 1e-6 && r.y >= w.y - 1e-6 && r.y + r.h <= w.y + w.h + 1e-6;
 const apart = (a, b) => a.x + a.w <= b.x + 1e-6 || b.x + b.w <= a.x + 1e-6 || a.y + a.h <= b.y + 1e-6 || b.y + b.h <= a.y + 1e-6;
 const textBox = t => ({ x: t.x, y: t.y - t.px * 0.8, w: textWidth(t.s, t.px), h: t.px, s: t.s });
 
-test('three games, each with its picture size, its controls and an icon', () => {
-  assert.deepEqual(GAMES.map(g => g.id), ['paddle', 'orbit', 'bughunt']);
+test('four games, each with its picture size, its controls and an icon', () => {
+  assert.deepEqual(GAMES.map(g => g.id), ['paddle', 'orbit', 'bughunt', 'haftkhan']);
+  assert.deepEqual(gameById('haftkhan').size, [KHAN.w, KHAN.h]);
   assert.deepEqual(gameById('paddle').size, [COURT.w, COURT.h]);
   assert.deepEqual(gameById('orbit').size, [SKY.size, SKY.size]);
   assert.deepEqual(gameById('bughunt').size, [FIELD.w, FIELD.h]);
@@ -27,29 +29,30 @@ test('the launcher: a card per game, inside the window, its words and buttons in
   const best = { paddle: 12, orbit: 0 };
   for (const win of [{ x, y, w, h }, { x: 0, y: 34, w: 540, h: 821 }, { x: 0, y: 34, w: 540, h: 256 }, { x: 0, y: 34, w: 1484, h: 256 }]) {
     const L = launcherLayout(win, best), at = `${win.w}x${win.h}`;
-    assert.equal(L.cards.length, 3, at);
+    assert.equal(L.cards.length, GAMES.length, at);
     for (const c of L.cards) {
       assert.ok(c.x >= win.x && c.x + c.w <= win.x + win.w + 1e-6 && c.y >= win.y + TITLE, `${at}: ${c.id} card across`);
       assert.ok(inside({ ...c.icon, w: c.icon.size, h: c.icon.size }, c), `${at}: ${c.id} icon in its card`);
       if (c.pic) assert.ok(inside(c.pic, c) && c.pic.y >= c.icon.y + c.icon.size, `${at}: ${c.id} picture in its card, under the icon`);
     }
-    for (let i = 1; i < 3; i++) assert.ok(apart(L.cards[i - 1], L.cards[i]), `${at}: cards apart`);
+    for (let i = 1; i < GAMES.length; i++) assert.ok(apart(L.cards[i - 1], L.cards[i]), `${at}: cards apart`);
     const owner = r => L.cards.find(c => inside(r, c));
     for (const p of L.pills) assert.ok(owner(p), `${at}: ${p.label} inside a card`);
     for (const t of L.texts) assert.ok(owner(textBox(t)), `${at}: "${t.s}" inside a card`);
     const all = [...L.pills, ...L.texts.map(textBox), ...L.cards.filter(c => c.pic).map(c => c.pic)];
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(apart(all[i], all[j]), `${at}: "${all[i].label || all[i].s || 'picture'}" overlaps "${all[j].label || all[j].s || 'picture'}"`);
-    assert.deepEqual(L.pills.map(p => p.act), [...Object.keys(LEVELS).map(l => `game:start:paddle:${l}`), 'game:start:orbit', 'game:start:bughunt'], at);
+    assert.deepEqual(L.pills.map(p => p.act), [...Object.keys(LEVELS).map(l => `game:start:paddle:${l}`), 'game:start:orbit', 'game:start:bughunt', 'game:start:haftkhan'], at);
     assert.ok(L.texts.some(t => t.s === 'best rally 12'), `${at}: the best is shown`);
-    assert.equal(L.texts.filter(t => t.s === 'no best yet').length, 2, `${at}: and no best where there is none`);
+    assert.equal(L.texts.filter(t => t.s === 'no best yet').length, 3, `${at}: and no best where there is none`);
   }
   // In the monitor's window the cards stand side by side with pictures, and fit its height.
   const wide = launcherLayout({ x, y, w, h });
   assert.ok(wide.cards.every(c => c.y === wide.cards[0].y && c.pic && c.pic.h >= 100), 'side by side, with pictures');
   assert.ok(wide.bottom <= y + h, `fits its height: ${wide.bottom} against ${y + h}`);
-  // On a phone they stack, and the window scrolls if it must.
+  // On a phone they stack, and the window scrolls if it must: on one held upright the first three fit as before, and
+  // the fourth's top shows under them.
   const phone = launcherLayout({ x: 0, y: 34, w: 540, h: 821 });
-  assert.ok(phone.cards[1].y > phone.cards[0].y + phone.cards[0].h && phone.bottom <= 34 + 821, 'stacked, and they fit a phone held upright');
+  assert.ok(phone.cards[1].y > phone.cards[0].y + phone.cards[0].h && phone.cards[2].y + phone.cards[2].h <= 34 + 821 && phone.cards[3].y < 34 + 821 - 60, 'stacked, scrolling a little on a phone held upright');
 });
 
 test('playing: the way back, the score, pause and the picture, all in the window; the right button for the moment', () => {

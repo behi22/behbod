@@ -150,6 +150,58 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     await ctx.close();
   }
 
+  if (want('haftkhan')) {
+    const { ctx, p } = await open(b, DESK, 'haftkhan');
+    await p.evaluate(() => { try { localStorage.removeItem('home.games'); } catch (e) { /* none */ } });
+    await sit(p);
+    await p.click('.dt-icon[aria-label="Open Games"]'); await p.waitForTimeout(400);
+    const L = await p.evaluate(() => { const w = document.querySelector('.dt-win[data-app="games"]'), q = w.getBoundingClientRect(); return { cards: w.querySelectorAll('.dt-card').length, pics: w.querySelectorAll('canvas.dt-pic').length, buttons: [...w.querySelectorAll('.dt-pill')].map(b => b.textContent).join(), fit: [...w.querySelectorAll('.dt-pill, .dt-card')].every(e => { const r = e.getBoundingClientRect(); return r.left >= q.left - 1 && r.right <= q.right + 1 && r.bottom <= q.bottom + 1; }), titles: [...w.querySelectorAll('.dt-t')].map(t => t.textContent).filter(t => /Haft|Paddle|Orbit|Bug/.test(t)).join() }; });
+    check('the Games app: four cards side by side, Haft Khan the fourth', L.cards === 4 && L.pics === 4 && L.buttons === 'Easy,Normal,Hard,Play,Play,Play' && L.fit && L.titles === 'Paddle Duel,Orbit,Bug Hunt,Haft Khan', JSON.stringify(L));
+    await p.screenshot({ path: `${OUT}/games-launcher.png` });
+    await p.click('.dt-win[data-app="games"] .dt-pill:text-is("Play") >> nth=2'); await p.waitForSelector('canvas.dt-game'); await p.waitForTimeout(300);
+    const G = fn => p.evaluate(fn);
+    check('Haft Khan starts on the first labour, its words shown', await G(() => { const g = __loft.screens.desktop.games.playing; return g.id === 'haftkhan' && g.st.phase === 'intro' && g.st.labour === 0; }), await G(() => __loft.screens.desktop.games.status()));
+    await p.screenshot({ path: `${OUT}/khan-intro.png` });
+    // Space skips the words; then the lion, held in the ring, is struck by Space, by a click on the picture, and by Enter.
+    await p.waitForTimeout(500); await p.keyboard.press('Space'); await p.waitForTimeout(150);
+    const ring = () => G(() => { const r = __loft.screens.desktop.games.playing.st.r; Object.assign(r, { x: 280, wait: 0, cool: 0, speed: 0 }); });
+    await ring(); await p.keyboard.press('Space'); await p.waitForTimeout(120);
+    await ring();
+    const box = await p.evaluate(() => { const r = document.querySelector('canvas.dt-game').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height * 0.9]; });
+    await p.mouse.click(box[0], box[1]); await p.waitForTimeout(120);
+    await ring(); await p.screenshot({ path: `${OUT}/khan-lion.png` }); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+    const lion = await G(() => { const g = __loft.screens.desktop.games.playing; return [g.st.phase, g.st.labour, g.st.score, __loft.screens.desktop.term.input, __loft.mode]; });
+    check('Space, a click and Enter each strike the lion once; the third drives it off; nothing leaks to the terminal', lion[0] === 'won' && lion[2] >= 100 && lion[3] === '' && lion[4] === 'desk', lion.join(' | '));
+    // On into the desert: the mouse walks Rostam after the ram.
+    await p.waitForFunction(() => __loft.screens.desktop.games.playing.st.labour === 1, null, { timeout: 4000 }).catch(() => {});
+    await p.waitForTimeout(600); await p.keyboard.press('Space');
+    await p.waitForFunction(() => __loft.screens.desktop.games.playing.st.phase === 'play', null, { timeout: 3000 }).catch(() => {});
+    const x0 = await G(() => __loft.screens.desktop.games.playing.st.r.rx);
+    const area = await p.evaluate(() => { const r = document.querySelector('canvas.dt-game').getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; });
+    const k = Math.min(area[2] / 720, area[3] / 420), ox = area[0] + (area[2] - 720 * k) / 2, oy = area[1] + (area[3] - 420 * k) / 2;
+    await p.mouse.move(ox + 620 * k, oy + 380 * k); await p.waitForTimeout(1500);
+    const x1 = await G(() => __loft.screens.desktop.games.playing.st.r.rx);
+    check('the desert: Rostam walks to the mouse', x1 - x0 > 150 && Math.abs(x1 - 620) < 40, `${x0.toFixed(0)} -> ${x1.toFixed(0)}`);
+    await p.screenshot({ path: `${OUT}/khan-desert.png` });
+    // Every labour's picture, one after another, and the end: lives run out, the score is kept as the best.
+    for (let i = 2; i < 7; i++) {
+      await p.evaluate(n => { const st = __loft.screens.desktop.games.playing.st; st.labour = n - 1; st.phase = 'won'; st.t = 9; }, i);
+      await p.waitForTimeout(650); await p.keyboard.press('Space'); await p.waitForTimeout(500);
+      const now = await G(() => [__loft.screens.desktop.games.playing.st.labour, __loft.screens.desktop.games.playing.st.phase]);
+      if (now[0] !== i || now[1] !== 'play') check(`labour ${i + 1} opens`, false, now.join(' '));
+      await p.screenshot({ path: `${OUT}/khan-${i + 1}.png` });
+    }
+    await G(() => { const st = __loft.screens.desktop.games.playing.st; st.lives = 1; st.score = 333; st.r.rock = { x: st.r.rx, t: 0.84 }; st.r.open = 0; });
+    await p.waitForFunction(() => __loft.screens.desktop.games.playing.done, null, { timeout: 3000 }).catch(() => {});
+    const end = await G(() => [__loft.screens.desktop.games.playing.note, __loft.screens.desktop.games.playing.record, localStorage.getItem('home.games')]);
+    check('out of lives: Rostam rests, a new best kept in the browser', end[0] === 'Rostam rests' && end[1] === true && JSON.parse(end[2] || '{}').haftkhan === 333, end.join(' | '));
+    await p.screenshot({ path: `${OUT}/khan-end.png` });
+    await p.click('.dt-win[data-app="games"] .dt-pill:text-is("← Games")'); await p.waitForTimeout(300);
+    const best = await G(() => [...document.querySelectorAll('.dt-win[data-app="games"] .dt-t')].map(t => t.textContent).filter(s => /^best score|^no best/.test(s)).join());
+    check('its card shows the best', best.split(',').includes('best score 333'), best);
+    await ctx.close();
+  }
+
   for (const [tag, opts] of [['upright', UPRIGHT], ['sideways', SIDEWAYS]]) {
     if (!want('phone')) break;
     const { ctx, p } = await open(b, opts, tag);

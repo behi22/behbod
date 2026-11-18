@@ -22,7 +22,7 @@ export const APPS = [
   { id: 'settings', title: 'Settings', icon: 'M4 7h10M18 7h2M4 17h4M12 17h8M14 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0z', rect: [860, 70, 600, 336] },
   { id: 'calc', title: 'Calculator', icon: 'M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM8.5 7.5h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01', rect: [1160, 56, 320, 470] },
   { id: 'browser', title: 'Browser', icon: 'M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0M3.5 9h17M3.5 15h17M12 3c-2.6 2.6-3.6 5.6-3.6 9s1 6.4 3.6 9M12 3c2.6 2.6 3.6 5.6 3.6 9s-1 6.4-3.6 9', rect: [150, 42, 1236, 528] },
-  { id: 'games', title: 'Games', icon: 'M7 8h10a4 4 0 0 1 4 4v1.5a2.5 2.5 0 0 1-4.4 1.6L15 13H9l-1.6 2.1A2.5 2.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4zM7.5 10v4M5.5 12h4M15.5 11h.01M17.5 13h.01', rect: [300, 48, 820, 520] },
+  { id: 'games', title: 'Games', icon: 'M7 8h10a4 4 0 0 1 4 4v1.5a2.5 2.5 0 0 1-4.4 1.6L15 13H9l-1.6 2.1A2.5 2.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4zM7.5 10v4M5.5 12h4M15.5 11h.01M17.5 13h.01', rect: [178, 44, 1180, 532] },
 ];
 const BY = Object.fromEntries(APPS.map(a => [a.id, a]));
 export const appById = id => BY[id];

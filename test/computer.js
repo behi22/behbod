@@ -286,7 +286,7 @@ window.__probe = (async () => {
     const pics = [...w.querySelectorAll('canvas.dt-pic')].map(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit; });
     return { cards: w.querySelectorAll('.dt-card').length, buttons: [...w.querySelectorAll('.dt-pill')].map(b => b.textContent), pics };
   });
-  check('the games launcher: three cards, their pictures and buttons', launcher.cards === 3 && launcher.pics.length === 3 && launcher.pics.every(n => n > 50) && launcher.buttons.join() === 'Easy,Normal,Hard,Play,Play', `${launcher.buttons.join(' ')}, lit pixels ${launcher.pics.join(' ')}`);
+  check('the games launcher: four cards, their pictures and buttons', launcher.cards === 4 && launcher.pics.length === 4 && launcher.pics.every(n => n > 50) && launcher.buttons.join() === 'Easy,Normal,Hard,Play,Play,Play', `${launcher.buttons.join(' ')}, lit pixels ${launcher.pics.join(' ')}`);
   await p.screenshot({ path: `${OUT}/c-launcher.png` });
 
   // Where a point of the game is on the screen.
@@ -390,7 +390,7 @@ window.__probe = (async () => {
   await pp.tap('.dt-icon[aria-label="Open Games"]'); await pp.waitForTimeout(400);
   const pl = await pp.evaluate(() => { const w = document.querySelector('.dt-win[data-app="games"]'), r = w.getBoundingClientRect(); return [w.querySelectorAll('.dt-card').length, Math.round(r.left), Math.round(r.right), innerWidth, [...w.querySelectorAll('.dt-pill')].every(b => { const q = b.getBoundingClientRect(); return q.left >= 0 && q.right <= innerWidth; })]; });
   await pp.screenshot({ path: `${OUT}/c-phone-launcher.png` });
-  check('phone: the launcher fits the screen', pl[0] === 3 && pl[1] >= 0 && pl[2] <= pl[3] && pl[4], pl.join(' '));
+  check('phone: the launcher fits the screen', pl[0] === 4 && pl[1] >= 0 && pl[2] <= pl[3] && pl[4], pl.join(' '));
   await pp.tap('.dt-win[data-app="games"] .dt-pill:text-is("Play") >> nth=0'); await pp.waitForTimeout(300);
   const [tx, ty] = await pgame(210, 210);
   await touch('touchStart', tx, ty); await pp.waitForTimeout(500);

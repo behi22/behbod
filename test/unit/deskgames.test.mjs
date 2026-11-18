@@ -181,7 +181,7 @@ test('drawing: the game, a still for its card, the paused and finished covers; i
   const g = fakeContext();
   G.draw(g, 800, 410);
   assert.equal(g.calls.length, 0, 'nothing to draw with no game on');
-  for (const id of ['paddle', 'orbit', 'bughunt']) {
+  for (const id of ['paddle', 'orbit', 'bughunt', 'haftkhan']) {
     G.start(id);
     for (let i = 0; i < 30; i++) G.tick(1 / 60);
     assert.ok(!G.playing.done, id);
@@ -206,4 +206,44 @@ test('drawing: the game, a still for its card, the paused and finished covers; i
   const n = fakeContext();
   G.preview(n, 'nope', 10, 10);
   assert.equal(n.calls.length, 0);
+});
+
+test('Haft Khan in the runner: a click, a tap, Space or Enter strikes once; the pointer walks Rostam; the end keeps the best', async () => {
+  const { LION, LABOURS } = await import('../../web/src/pure/haftkhan.js');
+  const store = memory(), { heard, sfx } = sounds(), ends = [];
+  const G = makeDeskGames({ store, sfx, onEvent: (name, d) => ends.push([name, d.game, d.value]) });
+  assert.ok(G.start('haftkhan'));
+  const st = G.playing.st;
+  assert.equal(G.status(), 'labour 1 of 7   score 0   lives 3');
+  // Past the words, into the lion's round, the lion in the ring: a held key strikes once, not once a frame.
+  for (let i = 0; i < 120; i++) G.tick(1 / 60);
+  assert.equal(st.phase, 'play');
+  st.r.wait = 0; st.r.x = (LION.ring[0] + LION.ring[1]) / 2; st.r.speed = 0;
+  G.key('Space', true, false); G.key('Space', true, true); G.key('Space', true, true); G.tick(1 / 60);
+  assert.equal(st.r.kicks, 1);
+  st.r.x = (LION.ring[0] + LION.ring[1]) / 2; st.r.wait = 0;
+  G.key('Space', false); G.key('Enter', true, false); G.tick(1 / 60);
+  assert.equal(st.r.kicks, 2, 'Enter strikes too');
+  st.r.x = (LION.ring[0] + LION.ring[1]) / 2; st.r.wait = 0;
+  G.point(400, 380, 'down'); G.tick(1 / 60);
+  assert.equal(st.r.kicks, 3, 'and a click or a tap');
+  assert.ok(heard.filter(s => s === 'hit').length >= 3 && st.phase === 'won');
+  // While paused, nothing strikes.
+  for (let i = 0; i < 200 && st.phase !== 'play'; i++) G.tick(1 / 60);
+  assert.equal(st.labour, 1);
+  G.pause(true); G.point(100, 380, 'down'); G.key('Space', true, false); G.pause(false); G.tick(1 / 60);
+  // In the desert the pointer walks him; a press up high (at a beast) does not move his goal.
+  G.point(600, 380, 'move'); for (let i = 0; i < 30; i++) G.tick(1 / 60);
+  assert.ok(st.r.rx > 300, `walked to ${st.r.rx}`);
+  const x0 = st.r.rx;
+  G.point(60, 100, 'down'); G.point(NaN, NaN, 'up'); for (let i = 0; i < 10; i++) G.tick(1 / 60);
+  assert.ok(st.r.rx >= x0 - 1, 'a strike up high is not a step');
+  // The end: out of lives, the score is kept as the best.
+  st.lives = 1; st.score = 140; st.r.water = 0.001; st.r.got = 0; st.r.rx = 40; st.r.ram = st.r.to = 680; st.r.turn = 99;
+  G.point(NaN, NaN, 'leave');
+  for (let i = 0; i < 30 && !G.playing.done; i++) G.tick(1 / 60);
+  assert.ok(G.playing.done && G.playing.note === 'Rostam rests' && G.playing.record);
+  assert.deepEqual(ends.at(-1), ['over', 'haftkhan', 140]);
+  assert.equal(JSON.parse(store.m['home.games']).haftkhan, 140);
+  assert.equal(LABOURS.length, 7);
 });

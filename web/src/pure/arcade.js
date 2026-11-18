@@ -1,9 +1,10 @@
-// The Games app on the computer: the three games, and where everything in its window goes, in desktop pixels, so the
+// The Games app on the computer: its games, and where everything in its window goes, in desktop pixels, so the
 // monitor and the seated view draw it alike. Each game's rules are in its own file; src/deskgames.js plays them.
 import { TITLE, STYLE, textWidth, fit, wrap } from './desktop.js';
 import { COURT, LEVELS } from './paddle.js';
 import { SKY } from './orbit.js';
 import { FIELD } from './bughunt.js';
+import { FIELD as KHAN } from './haftkhan.js';
 
 export const GAMES = [
   { id: 'paddle', title: 'Paddle Duel', line: 'Your paddle against the computer. First to five wins.', size: [COURT.w, COURT.h], unit: 'best rally',
@@ -15,6 +16,9 @@ export const GAMES = [
   { id: 'bughunt', title: 'Bug Hunt', line: 'Squash the bugs before they dig in. Spare the ladybird.', size: [FIELD.w, FIELD.h], unit: 'best score',
     hint: 'click the bugs   P pauses', touch: 'tap the bugs',
     icon: 'M9 7.5a3 3 0 0 1 6 0M8 10h8v4a4 4 0 0 1-8 0zM12 10v8M4 12h4M16 12h4M5 18l3-2M19 18l-3-2M5.5 6.5L8 8.5M18.5 6.5L16 8.5' },
+  { id: 'haftkhan', title: 'Haft Khan', line: "Rostam's seven labours from the Shahnameh, one quick round each.", size: [KHAN.w, KHAN.h], unit: 'best score',
+    hint: 'click, or Space; move with the mouse or ← →   P pauses', touch: 'tap to strike, drag to move',
+    icon: 'M3 20l5.5-9 3.5 5 3-4 6 8zM16 7a2 2 0 1 0 4 0 2 2 0 1 0-4 0' },
 ];
 const BY = Object.fromEntries(GAMES.map(g => [g.id, g]));
 export const gameById = id => (Object.hasOwn(BY, id) ? BY[id] : null);
@@ -24,10 +28,10 @@ const pillW = label => textWidth(label, STYLE.small) + 2 * PILL_PAD;
 const text = (s, x, y, px, c, b = 400) => ({ s, x, y, px, c, b });
 
 // The launcher: a card for each game with its icon, a still picture of it (when there is room), what it is, the best
-// score kept on this computer, and its buttons. Three side by side in a wide window, one above another in a narrow one.
+// score kept on this computer, and its buttons. All side by side in a wide window, one above another in a narrow one.
 export function launcherLayout(w, best = {}) {
   const texts = [], pills = [], cards = [], x0 = w.x + 18, y0 = w.y + TITLE + 14, avail = w.w - 36;
-  const across = avail >= 660, cw = across ? (avail - 2 * GAP) / 3 : avail;
+  const n = GAMES.length, across = avail >= n * 230 + (n - 1) * GAP, cw = across ? (avail - (n - 1) * GAP) / n : avail;
   const cols = Math.max(8, Math.floor((cw - 2 * INNER) / (STYLE.small * 0.6)));
   const lines = GAMES.map(g => wrap(g.line, cols));
   const descH = Math.max(...lines.map(l => l.length)) * LH;

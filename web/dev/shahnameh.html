@@ -43,7 +43,25 @@ if (!only || only === 'stories') {
 if (!only || only === 'walls') {
   for (const id of WALLPAPERS) { const r = row(); draws.push(pic(r, 1536, 646, `${id} 1536x646`, (g, w, h) => paintWallpaper(g, id, w, h), 0.62)); draws.push(pic(r, 540, 925, `${id} 540x925 crop`, (g, w, h) => { const c = document.createElement('canvas'); c.width = 1536; c.height = 646; paintWallpaper(c.getContext('2d'), id, 1536, 646); const k = Math.max(w / 1536, h / 646); g.drawImage(c, (w - 1536 * k) / 2, (h - 646 * k) / 2, 1536 * k, 646 * k); }, 0.42)); }
 }
-window.__extra?.(row, pic, draws);
+if (!only || only === 'khan') {
+  const { newQuest, step, LABOURS } = await import('../src/pure/haftkhan.js');
+  const { paintQuest } = await import('../src/shah/khan.js');
+  const r = row();
+  LABOURS.forEach((L, i) => {
+    // Into the round and a moment on, so each scene has something moving in it.
+    const q = newQuest(5 + i);
+    if (i > 0) { q.labour = i - 1; q.phase = 'won'; q.t = 9; step(q, 0.01, {}); }
+    q.phase = 'play'; q.t = 0;
+    for (let k = 0; k < 40; k++) step(q, 1 / 30, { x: 360, presses: [] });
+    if (L.id === 'lion') Object.assign(q.r, { x: 290, wait: 0 });
+    if (L.id === 'dragon') Object.assign(q.r, { at: { x: 420, y: 200 }, show: 0.6 });
+    if (L.id === 'olad') q.r.lasso = { x: 420, t: 0.3 };
+    if (L.id === 'whitediv') q.r.rock = { x: 360, t: 0.5 };
+    draws.push(pic(r, 720, 420, `${L.id}`, g => paintQuest(g, q, 1), 0.5));
+  });
+  const q = newQuest(2);
+  draws.push(pic(r, 720, 420, 'intro', g => paintQuest(g, q, 0), 0.5));
+}
 const all = () => draws.forEach(d => d());
 all();
 document.fonts.ready.then(all);
