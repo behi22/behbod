@@ -9,8 +9,7 @@ blender -b --factory-startup -P blender/build_guns.py                 (build and
 blender -b --factory-startup -P blender/build_guns.py -- <prefix>     (also render look-at pictures to <prefix>-*.png)
 blender -b --factory-startup -P blender/build_guns.py -- gun=smg      (the other guns: smg, rifle, sniper, lmg, each to
                                                                        blender/build/<its file>.glb; squeeze.js takes the paths)
-The long guns share the pistol's grip and trigger guard (one hand fits them all) and leave empties named
-<prefix>_mount_muzzle, _mount_optic, _mount_rail and _mount_mag where the attachments still to come will sit.
+The long guns share the pistol's grip and guard, and leave <prefix>_mount_muzzle, _optic, _rail and _mag empties.
 """
 import bpy, bmesh, sys, os, math
 from mathutils import Vector, Matrix
@@ -357,8 +356,7 @@ def pistol():
 
 # ---------- the long guns: the same toy finish, the pistol's grip and trigger guard under each receiver ----------
 def long_lower(name, outline, mat, well=None):
-    """The housing under a long gun's receiver: the P-22's grip and trigger guard, so the hand that fits one fits all,
-    grown forward into a magazine well. `well` is (x0, x1, half-width, depth below the top) of its opening."""
+    """The P-22's grip and guard under a long gun, so one hand fits all; `well` is (x0, x1, half-width, depth) of its opening."""
     up = cad.outline(name, outline, 0.0131, mat)
     rings = []
     for i in range(14):

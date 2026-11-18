@@ -1,8 +1,4 @@
-// The pistol in the hand, desktop and phone: its hands built in the page and fitted to the gun, the trigger finger
-// on the trigger, a shot, a reload, a reload from empty (the slide let go by the thumb), the look over the gun on F
-// and on its phone pad, the sounds each move cues (made off the page's thread, or on it in a browser with no
-// workers), the squeezed gun file, and a clean console.
-//   LOFT_URL=http://127.0.0.1:8814 node test/pistol.js [outdir]
+// The pistol in the hand, desktop and phone, its sounds made in a worker or without one: LOFT_URL=http://127.0.0.1:8814 node test/pistol.js [outdir]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output/pistol';

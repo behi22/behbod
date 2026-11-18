@@ -1,9 +1,6 @@
 import { soundsFor, TAKES } from './gunsound.js';
 
-// The gun sounds a page keeps: built off the page's own thread when a worker can be had, one piece between frames when
-// not, only for the gun in the hand (the suppressed shot only once a suppressor is on), and held once each.
-// spawn() gives a Worker or throws; build(gun, name, take) makes one take here; make(L, R) turns it into what is played;
-// later(fn) runs fn between frames; rand() picks a take.
+// Only the held gun's sounds, made in a worker (or a piece between frames without one), so taking a gun never stalls a frame.
 export function makeBank({ spawn, build, make, later, rand = Math.random }) {
   const store = new Map(), waiting = new Map();
   let wanted = new Set(), queue = [], busy = null, worker, held = null, quiet = false;

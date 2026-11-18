@@ -78,8 +78,7 @@ test('a bolt worked by hand: after a shot it is lifted, drawn back to throw the 
     }
     assert.ok(Math.abs(C.cycle.T - s.bolt) < 1e-9);
     assert.ok(C.reloadEmpty.bolt.at(-1)[0] <= s.reload.empty && !C.reload.bolt, `${id}: only from empty is the bolt worked`);
-    // The free hand stays on the forend while the bolt is worked (a clip that leaves a hand out keeps it on its grip;
-    // it once left the hand with no pose and stopped the page).
+    // A clip that leaves the free hand out keeps it on the forend (one once left it with no pose and stopped the page).
     assert.deepEqual(sample(C.cycle, 0.5).left, { a: 'grip', b: 'grip', k: 0 });
   }
 });

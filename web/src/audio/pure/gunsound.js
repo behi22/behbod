@@ -20,8 +20,7 @@ export const GUN_SOUNDS = {
     slide: [1780, 2610, 3720, 5230], latch: [3150, 4420, 6900], frame: [880, 1650, 2440],
     sounds: HANDLED,
   },
-  // The Vesper: the same round from a heavier gun with a short barrel: a duller crack, a quick blast, its bolt clacking
-  // in the steel receiver at every shot. Its handle's sounds take the pistol's slide names (the clips cue those).
+  // The Vesper: a duller crack, a quick blast, its bolt clacking; its handle uses the slide's names because the clips cue those.
   smg: {
     crack: 0.75,
     blast: { lp: 2900, body: 640, q: 0.9, decay: 0.034, level: 1 },
@@ -43,8 +42,7 @@ export const GUN_SOUNDS = {
     slide: [1310, 2140, 3170, 4420], latch: [2980, 4230, 6600], frame: [690, 1310, 2050],
     sounds: HANDLED,
   },
-  // The Longview: a heavy round from a long barrel: a deep blast and a long boom down the hall, nothing cycling after
-  // it; the bolt worked by hand is the loudest metal it makes.
+  // The Longview: a deep blast and a long boom, nothing cycling after it, so the bolt worked by hand is its loudest metal.
   sniper: {
     crack: 1,
     blast: { lp: 2700, body: 560, q: 0.7, decay: 0.075, level: 1.15 },
@@ -55,8 +53,7 @@ export const GUN_SOUNDS = {
     slide: [1180, 1960, 2900, 4150], latch: [2620, 3880, 6020], frame: [610, 1180, 1880],
     sounds: ['shot', 'shotQuiet', 'dry', 'magRelease', 'magOut', 'magDrop', 'magIn', 'boltOpen', 'boltClose', 'grab', 'handle', 'cloth', 'draw'],
   },
-  // The Gatekeeper: a full-power round at a steady clip, a heavy bolt slamming in a big receiver, a long hall; the
-  // box is heavy metal, the cover a spring-loaded lid.
+  // The Gatekeeper: a heavy bolt slamming in a big receiver, a long hall, a heavy metal box and a spring-loaded cover.
   lmg: {
     crack: 0.95,
     blast: { lp: 2600, body: 590, q: 0.75, decay: 0.06, level: 1.1 },
@@ -145,8 +142,7 @@ function hall(rng, dry, { rt, level, slap }) {
   }
   return [L, R];
 }
-// Every sound ends at a true zero, starts on a whisper, and is scaled to its peak; its tail stops where it falls
-// below a ten-thousandth of full scale, far under hearing, so a third less is kept.
+// Ends at a true zero, starts on a whisper, scaled to its peak; the tail is cut below 1e-4, far under hearing, to keep a third less.
 function finish(chans, peak, drive = 0) {
   if (drive) for (const c of chans) for (let i = 0; i < c.length; i++) c[i] = Math.tanh(c[i] * drive) / Math.tanh(drive);
   let top = 0;

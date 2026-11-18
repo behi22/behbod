@@ -110,8 +110,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     fetching[id].catch(e => { delete fetching[id]; console.warn('[range] gun not loaded', id, e); });
     return fetching[id];
   }
-  // The guns a visitor may pick: those the stars have earned (or every built one with ?allguns, for trying them out).
-  // Item 16's gun wall takes this over.
+  // The guns the stars have earned (every built one with ?allguns, for trying them), until item 16's gun wall takes this over.
   const allGuns = typeof location !== 'undefined' && new URLSearchParams(location.search).has('allguns');
   const owned = () => (allGuns ? Object.keys(GUN) : gunsFor(totalStars(progress.rangeBest()))).filter(id => RIGS[id]);
   // The gun put in the hands, between runs: drawn fresh, the old one's sounds let go.

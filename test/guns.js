@@ -1,8 +1,4 @@
-// The long guns in the hand, desktop and phone: each fetched only when first taken, picked from the stage card, its
-// hands on its grip and handguard, a shot heard as its own, a reload, a reload from empty that hauls the action back,
-// the look over, the attachment mounts, its sounds made for it alone, and a clean console. Pictures of each gun's
-// moments go to outdir (hip, aimed, mid reload, the empty reload's pull, the look over).
-//   LOFT_URL=http://127.0.0.1:8814 node test/guns.js [outdir] [gun ...]
+// The long guns in the hand, desktop and phone, pictures to outdir: LOFT_URL=http://127.0.0.1:8814 node test/guns.js [outdir] [gun ...]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output/guns';
@@ -49,8 +45,7 @@ async function toLine(p) {
 }
 const heard = p => p.evaluate(() => ({ cues: __heard.cues.slice(), shots: __heard.shots.slice() }));
 const since = (a, b, id) => b.cues.slice(a.cues.length).filter(c => c.startsWith(id + ':')).map(c => c.slice(id.length + 1));
-// Runs the range's clock by hand, `sec` seconds in frames of 1/60.
-// A press of one frame: down, one frame run, up again before the next (an automatic held past its last round reloads).
+// One-frame presses and a clock run by hand in 1/60 s frames, so an automatic is never held past its last round.
 const tap = (p, name) => p.evaluate(async n => { __loft.range.press(n, true); __loft.range.advance(1 / 60); await new Promise(r => requestAnimationFrame(r)); __loft.range.press(n, false); }, name);
 const run = (p, sec) => p.evaluate(async n => { for (let i = 0; i < n; i++) { __loft.range.advance(1 / 60); await new Promise(r => requestAnimationFrame(r)); } }, Math.round(sec * 60));
 

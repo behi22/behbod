@@ -50,8 +50,7 @@ function keeper(p) {
 const keeperMag = p => Math.min(box(p, [0.096, -0.09, -0.0108], [0.153, 0.008, 0.0108], 0.001), box(p, [0.104, -0.19, -0.0108], [0.172, -0.085, 0.0108], 0.001),
   box(p, [0.12, -0.204, -0.0128], [0.186, -0.172, 0.0128], 0.002));
 
-// The Longview: its chassis, the round receiver and its base, the rail, the slim forend under the barrel, the bolt
-// body behind the receiver and its handle's knob (where they rest, closed).
+// The Longview: chassis, round receiver, rail, slim forend, and the bolt and its knob where they rest, closed.
 function longview(p) {
   return Math.min(longLower(p, -0.09, 0.21), box(p, [0.092, -0.07, -0.0131], [0.17, 0, 0.0131], 0.002),
     box(p, [-0.05, 0, -0.016], [0.15, 0.03, 0.016], 0.002), rod(p, [-0.05, 0.034, 0], [0.15, 0.034, 0], 0.017),
@@ -61,8 +60,7 @@ function longview(p) {
 }
 const longviewMag = p => Math.min(box(p, [0.097, -0.07, -0.0115], [0.163, 0.006, 0.0115], 0.001), box(p, [0.094, -0.082, -0.0132], [0.166, -0.068, 0.0132], 0.0015));
 
-// The Gatekeeper: its receiver and feed cover with the rail, the handguard and the barrel's shroud, the charging
-// handle's knob and the belt going up into the feed port on the left.
+// The Gatekeeper: receiver, cover and rail, handguard, shroud, the handle's knob and the belt up into the feed port.
 function gatekeeper(p) {
   return Math.min(longLower(p, -0.11, 0.095), box(p, [-0.115, 0, -0.024], [0.22, 0.066, 0.024], 0.003),
     box(p, [-0.06, 0.066, -0.022], [0.16, 0.08, 0.022], 0.002), box(p, [-0.04, 0.08, -0.0105], [0.13, 0.0865, 0.0105], 0.001),
@@ -92,8 +90,7 @@ export const GUN_HOLDS = {
     cup: { fingers: [0.943, -0.333, 0], back: DOWN, knuckle: [0.02, -0.12, 0.002], thumb: [-0.015, -0.108, -0.0149] },
     over: { fingers: [0, 0, 1], back: [0, 1, 0], knuckle: [0.004, 0.031, 0.019], thumb: [-0.016, 0.012, -0.0218] },
   },
-  // The long guns' right hands are the pistol's on the same grip; the free hand holds the handguard (fore), cups a
-  // magazine, and works what the gun has (extra), each by its fingers' way, the back of the hand, a knuckle and the thumb.
+  // The long guns share the pistol's grip, so one right hand fits all; the free hand's poses are fore, cup and extra.
   smg: {
     shape: vesper, mag: vesperMag,
     trigger: { pin: [0.051, -0.0155, 0], pad: [0.0645, -0.0335, -0.0015], pull: 0.24 },
@@ -134,8 +131,7 @@ export const GUN_HOLDS = {
     // The box held by its left face, fingers round its front; it is only carried off the gun.
     cup: { fingers: [1, 0, 0], back: [0, 0, -1], knuckle: [0.196, -0.068, -0.058], thumb: [0.13, -0.012, -0.054], alone: true, gap: 0.0025 },
     extra: {
-      // From the left, fingers up over the feed cover's edge to lift it and press it shut; the forearm stays low and
-      // out of the view (from above, a hand this near the eye hid the whole picture).
+      // From the left with the forearm low, because a hand from above this near the eye hid the whole picture.
       cover: { fingers: [0, 1, 0], back: [0, 0, -1], knuckle: [0.005, 0.066, -0.031], thumb: [0.04, 0.03, -0.034] },
       // Pressing the belt's end into the feed port from the left.
       belt: { fingers: [1, 0.35, 0], back: [0, 0, -1], knuckle: [0.172, 0.045, -0.054], thumb: [0.12, 0.02, -0.046] },
@@ -211,8 +207,7 @@ function grasp(side, set, shape) {
   return P;
 }
 
-// The free hand: closed over the right hand's fingers, cupping a fresh magazine, and over the slide; on a long gun,
-// round the handguard, cupping a magazine and on whatever else the gun has.
+// The free hand: over the right hand's fingers on the pistol, round the handguard on a long gun, and on what each works.
 export function solveLeft(H, R) {
   if (H.fore) {
     const magged = H.cup.alone ? H.mag : p => Math.min(H.mag(p), H.shape(p)), left = { grip: grasp('left', H.fore, H.shape), mag: grasp('left', H.cup, magged) };

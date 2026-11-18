@@ -39,8 +39,7 @@ function flashTexture() {
 export async function makeGun({ env, id = 'pistol', file, onCue }) {
   const spec = RIGS[id];
   if (!spec) throw new Error('no such gun: ' + id);
-  // Where the gun sits in the eye's space (x right, y up, -z ahead) at the hip; which way its magazine comes out;
-  // where a clip turns it about (the middle of the grip), in the gun's own space.
+  // The hip in the eye's space (x right, y up, -z ahead), the way the magazine comes out, the grip's middle a clip turns about.
   const HIP = spec.hip, WELL = new THREE.Vector3(...spec.well), PIVOT = new THREE.Vector3(...spec.pivot), LOCK = spec.lock ?? 1;
   // The gun file is packed with meshopt (blender/squeeze.js).
   const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file || spec.file);
@@ -261,8 +260,7 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
         part.bolt.position.copy(home.bolt).x -= spec.travel * drawn;
         part.bolt.quaternion.copy(homeQ.bolt).multiply(rq.setFromAxisAngle(XAXIS, -spec.lift * lift));
       }
-      // A feed cover swings up about its front hinge; the belt shows while there are rounds, or as the reload lays it,
-      // and draws up one link a shot (its links alike, so the jump back is not seen).
+      // The cover swings up on its front hinge; the belt draws up a link a shot, its links alike so the jump back is unseen.
       if (part.cover) part.cover.quaternion.copy(homeQ.cover).multiply(rq.setFromAxisAngle(ZAXIS, -spec.coverOpen * (back ? now.cover + (was.cover - now.cover) * back : now.cover)));
       if (part.belt) {
         st.beltT += dt;

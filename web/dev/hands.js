@@ -6,8 +6,7 @@ import { newWeapon, step } from '../src/pure/weapon.js';
 import { CLIPS } from '../src/pure/clips.js';
 import { RIGS } from '../src/pure/rigs.js';
 
-// Bench for the range's hands at any moment of any clip: ?gun=pistol|smg|rifle|sniper|lmg&file=<gun file>&hands=0;
-// window.__bench drives it.
+// Bench for the hands at any moment of any clip: ?gun=pistol|smg|rifle|sniper|lmg&file=<gun file>&hands=0; window.__bench drives it.
 const params = new URLSearchParams(location.search), gunId = params.get('gun') || 'pistol', file = params.get('file') || '../' + RIGS[gunId].file;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));

@@ -1,11 +1,4 @@
-// How each gun's file is put together for the view and the hands: its parts by what they do, how its action moves,
-// where it sits in the eye's space. Gun space: x to the muzzle, y up, z right (three's axes; blender's X, Z, -Y).
-//   action: 'slide' a pistol's slide, 'bolt' a closed bolt that cycles on each shot and locks open when empty (its
-//   charging handle only moves when a hand pulls it), 'turn' a bolt worked by hand (lift, back, forward, down),
-//   'open' an open bolt (only its charging handle is seen).
-// rides: hand poses that move with a part (a hand on the magazine, on the charging handle, on the bolt's knob).
-// mounts: where item 10's attachments go, as empties in the file: muzzle (the thread's end), optic (the top rail's
-// middle, the base of a sight), rail (the light's clamp), mag (the magazine well; the extended magazine is a magazine).
+// Each gun's parts, action (slide, bolt, turn, open) and place in the eye, so gun.js never assumes the pistol (x muzzle, y up, z right).
 export const RIGS = {
   pistol: {
     prefix: 'P22', file: 'assets/range/p22.glb', action: 'slide', cycle: 'slide',
