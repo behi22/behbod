@@ -163,7 +163,7 @@ const range = makeRange({
   onExit: ({ at }) => { mode = 'walk'; pos.copy(at); vel.set(0, 0, 0); facing = prevFacing = 0; yaw = Math.PI; pitch = 0.2; lastLook = performance.now(); me.root.visible = true; me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos); },
 });
 const scope = makeTelescope(scene, camera, meta, {
-  sky: out3d?.deathStar,
+  sky: out3d?.deathStar, outside: out3d, renderer, coarse, canvas,
   onSpot: () => { toast('That is no moon.'); earn('telescope'); },
   onExit: () => { mode = 'walk'; me.root.visible = true; },
 });
@@ -513,9 +513,7 @@ addEventListener('keydown', e => {
   }
   if (mode === 'scope') {
     if (e.code === 'Escape' || e.code === 'KeyE') scope.exit();
-    else if (e.code === 'Equal' || e.code === 'NumpadAdd') scope.zoom(-1);
-    else if (e.code === 'Minus' || e.code === 'NumpadSubtract') scope.zoom(1);
-    else keys.add(e.code);
+    else if (!scope.key(e)) keys.add(e.code);
     if (e.code.startsWith('Arrow')) e.preventDefault();
     return;
   }
@@ -555,7 +553,7 @@ canvas.addEventListener('pointermove', e => {
   const dx = e.clientX - dragging.x, dy = e.clientY - dragging.y;
   dragging.x = e.clientX; dragging.y = e.clientY; dragging.moved += Math.abs(dx) + Math.abs(dy);
   if (mode === 'desk' && desk.range) { desk.pan(dx); return; }
-  if (mode === 'scope') { scope.nudge(-dx * 0.0025, dy * 0.0025); return; }
+  if (mode === 'scope') { scope.drag(dx, dy); return; }
   if (mode !== 'walk' && mode !== 'sit' && mode !== 'rising') return;
   yaw -= dx * 0.005; pitch = Math.max(-0.15, Math.min(1.1, pitch + dy * 0.004)); lastLook = performance.now();
 });
@@ -569,7 +567,7 @@ canvas.addEventListener('pointerup', e => {
 });
 canvas.addEventListener('pointercancel', e => { if (dragging && e.pointerId === dragging.id) dragging = null; });
 canvas.addEventListener('wheel', e => {
-  if (mode === 'scope') { scope.zoom(Math.sign(e.deltaY)); return; }
+  if (mode === 'scope') { scope.wheel(e.deltaY, e.deltaMode); return; }
   dist = Math.max(1.8, Math.min(6, dist * (1 + Math.sign(e.deltaY) * 0.08)));
 }, { passive: true });
 // Phones: a thumb stick in the corner walks me the way WASD does.
