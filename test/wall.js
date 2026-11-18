@@ -12,7 +12,8 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
 
 function watch(p, errs, files) {
   p.on('pageerror', e => errs.push(e.message));
-  p.on('response', r => { const m = /assets\/range\/(\w+)\.glb/.exec(r.url()); if (m) files.push(m[1]); if (r.status() >= 400) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`); });
+  // Gun files only: the gunsmith's kit file comes with the room, not with the wall.
+  p.on('response', r => { const m = /assets\/range\/(p22|vesper|keeper|longview|gatekeeper)\.glb/.exec(r.url()); if (m) files.push(m[1]); if (r.status() >= 400) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`); });
   p.on('requestfailed', r => { if (!/youtube|googlevideo|ytimg/.test(r.url()) && !/run\.mp3/.test(r.url())) errs.push(`failed ${r.url().slice(0, 140)}`); });
   p.on('console', m => {
     if (m.type() === 'error' && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200));
