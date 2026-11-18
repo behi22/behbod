@@ -146,7 +146,11 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
       if (Math.abs(k - lightsK) < 1e-3) return;
       lightsK = k;
       for (const m of Object.values(surfaces)) m.lightMapIntensity = Math.PI * (0.035 + 0.965 * k);
+      // The room's reflection is of the hall lit up, so it goes down with the lights; the teal strips stay as a faint guide.
+      scene.environmentIntensity = stage.environmentIntensity = 0.03 + 0.97 * k;
       glow.E_range_white?.material.color.copy(glow.E_range_white.base).multiplyScalar(0.02 + 0.98 * k);
+      glow.E_range_panel?.material.color.copy(glow.E_range_panel.base).multiplyScalar(0.05 + 0.95 * k);
+      glow.E_teal?.material.color.copy(glow.E_teal.base).multiplyScalar(0.3 + 0.7 * k);
       sky.intensity = 0.9 * (0.04 + 0.96 * k); key.intensity = 2.2 * (0.02 + 0.98 * k);
     },
     get lights() { return lightsK; },
