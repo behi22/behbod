@@ -53,7 +53,7 @@ test('only drones fire, only on Hard, each with a warning a second before', () =
   for (const c of charges) {
     const l = launches.find(x => x.bolt === c.bolt);
     if (!l) { assert.ok(all.some(x => x.type === 'fizzle' && x.bolt === c.bolt), 'a warning either ends in a shot or goes out'); continue; }
-    assert.ok(Math.abs(l.t - c.t - BOLT.charge) <= DT + 1e-9, 'the shot leaves a second after the warning');
+    assert.ok(Math.abs(l.t - c.t - 1) <= DT + 1e-9, 'the shot leaves a second after the warning');
     assert.equal(l.from, c.id);
   }
   const kinds = new Set(charges.map(c => script('dark', 'hard', 3).find(s => s.id === c.id).kind));
@@ -80,6 +80,36 @@ test('standing still on Hard, the third bolt ends the run with no stars', () => 
   assert.equal(end.stars, 0); assert.equal(end.failed, true);
   assert.deepEqual(end.bolts, { launched: run.launched, dodged: 0, parried: 0, taken: 3 });
   assert.equal(run.bolts.size, 0, 'nothing left in the air');
+});
+
+// Held to the range's limits (2.6 m/s, no duck as on a phone, 0.3 s to react) so it fails if bolts become unfair.
+function stepAside() {
+  const me = { x: 0, v: 0, dir: 0 };
+  const go = (p, dir) => { p.v += (dir * 2.6 - p.v) * Math.min(1, DT * 10); p.x = Math.max(-5.5, Math.min(5.5, p.x + p.v * DT)); };
+  const clear = (run, dir, seen) => {
+    const p = { ...me }, left = seen.slice();
+    for (let t = run.t; left.length && t < run.t + 12;) {
+      go(p, dir); t += DT;
+      const e = { ...STAND, x: p.x };
+      for (let j = left.length - 1; j >= 0; j--) { const b = left[j], due = reach(b, e.d); if (t - b.t0 >= due) { if (strikes(boltAt(b, due), e)) return false; left.splice(j, 1); } }
+    }
+    return true;
+  };
+  return run => {
+    const seen = [...run.bolts.values()].filter(b => b.phase === 'fly' && run.t - b.t0 >= 0.3);
+    if (!clear(run, me.dir, seen)) me.dir = [0, 1, -1].find(d => clear(run, d, seen)) ?? me.dir;
+    else if (me.dir && clear(run, 0, seen)) me.dir = 0;
+    go(me, me.dir);
+    return { ...STAND, x: me.x };
+  };
+}
+
+test('a player who steps aside at walking pace, a moment after each bolt leaves, is never struck', () => {
+  for (const st of ['swarm', 'dark', 'long']) for (let seed = 1; seed <= 8; seed++) {
+    const { run, all } = playHard(st, seed, { move: stepAside() });
+    assert.equal(all.filter(e => e.type === 'strike').length, 0, `${st} seed ${seed}`);
+    assert.ok(run.launched > 3);
+  }
 });
 
 test('a player who keeps moving is never struck and keeps all three shields', () => {
