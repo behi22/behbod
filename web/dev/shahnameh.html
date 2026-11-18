@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shahnameh paintings</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Nastaliq+Urdu:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 16px; background: #05070b; color: #8a93a6; font: 12px 'JetBrains Mono', ui-monospace, monospace; }
+  h1 { font-size: 13px; letter-spacing: .3em; color: #3ee6c4; margin: 0 0 12px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 16px; }
+  figure { margin: 0; } figcaption { margin-top: 4px; }
+  canvas { display: block; background: #000; }
+</style>
+</head>
+<body>
+<h1>SHAHNAMEH PAINTINGS</h1>
+<p>A bench page: the reader's pictures, the wallpapers and the Haft Khan rounds, each at the sizes they are shown at.</p>
+<div id="out"></div>
+<script type="module">
+import { paintStory, paintWallpaper, WALLPAPERS } from '../src/shah/scenes.js';
+import { STORIES } from '../src/pure/shahnameh.js';
+const out = document.getElementById('out');
+const row = () => { const r = document.createElement('div'); r.className = 'row'; out.append(r); return r; };
+function pic(r, w, h, label, paint, k = 1) {
+  const f = document.createElement('figure'), c = document.createElement('canvas');
+  c.width = w; c.height = h; c.style.width = `${w * k}px`; c.style.height = `${h * k}px`;
+  f.append(c, Object.assign(document.createElement('figcaption'), { textContent: label }));
+  r.append(f);
+  return () => { const g = c.getContext('2d'); g.clearRect(0, 0, w, h); paint(g, w, h); };
+}
+const draws = [];
+const params = new URLSearchParams(location.search), only = params.get('only');
+if (!only || only === 'stories') {
+  const a = row(), b = row();
+  for (const s of STORIES) draws.push(pic(a, 420, 398, `${s.id} 420x398`, (g, w, h) => paintStory(g, s.id, w, h)));
+  for (const s of STORIES) draws.push(pic(b, 504, 252, `${s.id} 504x252`, (g, w, h) => paintStory(g, s.id, w, h), 0.8));
+}
+if (!only || only === 'walls') {
+  for (const id of WALLPAPERS) { const r = row(); draws.push(pic(r, 1536, 646, `${id} 1536x646`, (g, w, h) => paintWallpaper(g, id, w, h), 0.62)); draws.push(pic(r, 540, 925, `${id} 540x925 crop`, (g, w, h) => { const c = document.createElement('canvas'); c.width = 1536; c.height = 646; paintWallpaper(c.getContext('2d'), id, 1536, 646); const k = Math.max(w / 1536, h / 646); g.drawImage(c, (w - 1536 * k) / 2, (h - 646 * k) / 2, 1536 * k, 646 * k); }, 0.42)); }
+}
+window.__extra?.(row, pic, draws);
+const all = () => draws.forEach(d => d());
+all();
+document.fonts.ready.then(all);
+document.fonts.load("500 40px 'Noto Nastaliq Urdu'", 'زال').then(all).catch(() => {});
+window.__ready = true;
+</script>
+</body>
+</html>

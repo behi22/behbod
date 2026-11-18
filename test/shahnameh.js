@@ -104,6 +104,52 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     await ctx.close();
   }
 
+  if (want('reader') || want('wallpaper')) {
+    const { ctx, p } = await open(b, DESK, 'desk-apps');
+    await p.evaluate(() => { try { localStorage.removeItem('home.wallpaper'); } catch (e) { /* none */ } });
+    await sit(p);
+    const lit = sel => p.evaluate(s => { const c = document.querySelector(s); if (!c) return 0; const g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) n++; return n; }, sel);
+    if (want('reader')) {
+      await p.click('.dt-icon[aria-label="Open Shahnameh"]'); await p.waitForTimeout(400);
+      const r = await p.evaluate(() => { const w = document.querySelector('.dt-win[data-app="shahnameh"]'); return w && { focus: w.classList.contains('focus'), tabs: [...w.querySelectorAll('.dt-pill')].map(b => b.textContent), title: [...w.querySelectorAll('.dt-t')].map(t => t.textContent)[0], pic: w.querySelector('canvas.dt-pic')?.getAttribute('aria-label') }; });
+      check('the Shahnameh opens from the dock with its four stories', r && r.focus && r.tabs.join() === 'Zal,Seven Labours,Siavash,Sohrab' && r.title === 'Zal and the Simorgh' && /Simorgh/.test(r.pic), JSON.stringify(r));
+      check('its picture is painted', (await lit('.dt-win[data-app="shahnameh"] canvas.dt-pic')) > 5000, `${await lit('.dt-win[data-app="shahnameh"] canvas.dt-pic')} lit pixels`);
+      await p.screenshot({ path: `${OUT}/reader-zal.png` });
+      const seen = [];
+      for (const tab of ['Seven Labours', 'Siavash', 'Sohrab']) {
+        await p.click(`.dt-win[data-app="shahnameh"] .dt-pill:text-is("${tab}")`); await p.waitForTimeout(300);
+        seen.push(await p.evaluate(() => [...document.querySelectorAll('.dt-win[data-app="shahnameh"] .dt-t')].map(t => t.textContent)));
+        await p.screenshot({ path: `${OUT}/reader-${tab.split(' ').at(-1).toLowerCase()}.png` });
+      }
+      check('each tab shows its story, whole on one page', seen.map(s => s[0]).join(' | ') === 'The Seven Labours of Rostam | Siavash and the Fire | Rostam and Sohrab' && seen.every(s => !s.some(t => /^page /.test(t))) && seen[2].at(-1).endsWith('and Sohrab died.'), seen.map(s => `${s[0]} (${s.length - 1} lines)`).join(', '));
+      // The monitor shows the same window when I stand.
+      const painted = await p.evaluate(() => __loft.screens.desktop.st.focus);
+      check('the monitor has it in front', painted === 'shahnameh', painted);
+    }
+    if (want('wallpaper')) {
+      await p.click('.dt-icon[aria-label="Open Settings"]'); await p.waitForTimeout(300);
+      const before = await p.evaluate(() => getComputedStyle(document.querySelector('.dt')).backgroundImage.slice(0, 30));
+      // A pixel of the monitor's own picture left of the terminal, clear of every window and the dock.
+      const monitorPixel = () => [...__loft.screens.textures.main.image.getContext('2d').getImageData(20, 500, 1, 1).data.slice(0, 3)];
+      const plainPx = await p.evaluate(monitorPixel);
+      const pills = await p.evaluate(() => [...document.querySelectorAll('.dt-win[data-app="settings"] .dt-pill')].map(b => b.textContent).slice(-4));
+      check('Settings offers the wallpapers', pills.join() === 'plain,persepolis,simorgh,isfahan', pills.join(' '));
+      for (const id of ['persepolis', 'simorgh', 'isfahan']) {
+        await p.click(`.dt-win[data-app="settings"] .dt-pill:text-is("${id}")`); await p.waitForTimeout(500);
+        const s = await p.evaluate(() => [__loft.screens.desktop.wallpaper, getComputedStyle(document.querySelector('.dt')).backgroundImage.slice(0, 26), localStorage.getItem('home.wallpaper'), [...document.querySelectorAll('.dt-win[data-app="settings"] .dt-pill.on')].map(b => b.textContent).join()]);
+        await p.waitForTimeout(700);
+        const px = await p.evaluate(monitorPixel);
+        check(`${id}: behind the windows, kept, lit in Settings, and on the monitor`, s[0] === id && s[1].startsWith('url("data:image/jpeg') && s[2] === id && s[3].split(',').includes(id) && px.join() !== plainPx.join(), `${s.slice(0, 3).join(' | ')} | lit ${s[3]} | monitor ${px.join(',')}`);
+        await p.screenshot({ path: `${OUT}/wall-${id}.png` });
+      }
+      await p.click('.dt-win[data-app="settings"] .dt-pill:text-is("plain")'); await p.waitForTimeout(1200);
+      const plain = await p.evaluate(() => [localStorage.getItem('home.wallpaper'), __loft.screens.desktop.wallpaperURL(), getComputedStyle(document.querySelector('.dt')).backgroundImage.slice(0, 30)]);
+      const back = await p.evaluate(monitorPixel);
+      check('plain goes back to the old background, on the monitor too', plain[0] === 'plain' && plain[1] === null && before.startsWith('radial-gradient') && plain[2] === before && back.every((v, i) => Math.abs(v - plainPx[i]) <= 3), `${before} | ${plain.join(' ')} | monitor ${back.join(',')} was ${plainPx.join(',')}`);
+    }
+    await ctx.close();
+  }
+
   for (const [tag, opts] of [['upright', UPRIGHT], ['sideways', SIDEWAYS]]) {
     if (!want('phone')) break;
     const { ctx, p } = await open(b, opts, tag);
@@ -113,6 +159,24 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     const lines = await termLines(p);
     check(`${tag}: ferdowsi and nowruz from the phone's command box`, lines.includes('$ ferdowsi') && lines.includes('$ nowruz') && lines.some(l => l.startsWith('Nowruz 14')), lines.slice(-4).join(' | '));
     await p.screenshot({ path: `${OUT}/${tag}-terminal.png` });
+    // The reader on a phone: the window in front fills the space, the story runs on under its picture and scrolls,
+    // and a new story starts at the top.
+    await p.evaluate(() => document.activeElement?.blur());
+    await p.tap('.dt-icon[aria-label="Open Shahnameh"]'); await p.waitForTimeout(500);
+    const r = await p.evaluate(() => {
+      const w = document.querySelector('.dt-win[data-app="shahnameh"]'), q = w.getBoundingClientRect(), pic = w.querySelector('canvas.dt-pic').getBoundingClientRect();
+      const inView = [...w.querySelectorAll('.dt-pill')].every(b => { const x = b.getBoundingClientRect(); return x.left >= q.left - 1 && x.right <= q.right + 1; });
+      return { left: q.left, right: q.right, vw: innerWidth, scrolls: w.scrollHeight > w.clientHeight, pic: pic.width > 100 && pic.height > 50, inView, last: [...w.querySelectorAll('.dt-t')].at(-1).textContent };
+    });
+    check(`${tag}: the reader fills the screen, its picture on top, the whole story below`, r.left >= 0 && r.right <= r.vw && r.pic && r.inView && r.last.endsWith('the mother and the child.'), JSON.stringify(r));
+    await p.tap('.dt-win[data-app="shahnameh"] .dt-pill:text-is("Sohrab")'); await p.waitForTimeout(300);
+    // Read down to the end, then the next story from a tab (pressed where it is, without scrolling back up first).
+    await p.evaluate(() => { const w = document.querySelector('.dt-win[data-app="shahnameh"]'); w.scrollTop = w.scrollHeight; }); await p.waitForTimeout(150);
+    const down = await p.evaluate(() => document.querySelector('.dt-win[data-app="shahnameh"]').scrollTop);
+    await p.evaluate(() => [...document.querySelectorAll('.dt-win[data-app="shahnameh"] .dt-pill')].find(b => b.textContent === 'Siavash').click()); await p.waitForTimeout(300);
+    const s2 = await p.evaluate(() => [__loft.screens.desktop.reader.story, document.querySelector('.dt-win[data-app="shahnameh"] .dt-t').textContent, document.querySelector('.dt-win[data-app="shahnameh"]').scrollTop]);
+    check(`${tag}: its tabs switch the story, and a new one starts at the top`, down > 20 && s2[0] === 'siavash' && s2[1] === 'Siavash and the Fire' && s2[2] === 0, `scrolled ${down}, then ${s2.join(' | ')}`);
+    await p.screenshot({ path: `${OUT}/${tag}-reader.png` });
     await ctx.close();
   }
 

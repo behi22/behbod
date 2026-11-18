@@ -107,3 +107,59 @@ test('nowruz: the countdown, the days of Nowruz, and the year after', () => {
   assert.equal(nextNowruz(new Date('2027-01-01T00:00:00Z')).getUTCFullYear(), 2027);
   for (const d of ['2026-01-01', '2026-06-01', '2026-12-31', '2027-03-25']) for (const l of nowruzLines(new Date(d + 'T12:00:00Z'))) assert.ok(l.length <= 66 && !/[–—]/.test(l), l);
 });
+
+test('the reader: tabs, picture and story inside the window and apart; one page each at the size it opens', async () => {
+  const { readerLayout, newReader, readerGo } = await import('../../web/src/pure/reader.js');
+  const { appById, textWidth, TITLE } = await import('../../web/src/pure/desktop.js');
+  const [x, y, w, h] = appById('shahnameh').rect;
+  const inside = (r, b) => r.x >= b.x - 1e-6 && r.x + r.w <= b.x + b.w + 1e-6 && r.y >= b.y - 1e-6 && r.y + r.h <= b.y + b.h + 1e-6;
+  const apart = (a, b) => a.x + a.w <= b.x + 1e-6 || b.x + b.w <= a.x + 1e-6 || a.y + a.h <= b.y + 1e-6 || b.y + b.h <= a.y + 1e-6;
+  const box = t => ({ x: t.x, y: t.y - t.px * 0.8, w: textWidth(t.s, t.px), h: t.px, s: t.s });
+  const wins = [{ x, y, w, h }, { x: 0, y: 34, w: 540, h: 821 }, { x: 0, y: 34, w: 540, h: 256 }, { x: 0, y: 34, w: 1483, h: 256 }, { x: 0, y: 34, w: 360, h: 400 }];
+  // Pages are for the window at its own size (the monitor, a computer's seated view); a phone's view scrolls.
+  for (const win of wins) for (const scroll of [false, true]) for (const s of S.STORIES) {
+    if (!scroll && win.w < 760 && win !== wins[0]) continue;
+    const st = { story: s.id, page: 0 }, at = `${win.w}x${win.h} ${s.id} ${scroll ? 'scrolling' : 'paged'}`;
+    for (let page = 0; page < 6; page++) {
+      st.page = page;
+      const L = readerLayout(win, st, { scroll });
+      assert.equal(L.story, s.id);
+      const all = [...L.pills, ...L.texts.map(box), L.pic];
+      for (const r of all) assert.ok(r.x >= win.x - 1e-6 && r.x + r.w <= win.x + win.w + 1e-6 && r.y >= win.y + TITLE, `${at} p${page}: "${r.label || r.s || 'picture'}" across`);
+      if (!scroll) for (const r of all) assert.ok(inside(r, win), `${at} p${page}: "${r.label || r.s || 'picture'}" inside`);
+      for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(apart(all[i], all[j]), `${at} p${page}: "${all[i].label || all[i].s || 'picture'}" overlaps "${all[j].label || all[j].s || 'picture'}"`);
+      assert.ok(L.pills.filter(p => p.on).map(p => p.act).join() === `read:${s.id}`, `${at}: its tab is lit`);
+      if (scroll) assert.equal(L.pages, 1, `${at}: one long page`);
+    }
+    // Every word of the story is on some page.
+    const words = [];
+    for (let page = 0; page < readerLayout(win, { story: s.id, page: 0 }, { scroll }).pages; page++) words.push(...readerLayout(win, { story: s.id, page }, { scroll }).texts.slice(1).filter(t => t.c === 'ink').flatMap(t => t.s.split(' ')));
+    assert.equal(words.join(' '), s.text.join(' ').split(/\s+/).join(' '), `${at}: the whole story`);
+  }
+  for (const s of S.STORIES) assert.equal(readerLayout({ x, y, w, h }, { story: s.id, page: 0 }).pages, 1, `${s.id} fits the window on the monitor`);
+  // The buttons.
+  const st = newReader();
+  assert.deepEqual(st, { story: 'zal', page: 0 });
+  assert.equal(readerGo(st, 'page:back'), false);
+  assert.equal(readerGo(st, 'page:next'), true); assert.equal(st.page, 1);
+  assert.equal(readerGo(st, 'read:sohrab'), true); assert.deepEqual(st, { story: 'sohrab', page: 0 });
+  assert.equal(readerGo(st, 'read:sohrab'), false);
+  for (const odd of ['read:nope', 'read:__proto__', 'page:sideways', 'link:https://x', '']) assert.equal(readerGo(st, odd), false, odd);
+  assert.deepEqual(st, { story: 'sohrab', page: 0 });
+  // A page past the end (the window grew) shows the last one.
+  const small = { x: 0, y: 34, w: 540, h: 256 }, n = readerLayout(small, { story: 'labours', page: 0 }).pages;
+  assert.ok(n > 1);
+  assert.equal(readerLayout(small, { story: 'labours', page: 99 }).page, n - 1);
+});
+
+test('settings: the wallpaper row, and every row fits the window', async () => {
+  const { rows, layout, appById, WALLPAPERS } = await import('../../web/src/pure/desktop.js');
+  assert.deepEqual(WALLPAPERS, ['persepolis', 'simorgh', 'isfahan']);
+  const ctx = { quality: 'auto', sound: true, hood: true, scenes: ['chill', 'focus', 'matchday', 'off', 'party'], scene: 'chill', coolant: 'teal' };
+  const r = rows('settings', ctx).at(-1);
+  assert.deepEqual(r.pills.map(p => [p.label, p.on]), [['plain', true], ['persepolis', false], ['simorgh', false], ['isfahan', false]]);
+  assert.ok(rows('settings', { ...ctx, wallpaper: 'simorgh' }).at(-1).pills.find(p => p.on).act === 'wallpaper:simorgh');
+  const [x, y, w, h] = appById('settings').rect, L = layout({ x, y, w, h }, rows('settings', ctx));
+  assert.ok(L.bottom <= y + h, `bottom ${L.bottom} within ${y + h}`);
+  for (const p of L.pills) assert.ok(p.x + p.w <= x + w && p.y + p.h <= y + h, p.label);
+});

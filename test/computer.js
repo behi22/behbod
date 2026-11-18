@@ -91,7 +91,7 @@ window.__probe = (async () => {
   await p.waitForTimeout(600);
   await gate(p, 'desk');
   const dockNames = await p.evaluate(() => [...document.querySelectorAll('.dt-icon')].map(b => b.title));
-  check('the dock has the browser and the games', dockNames.includes('Browser') && dockNames.includes('Games') && dockNames.length === 9, dockNames.join(' '));
+  check('the dock has the browser, the games and the Shahnameh', dockNames.includes('Browser') && dockNames.includes('Games') && dockNames.includes('Shahnameh') && dockNames.length === 10, dockNames.join(' '));
 
   // Where a point inside the desktop (desktop pixels from its top left) is on the screen, through its transform.
   const onScreen = (x, y) => p.evaluate(([x, y]) => { const r = document.querySelector('.dt'), m = new DOMMatrix(getComputedStyle(r).transform), q = m.transformPoint(new DOMPoint(x, y)); return [q.x / q.w, q.y / q.w]; }, [x, y]);

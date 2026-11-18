@@ -16,25 +16,25 @@ export const ferdowsiLines = () => {
 
 // The reader app's stories, a paragraph to a line.
 export const STORIES = [
-  { id: 'zal', tab: 'Zal', title: 'Zal and the Simorgh', fa: 'زال و سیمرغ', text: [
+  { id: 'zal', tab: 'Zal', title: 'Zal and the Simorgh', fa: 'زال و سیمرغ', pic: 'A painting: the Simorgh over Zal in her nest on Mount Alborz.', text: [
     "Zal was born to the champion Sam with hair as white as an old man's. Sam was ashamed, afraid of what people would say, and had the baby left on the slopes of Mount Alborz.",
     'The Simorgh, the great wise bird who nested on the peak, found him crying among the rocks. She carried him up to her nest and raised him with her own young, and he grew tall and strong.',
     'Years later Sam dreamed of his son and went to the mountain in sorrow, asking to be forgiven. The Simorgh brought Zal down to his father and gave him one of her feathers: if you are ever in trouble, burn it, and I will come.',
     "Zal kept the feather all his life. When his son Rostam was born, it was that feather, and the Simorgh's help, that saved the mother and the child.",
   ] },
-  { id: 'labours', tab: 'Seven Labours', title: 'The Seven Labours of Rostam', fa: 'هفت‌خوان رستم', text: [
+  { id: 'labours', tab: 'Seven Labours', title: 'The Seven Labours of Rostam', fa: 'هفت‌خوان رستم', pic: "A painting: Rostam on Rakhsh before the White Div's cave.", text: [
     'King Kay Kavus marched into Mazandaran, the land of the divs. With his sorcery the White Div struck the king and his army blind and held them captive.',
     'Rostam rode out alone on Rakhsh by the short and dangerous road, and faced seven trials on the way.',
     'A lion came for him while he slept, and Rakhsh fought it off alone. In a burning desert, close to dying of thirst, he followed a ram to a spring. A dragon came in the night and twice hid in the dark before Rostam saw it; he and Rakhsh killed it together. A sorceress came to him as a lovely young woman, and he saw through her. He caught Olad with his lasso and made him show the way. He beat the div Arzhang and scattered his army.',
     "Last, in a dark cave behind seven mountains, he fought the White Div and won, and the div's blood gave the king and his men their sight back.",
   ] },
-  { id: 'siavash', tab: 'Siavash', title: 'Siavash and the Fire', fa: 'گذر سیاوش از آتش', text: [
+  { id: 'siavash', tab: 'Siavash', title: 'Siavash and the Fire', fa: 'گذر سیاوش از آتش', pic: 'A painting: Siavash riding his black horse through the fire.', text: [
     'Siavash, son of King Kay Kavus, was raised by Rostam and grew up gentle, brave and honest.',
     'His stepmother, Queen Sudabeh, fell in love with him. When he turned her away, she told the king that Siavash had wronged her, and the king did not know whom to believe.',
     'So two great hills of wood were piled on the plain with a narrow road between them, and set alight. Siavash, dressed in white, rode his black horse into the fire while the whole city watched.',
     'The flames closed over him. Then he rode out on the other side, he and his horse unharmed. Everyone knew he had told the truth, and Siavash even asked the king to spare the queen.',
   ] },
-  { id: 'sohrab', tab: 'Sohrab', title: 'Rostam and Sohrab', fa: 'رستم و سهراب', text: [
+  { id: 'sohrab', tab: 'Sohrab', title: 'Rostam and Sohrab', fa: 'رستم و سهراب', pic: 'A painting: Rostam and Sohrab face to face between their camps.', text: [
     'Out hunting near the border, Rostam lost Rakhsh and followed the tracks to the city of Samangan. There he met the princess Tahmineh, and they married. Before he left, he gave her a token for their child.',
     'Their son Sohrab grew up strong and fearless. While still very young, he rode to war against Iran, hoping to find the father he had never met.',
     'Rostam was sent to face the young champion. Neither knew the other: Rostam hid his name, and no one would tell Sohrab which man was his father. They fought for three days, and on the last, Rostam struck him down.',

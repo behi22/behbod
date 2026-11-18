@@ -8,6 +8,9 @@ import { launcherLayout, playLayout, gameById } from './src/pure/arcade.js';
 import { makeDeskGames } from './src/deskgames.js';
 import { ferdowsiLines } from './src/pure/shahnameh.js';
 import { nowruzLines } from './src/pure/nowruz.js';
+import { WALLPAPERS } from './src/pure/desktop.js';
+import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
+import { paintStory, paintWallpaper } from './src/shah/scenes.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -30,6 +33,13 @@ function loadNotes() {
 function saveNotes(v) {
   try { localStorage.setItem(NOTES_KEY, v); } catch { /* private window: the note lasts this visit only */ }
 }
+const WALL_KEY = 'home.wallpaper';
+function loadWallpaper() {
+  try { const v = localStorage.getItem(WALL_KEY); return WALLPAPERS.includes(v) ? v : 'plain'; } catch { return 'plain'; }
+}
+function saveWallpaper(v) {
+  try { localStorage.setItem(WALL_KEY, v); } catch { /* private window: this visit only */ }
+}
 
 // Rounded rectangles: the canvas call where the browser has it (Safari before 16 does not), arcs where it does not.
 function rrect(g, x, y, w, h, r) {
@@ -51,8 +61,23 @@ export function makeCanvases(meta, opts = {}) {
   // the same desktop out in HTML over this screen, from the same model.
   S.main = surface(DW, DH);
   const term = { lines: [], input: '', focus: false, blink: 0 };
-  const desk = { st: newDesktop(), ctx: {}, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), sfx: null, dirty: true, drawn: -1, listeners: [] };
+  const desk = { st: newDesktop(), ctx: { wallpaper: loadWallpaper() }, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), reader: newReader(), sfx: null, dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
+  // The chosen wallpaper and the reader's picture, painted once and kept: each is many shapes, and the monitor is
+  // repainted every second. Only the one in use is kept; they are painted again once the Persian font has come.
+  let wall = null, pic = null;
+  const wallpaper = () => {
+    const id = desk.ctx.wallpaper;
+    if (!WALLPAPERS.includes(id)) return null;
+    if (wall?.id !== id) { const c = document.createElement('canvas'); c.width = DW; c.height = DH; paintWallpaper(c.getContext('2d'), id, DW, DH); wall = { id, c, url: null }; }
+    return wall;
+  };
+  const storyPic = (id, w, h) => {
+    const key = `${id} ${w} ${h}`;
+    if (pic?.key !== key) { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); paintStory(c.getContext('2d'), id, c.width, c.height); pic = { key, c }; }
+    return pic.c;
+  };
+  document.fonts?.load("500 40px 'Noto Nastaliq Urdu'", 'زال و سیمرغ').then(() => { pic = null; changed(); }).catch(() => {});
   // The games keep their best scores in the visitor's own browser; the sounds arrive once the house's audio exists.
   const local = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* this visit only */ } } };
   const gameSfx = Object.fromEntries(['click', 'blip', 'miss', 'hit'].map(n => [n, () => desk.sfx?.[n]?.()]));
@@ -170,6 +195,10 @@ export function makeCanvases(meta, opts = {}) {
         }
         drawBits(g, L);
       }
+    } else if (w.app === 'shahnameh') {
+      const L = readerLayout(w, desk.reader), P = L.pic;
+      g.drawImage(storyPic(L.story, P.w, P.h), P.x, P.y, P.w, P.h);
+      drawBits(g, L);
     } else drawBits(g, layout(w, appRows(w.app, desk.ctx)));
     g.restore();
     g.strokeStyle = focused ? 'rgba(62,230,196,.55)' : STYLE.edge; g.lineWidth = focused ? 1.5 : 1;
@@ -178,12 +207,16 @@ export function makeCanvases(meta, opts = {}) {
   function drawDesktop() {
     const { g, c, t } = S.main;
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-    g.fillStyle = '#070b11'; g.fillRect(0, 0, c.width, c.height);
-    const grd = g.createLinearGradient(0, 0, c.width, c.height);
-    grd.addColorStop(0, 'rgba(62,230,196,.09)'); grd.addColorStop(0.55, 'rgba(40,60,120,.05)'); grd.addColorStop(1, 'rgba(120,80,255,.10)');
-    g.fillStyle = grd; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = 'rgba(255,255,255,.035)';
-    for (let x = 24; x < c.width; x += 48) for (let y = BAR + 24; y < c.height - DOCK; y += 48) g.fillRect(x, y, 2, 2);
+    const wp = wallpaper();
+    if (wp) g.drawImage(wp.c, 0, 0, c.width, c.height);
+    else {
+      g.fillStyle = '#070b11'; g.fillRect(0, 0, c.width, c.height);
+      const grd = g.createLinearGradient(0, 0, c.width, c.height);
+      grd.addColorStop(0, 'rgba(62,230,196,.09)'); grd.addColorStop(0.55, 'rgba(40,60,120,.05)'); grd.addColorStop(1, 'rgba(120,80,255,.10)');
+      g.fillStyle = grd; g.fillRect(0, 0, c.width, c.height);
+      g.fillStyle = 'rgba(255,255,255,.035)';
+      for (let x = 24; x < c.width; x += 48) for (let y = BAR + 24; y < c.height - DOCK; y += 48) g.fillRect(x, y, 2, 2);
+    }
     g.fillStyle = STYLE.bar; g.fillRect(0, 0, c.width, BAR);
     g.font = `700 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = STYLE.ink; g.fillText('home', 18, 22);
     g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = STYLE.dim;
@@ -372,6 +405,16 @@ export function makeCanvases(meta, opts = {}) {
       set covered(on) { desk.covered = on; if (!on) desk.dirty = true; },
       changed,
       listen(fn) { desk.listeners.push(fn); },
+      get wallpaper() { return desk.ctx.wallpaper; },
+      setWallpaper(id) {
+        if (id !== 'plain' && !WALLPAPERS.includes(id)) return false;
+        if (desk.ctx.wallpaper !== id) { desk.ctx.wallpaper = id; saveWallpaper(id); changed(); }
+        return true;
+      },
+      // The wallpaper as a picture the seated view can put behind its windows (made once per wallpaper), or null.
+      wallpaperURL() { const wp = wallpaper(); if (!wp) return null; wp.url ||= wp.c.toDataURL('image/jpeg', 0.9); return wp.url; },
+      get reader() { return desk.reader; },
+      readerGo(act) { const ok = readerGo(desk.reader, act); if (ok) changed(); return ok; },
     },
     // Letters typed by something other than me (Pishi on the keyboard), on their own line so mine stay intact.
     type(text) { keepOpen(desk.st, 'terminal'); say('$ ' + text.slice(0, 40), `command not found: ${text.slice(0, 40)}  (that was Pishi)`); },
