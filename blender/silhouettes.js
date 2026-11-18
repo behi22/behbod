@@ -1,5 +1,5 @@
-// The gun wall's outlines into web/assets/range/silhouettes.png and web/src/range/silhouettes.js; run again when a gun
-// file changes (test/unit/gunwall.test.mjs says when). Needs the site served: LOFT_URL=http://127.0.0.1:8815 node blender/silhouettes.js
+// The gun wall's outlines, drawn from the gun files; test/unit/gunwall.test.mjs says when to run it again.
+//   LOFT_URL=http://127.0.0.1:8815 node blender/silhouettes.js
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('../test/quiet');
