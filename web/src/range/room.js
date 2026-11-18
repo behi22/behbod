@@ -13,8 +13,7 @@ const GLOW = { E_range_white: [0.82, 0.9, 1.0, 3.2], E_range_panel: [1.0, 0.93, 
 const SURFACE = { r_floor: ['floor', 0.05], r_wall: ['mottle', 0.15], r_panel: ['mottle', 0.3], r_steel: ['brushed', 0.25], r_dark: ['mottle', 0.1],
   r_rubber: ['mottle', 0.5], r_yellow: ['mottle', 0.2], r_bench: ['brushed', 0.3], r_line: ['mottle', 0.2], r_crate: ['mottle', 0.3] };
 const BOARD = [1024, 602];
-// How far each glow goes down when the lights go out (the rest are lamps of their own), and which of a mood's
-// colours the hall's take.
+// How far each glow dims with the lights out (the rest are lamps of their own), and which mood colour the hall's copy takes.
 const DIM = { E_range_white: 0.02, E_range_panel: 0.05, E_teal: 0.3 }, TONE = { E_range_white: 'strip', E_teal: 'accent' };
 
 // A glow that a band of light can run along, down the hall and away from the line (some stages' strips chase).
@@ -100,8 +99,7 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
     }
   });
   if (loose.length) console.warn('[range] pieces without a baked surface:', loose.join(', '));
-  // Every light of one colour is one mesh per room: a few draw calls for all the strips, rings and lamps. The hall's
-  // take on the stage's colours and pulse; the loadout room's stay as they are.
+  // One mesh per colour per room, a few draw calls in all, so the hall's can take the stage's colours while the loadout room's stay.
   const R = meta.range, benchZ = -(R.line[1] - 0.3);
   U.hallZ.value.set(benchZ, benchZ + 1.7);
   const glow = {}, pulse = { uTime: { value: 0 }, uPulse: { value: 0 }, uSpeed: { value: 0 } };

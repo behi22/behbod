@@ -5,8 +5,7 @@ import { B, drawn, glowText, box, card, batch, additive } from './decor.js';
 import { MOODS } from '../pure/moods.js';
 import { STAGES } from '../pure/stages.js';
 
-// Everything hangs on a wall or stands on furniture that is already solid, so nothing new needs walking round.
-// Kept clear: the workbench top (gunsmith), the board's outlines (attachments), the rack (camos, charms), the gun wall.
+// Only on walls and solid furniture, so nothing blocks a path; the bench top, board outlines, rack and gun wall stay free for what comes next.
 const HL = 3.2;
 
 export function makeLoadout(stage, meta, { coarse = false, low = false, sfx, hall } = {}) {

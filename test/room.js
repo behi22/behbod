@@ -1,5 +1,4 @@
-// The range's hall dressed for each stage, the loadout room's pieces and the run's music, in a real browser, computer
-// and phone: LOFT_URL=http://127.0.0.1:8815 node test/room.js [outdir]
+// The hall's looks, the loadout room and the run's music, computer and phone: LOFT_URL=http://127.0.0.1:8815 node test/room.js [outdir]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output/room';

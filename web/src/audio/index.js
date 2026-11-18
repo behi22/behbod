@@ -17,8 +17,7 @@ export function makeAudio(sound) {
       return eng;
     },
     ready() { return sound && sound.on ? env.eng() : null; },
-    // The records fade while the piano is in use or a run's music plays, and come back only when neither is; the
-    // piano's own sound fades for a run too.
+    // Two reasons to fade the records (the piano, a run), so one ending never brings them back while the other holds.
     duck(who, level, seconds) {
       ducks[who] = Math.max(0, Math.min(1, level));
       const e = env.eng();

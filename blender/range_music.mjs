@@ -1,6 +1,4 @@
-// The range's run music as one file: his song, then my track grown from the approved demo, crossing in his song's quiet end.
-//   node blender/range_music.mjs <his song.mp3> <work folder>    (needs ffmpeg; writes web/assets/range/music/run.mp3)
-// Every sound is made here sample by sample, nothing sampled or copied; a semitone above the demo to sit in his key (F).
+// One run file, his song then mine made sample by sample (nothing sampled) in his key: node blender/range_music.mjs <his song.mp3> <work folder>
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
