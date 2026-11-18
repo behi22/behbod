@@ -644,7 +644,8 @@ function tapMove(e) {
   }
   // A gun on the range's wall, or its plaque: walk over and take it.
   const gun = range.wall?.hit(ray, walkable);
-  if (gun) { walkTo(b2t(...gun.at), () => { if (things.nearest(pos) === gun) act(gun); }); return; }
+  // In reach is enough: on arrival the loadout room's own spot can still be nearer than the middle gun's.
+  if (gun) { walkTo(b2t(...gun.at), () => { if (Math.hypot(pos.x - gun.x, pos.z - gun.z) <= gun.r) act(gun); }); return; }
   // Aim at whatever floor the click lands on, then walk there along a path.
   const hits = ray.intersectObjects(walkable, true).filter(h => h.face && h.face.normal.y > 0.7);
   const hit = hits[0]?.point;

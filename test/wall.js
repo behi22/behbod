@@ -117,6 +117,12 @@ async function desktop(b) {
   const walked = await p.waitForFunction(() => __loft.range.held === 'smg', null, { timeout: 20000 }).then(() => true, () => false);
   const there = await p.evaluate(() => ({ near: __loft.near, x: __loft.pos.x, z: __loft.pos.z }));
   check('a click on the Vesper walks me to it and takes it', pt.front && walked && there.near === 'wall_smg', JSON.stringify({ pt, there }));
+  // The middle gun, from straight out in the room, where the loadout room's own spot is nearer when the walk ends.
+  await stand(p, 7.6, MOUNTS[2][1], Math.PI / 2); await p.waitForTimeout(1200);
+  const mid = await onScreen(p, [5.4, MOUNTS[2][1], 1.3]);
+  await p.mouse.click(mid.x, mid.y);
+  const tookMid = await p.waitForFunction(() => __loft.range.held === 'rifle', null, { timeout: 20000 }).then(() => true, () => false);
+  check('a click on the Keeper from straight out in the room walks me to it and takes it', mid.front && tookMid, JSON.stringify({ mid, at: await p.evaluate(() => [__loft.pos.x, __loft.pos.z, __loft.near]) }));
 
   // Every gun earned: all five hang, each where the rules put it, nothing touching.
   await give(p, { swarm: 3, dark: 3, long: 3, walkers: 3 });
