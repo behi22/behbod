@@ -281,9 +281,9 @@ export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
   // ---------- turning and zooming ----------
   function grab(stage) {
     const pts = new Map();
-    let pinch = 0, lastTap = 0;
+    let pinch = 0, lastTap = 0, lastMove = 0;
     stage.addEventListener('pointerdown', e => {
-      stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); stage.classList.add('drag');
+      stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); stage.classList.add('drag'); spin = 0;
       if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); }
       const now = performance.now();
       if (now - lastTap < 320 && pts.size === 1) { pickSlot('all'); want.zoom = 1; }
@@ -294,10 +294,11 @@ export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
       if (!p) return;
       const dx = e.clientX - p[0], dy = e.clientY - p[1];
       p[0] = e.clientX; p[1] = e.clientY;
-      if (pts.size === 1) { want.yaw -= dx * 0.0085; want.pitch = THREE.MathUtils.clamp(want.pitch + dy * 0.0065, -1.45, 1.45); spin = -dx * 0.0085; }
+      if (pts.size === 1) { want.yaw -= dx * 0.0085; want.pitch = THREE.MathUtils.clamp(want.pitch + dy * 0.0065, -1.45, 1.45); spin = -dx * 0.0085; lastMove = performance.now(); }
       else if (pts.size === 2) { const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch > 0) want.zoom = THREE.MathUtils.clamp(want.zoom * d / pinch, 0.6, 4.5); pinch = d; }
     });
-    const up = e => { pts.delete(e.pointerId); if (!pts.size) stage.classList.remove('drag'); pinch = 0; };
+    // Held still before letting go is no flick.
+    const up = e => { pts.delete(e.pointerId); if (!pts.size) stage.classList.remove('drag'); pinch = 0; if (performance.now() - lastMove > 80) spin = 0; };
     stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
     stage.addEventListener('wheel', e => { e.preventDefault(); want.zoom = THREE.MathUtils.clamp(want.zoom * Math.exp(-e.deltaY * 0.0012), 0.6, 4.5); }, { passive: false });
   }
@@ -354,6 +355,8 @@ export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
     pick: pickSlot, put,
     // Keys on the bench: 1 to 6 pick a slot, the arrows step through its choices, R sets the view back.
     key(e, down) {
+      // Keys the bench does not use stay the browser's (Ctrl+R, F5, Tab).
+      if (e.ctrlKey || e.metaKey || e.altKey) return false;
       if (!down) return true;
       if (/^Digit[1-6]$/.test(e.code)) { const s = SLOTS[+e.code.slice(5) - 1].id; pickSlot(slot === s ? 'all' : s); return true; }
       if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && slot !== 'all') {
@@ -362,12 +365,12 @@ export function makeSmith({ engine, coarse, env, fitter, guns, onClose }) {
         return true;
       }
       if (e.code === 'KeyR') { pickSlot('all'); want.zoom = 1; return true; }
-      return true;
+      return false;
     },
     tick(dt) {
       if (!open || !gun) return;
       // A flick keeps turning a moment after the finger lets go.
-      if (!nodes.stage.classList.contains('drag') && Math.abs(spin) > 1e-4) { want.yaw += spin; spin *= Math.exp(-6 * dt); }
+      if (!nodes.stage.classList.contains('drag') && Math.abs(spin) > 1e-4) { want.yaw += spin * Math.min(dt, 0.1) * 60; spin *= Math.exp(-6 * Math.min(dt, 0.1)); }
       place(Math.min(dt, 0.1));
       gun.swingCharm(Math.min(dt, 0.1));
     },

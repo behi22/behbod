@@ -82,6 +82,11 @@ const onGun = p => p.evaluate(() => {
     await p.screenshot({ path: `${OUT}/bench-pistol.png` });
     const slots = await p.evaluate(() => [...document.querySelectorAll('.gs-slot small')].map(x => x.textContent));
     check('six slots: muzzle, optic, rail, magazine, camo, charm', slots.join() === 'Muzzle,Optic,Rail,Magazine,Camo,Charm', slots.join());
+    const keyed = await p.evaluate(() => Object.fromEntries([['Ctrl+R', { code: 'KeyR', key: 'r', ctrlKey: true }], ['F5', { code: 'F5', key: 'F5' }], ['Tab', { code: 'Tab', key: 'Tab' }], ['2', { code: 'Digit2', key: '2' }]].map(([n, o]) => {
+      const e = new KeyboardEvent('keydown', { ...o, bubbles: true, cancelable: true }); dispatchEvent(e); dispatchEvent(new KeyboardEvent('keyup', { ...o, bubbles: true })); return [n, e.defaultPrevented];
+    })));
+    await p.evaluate(() => __loft.range.bench.pick('all'));
+    check('the bench takes its own keys and leaves the browser\'s alone', keyed['2'] && !keyed['Ctrl+R'] && !keyed.F5 && !keyed.Tab, JSON.stringify(keyed));
 
     // Turned by a drag, closer with the wheel.
     const stage = await p.evaluate(() => { const r = document.querySelector('.gs-stage').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }; });
@@ -93,6 +98,13 @@ const onGun = p => p.evaluate(() => {
     const v1 = await p.evaluate(() => __loft.range.bench.view);
     check('a drag turns the gun', Math.abs(v1.yaw - v0.yaw) > 0.8, `${v0.yaw.toFixed(2)} to ${v1.yaw.toFixed(2)}`);
     check('the wheel brings it closer', v1.zoom > v0.zoom * 1.4, `${v0.zoom.toFixed(2)} to ${v1.zoom.toFixed(2)}`);
+    // A drag held still before letting go is no flick: the gun stays where it was left.
+    await p.mouse.move(stage.x, stage.y); await p.mouse.down(); await p.mouse.move(stage.x + 120, stage.y, { steps: 6 });
+    await p.waitForTimeout(700);
+    const heldAt = await p.evaluate(() => __loft.range.bench.view.yaw);
+    await p.mouse.up(); await p.waitForTimeout(1200);
+    const leftAt = await p.evaluate(() => __loft.range.bench.view.yaw);
+    check('a drag held still, then let go, does not keep turning', Math.abs(leftAt - heldAt) < 0.05, `${heldAt.toFixed(2)} to ${leftAt.toFixed(2)}`);
 
     // Each gun, everything on, then looked at; the numbers move the way they should.
     const KIT = [['muzzle', 'suppressor'], ['optic', 'holo'], ['rail', 'light'], ['mag', 'mag'], ['camo', 'tidepool'], ['charm', 'rivet']];
@@ -129,8 +141,15 @@ const onGun = p => p.evaluate(() => {
     const gold = await p.evaluate(() => { __loft.range.bench.pick('camo'); return [...document.querySelectorAll('.gs-opt')].find(x => x.textContent.startsWith('Gold'))?.disabled; });
     check('a finish earned with stars is shut until they are earned', gold === true);
 
-    // Back to the line with the Gatekeeper: the bench hands the gun back with its kit.
-    await p.evaluate(() => [...document.querySelectorAll('.gs-done')][0].click());
+    // Back to the line with the Gatekeeper: the bench hands the gun back with its kit, its charm hanging, not whirling.
+    const whirl = await p.evaluate(async () => {
+      const c = __loft.range.gun.hook.children[0], V = c.position.constructor, Q = c.quaternion.constructor, down = () => new V(0, -1, 0).applyQuaternion(c.getWorldQuaternion(new Q()));
+      let last = down(), most = 0;
+      document.querySelector('.gs-done').click();
+      for (let i = 0; i < 20; i++) { await new Promise(r => requestAnimationFrame(r)); const now = down(); most = Math.max(most, now.angleTo(last)); last = now; }
+      return Math.round(most * 180 / Math.PI);
+    });
+    check('the charm comes back to the hand hanging, without a whirl', whirl < 60, `${whirl} degrees in one frame`);
     await p.waitForTimeout(800);
     const back = await p.evaluate(() => ({ state: __loft.range.state, mask: __loft.camera.layers.mask, held: __loft.range.held, mag: __loft.range.debug.stats.mag, sup: __loft.range.debug.stats.suppressed, card: !!document.querySelector('.rg-card') }));
     check('Done hands the gun back: the stage card again, the house drawn again', back.state === 'menu' && back.mask === 1 && back.card, JSON.stringify(back));
@@ -158,6 +177,11 @@ const onGun = p => p.evaluate(() => {
     const after = await p.evaluate(() => ({ ammo: __loft.range.debug.weapon.ammo, cues: __heard.cues.filter(c => c.startsWith('lmg:')).map(c => c.slice(4)) }));
     check('the 150-round box fires out and reloads full, every move heard', after.ammo === 150 && ['coverOpen', 'magOut', 'magIn', 'beltIn', 'coverClose'].every(c => after.cues.includes(c)), JSON.stringify(after));
     await p.screenshot({ path: `${OUT}/run-lmg.png` });
+    // Lights out: the light stays on whatever L says.
+    await p.evaluate(() => __loft.range.start('dark', 'easy', 7)); await run(p, 4);
+    await p.keyboard.down('KeyL'); await p.keyboard.up('KeyL'); await run(p, 0.3);
+    const dark = await p.evaluate(() => ({ state: __loft.range.state, on: __loft.range.flashlight.on }));
+    check('in the dark stage L leaves the rail light on', dark.state === 'play' && dark.on, JSON.stringify(dark));
     await p.evaluate(() => __loft.range.film(false));
     check('no errors on the desktop', errs.length === 0, errs.join(' | '));
     // The page loaded again keeps every gun's kit, and the range reads it back.
@@ -182,6 +206,9 @@ const onGun = p => p.evaluate(() => {
     check('the board, rack and pegs dressed, the gun in the hand on the bench', shown.pieces === 15 && shown.gun, JSON.stringify(shown));
     const said = await L.p.evaluate(() => { __loft.act('rg_attach'); return document.getElementById('toast')?.textContent || ''; });
     check('the board no longer promises things to come', /gunsmith bench/.test(said) && !/once|soon|go up here/i.test(said), said);
+    await L.p.evaluate(() => { __loft.yaw = Math.PI / 2; }); await L.p.waitForTimeout(800);
+    const lookOf = () => L.p.evaluate(() => __loft.camera.getWorldDirection(__loft.camera.position.clone()).toArray());
+    const looked = await lookOf();
     await L.p.evaluate(() => __loft.act('rg_bench'));
     await L.p.waitForTimeout(1200);
     const inBench = await L.p.evaluate(() => ({ open: __loft.range.bench?.open, state: __loft.range.state, mask: __loft.camera.layers.mask, card: !!document.querySelector('.rg-card') }));
@@ -192,6 +219,8 @@ const onGun = p => p.evaluate(() => {
     await L.p.waitForTimeout(1500);
     const backHome = await L.p.evaluate(v => ({ active: __loft.range.active, mask: __loft.camera.layers.mask, off: Math.hypot(__loft.pos.x - v.x, __loft.pos.z - v.z), near: __loft.near }), b2t(...spot));
     check('Done brings you back to the bench, walking', !backHome.active && backHome.mask === 1 && backHome.off < 0.3, JSON.stringify(backHome));
+    const lookedAfter = await lookOf(), turned = Math.acos(Math.min(1, looked.reduce((s, v, i) => s + v * lookedAfter[i], 0)));
+    check('and facing the way you were', turned < 0.1, `${turned.toFixed(2)} rad`);
     await L.p.waitForTimeout(1500);
     check('the gun on the bench now wears what was chosen', await L.p.evaluate(() => { let holo = false; __loft.range.display.bench.traverse(o => { if (o.name === 'P22_att_holo' && o.visible) holo = true; }); return holo; }));
     // A look at the room from the firing line.
@@ -237,6 +266,16 @@ const onGun = p => p.evaluate(() => {
       await m.p.waitForTimeout(400);
       check(`${w}x${h}: with the light fitted, a LIGHT pad`, await m.p.evaluate(() => !!document.querySelector('.rg-lite')));
       await m.p.screenshot({ path: `${OUT}/phone-run-${w}x${h}.png` });
+      // The pad lit only while the light is on: switched on, then a new run (which starts with it off).
+      const padNow = () => m.p.evaluate(() => ({ pad: document.querySelector('.rg-lite')?.classList.contains('on'), on: __loft.range.flashlight.on }));
+      await m.p.evaluate(() => document.querySelector('.rg-lite').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
+      await m.p.waitForTimeout(200);
+      const lit = await padNow();
+      await m.p.evaluate(() => __loft.range.escape()); await m.p.waitForTimeout(200);
+      await m.p.evaluate(() => [...document.querySelectorAll('.rg-acts button')].find(x => x.textContent === 'Stages').click()); await m.p.waitForTimeout(200);
+      await m.p.evaluate(() => [...document.querySelectorAll('.rg-acts button')].find(x => x.textContent === 'Start').click()); await m.p.waitForTimeout(400);
+      const fresh = await padNow();
+      check(`${w}x${h}: the LIGHT pad shows the light as it is`, lit.pad && lit.on && fresh.pad === fresh.on, JSON.stringify([lit, fresh]));
       check(`${w}x${h}: no errors`, m.errs.length === 0, m.errs.join(' | '));
       await m.p.close();
     }

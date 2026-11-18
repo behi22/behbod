@@ -160,7 +160,7 @@ const range = makeRange({
   visible: () => pos.z > 0.05 || (world.doors.secret?.k || 0) > 0.002,
   onReady: room => { walkable.push(room.group); things.items.push(...range.spots); },
   // Back to walking, at the line, with the camera behind me.
-  onExit: ({ at }) => { mode = 'walk'; pos.copy(at); vel.set(0, 0, 0); facing = prevFacing = 0; yaw = Math.PI; pitch = 0.2; lastLook = performance.now(); me.root.visible = true; me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos); },
+  onExit: ({ at, look }) => { mode = 'walk'; pos.copy(at); vel.set(0, 0, 0); [facing, yaw, pitch] = look || [0, Math.PI, 0.2]; prevFacing = facing; lastLook = performance.now(); me.root.visible = true; me.root.position.copy(pos); phys?.place(pos); physAt.copy(pos); },
 });
 const scope = makeTelescope(scene, camera, meta, {
   sky: out3d?.deathStar, outside: out3d, renderer, coarse, canvas,
@@ -188,9 +188,9 @@ function askRange() {
 }
 function rangeLater() { if (!coarse) setTimeout(askRange, 12000); }
 const bookcase = b2t((meta.doors.find(d => d.id === 'secret')?.pivot || [8, 0, 0])[0] + 0.5, 0, 0);
-// bench: from the gunsmith's bench in the loadout room, straight to it and back here after.
+// bench: from the gunsmith's bench in the loadout room, straight to it and back here after, facing as before.
 function enterRange(bench = false) {
-  if (mode !== 'walk' || !range.enter(bench ? { bench: true, at: pos } : undefined)) return;
+  if (mode !== 'walk' || !range.enter(bench ? { bench: true, at: pos, look: [facing, yaw, pitch] } : undefined)) return;
   mode = 'range'; route = null; keys.clear();
   me.root.visible = false; $('prompt').classList.remove('on');
 }

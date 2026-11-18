@@ -112,7 +112,7 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
     }
     kit.mag = !!src;
   }
-  let charm = null, swingSt = null;
+  let charm = null, swingSt = null, swungIn = null;
   const sw = { v: new THREE.Vector3(), q: new THREE.Quaternion(), d: new THREE.Vector3() }, DOWN = new THREE.Vector3(0, -1, 0);
   spent.traverse(o => { if (o.name.startsWith(pre + 'round') || o.name.startsWith(pre + 'belt')) o.visible = false; });
   spent.visible = false;
@@ -282,6 +282,9 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
     // The charm's swing, from where its hook has gone since the last call (the gun in the hand, or on the bench).
     swingCharm(dt) {
       if (!charm) return;
+      // Carried into another scene (onto the bench, back to the hand) the hook jumps: the charm starts there hanging still.
+      let top = hook; while (top.parent) top = top.parent;
+      if (top !== swungIn) { swungIn = top; swingSt = null; }
       hook.updateWorldMatrix(true, false);
       const at = hook.getWorldPosition(sw.v).toArray();
       swingSt ||= newSwing(at, charm.len);

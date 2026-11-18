@@ -163,7 +163,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   const hints = () => hud.hint([['Click', 'shoot'], ['Right click', 'aim'], ['R', 'reload'], ['F', 'inspect'], ...(gun?.lens ? [['L', 'light']] : []), ['A D', 'step'], ['C', 'duck'], ['Esc', 'pause']]);
   // The light on or off, while a run is on and one is fitted (the dark stage turns it on by itself).
   function toggleLight() {
-    if (!gun?.lens || (state !== 'play' && state !== 'count')) return;
+    if (!gun?.lens || lightsTo === 0 || (state !== 'play' && state !== 'count')) return;
     flash.set(!flash.on); sfx?.flashlight?.(flash.on);
     hud?.lightPad?.(coarse, flash.on);
   }
@@ -450,7 +450,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     get music() { return music; },
     get spots() { return loadout?.spots || []; },
     poke(id) { return loadout?.poke(id) ?? null; },
-    // opts: { bench: true, at } from the gunsmith's bench in the loadout room (at: where I stand, to come back to).
+    // opts: { bench: true, at, look } from the gunsmith's bench in the loadout room (where I stand and look, to come back to).
     enter(opts) {
       if (!gun || active) return false;
       active = true; enterK = 0; along = 0; alongV = 0; aimHeld = false; yaw = lastYaw = 0; pitch = lastPitch = 0; duck = 0; baseFov = camera.fov; hadLock = false;
@@ -462,7 +462,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       hud.show();
       equip(gun, held); gun.draw();
       listen(true);
-      benchHome = opts?.bench && opts.at ? opts.at.clone() : null;
+      benchHome = opts?.bench && opts.at ? { at: opts.at.clone(), look: opts.look } : null;
       if (!benchHome || !openBench()) { benchHome = null; menu(); }
       return true;
     },
@@ -482,7 +482,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       engine.showBackground(true);
       // Back on the yellow line, a step from the bench and short of the crates at the line's end.
       const home = benchHome; benchHome = null;
-      onExit?.({ at: home || new THREE.Vector3(THREE.MathUtils.clamp(stand.x + along, R.strafe[0] + 0.5, R.strafe[1] - 0.5), stand.y, stand.z - 0.5) });
+      onExit?.({ at: home?.at || new THREE.Vector3(THREE.MathUtils.clamp(stand.x + along, R.strafe[0] + 0.5, R.strafe[1] - 0.5), stand.y, stand.z - 0.5), look: home?.look });
     },
     // Esc: out of a run to the pause card first, then out of the range.
     escape() {
@@ -577,6 +577,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       gun.update(state === 'paused' ? 0 : dtc, camera, w, s, { aim: input.aim && live, fire: hands.fire, turn: [yaw - lastYaw, pitch - lastPitch], strafe: live ? alongV : 0, crouch: duck });
       lastYaw = yaw; lastPitch = pitch;
       scopeView.set(gun.scoped, gun.spec.kit?.scope === 'KIT_scope_long');
+      // The LIGHT pad follows the light, which a run's start and the dark stage switch too.
+      if (hud && coarse && gun.lens) hud.lightPad(true, flash.on);
       flashT += dt;
       flashRoom.intensity = flashStage.intensity = flashT < 0.07 ? 26 * flashK * (1 - flashT / 0.07) : 0;
       if (hud) hud.set({ playing: live || state === 'paused', spread: spreadNow(w, s, gun.aim), aim: gun.aim, score: run?.score, streak: run && run.t - run.lastKill < 3.5 ? run.streak : 0,
