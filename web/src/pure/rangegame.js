@@ -1,6 +1,4 @@
-// One run of a range stage: the clock, what is up and how hurt it is, the score and the streak, the bolts and the
-// shields on Hard, and the result with its stars. Pure: the view tells it what was shot and where the player's eye
-// is, and it answers with what happened.
+// Pure, so the tests run the same rules as the view: it is told what was shot and where the eye is.
 import { script, par, starsFor, place, STAGE, DIFFICULTIES, KINDS } from './stages.js';
 import { BOLT, launch, boltAt, reach, strikes } from './bolts.js';
 
@@ -21,9 +19,7 @@ function drop(run, id, ev) {
   for (const [bid, b] of run.bolts) if (b.from === id && b.phase === 'charge') { run.bolts.delete(bid); ev.push({ type: 'fizzle', bolt: bid }); }
 }
 
-// Moves the clock on; `eye` is where the player's eye is now (range space). Events: spawn { target }, escape { id },
-// charge { id, bolt, at } (a drone starts to glow: it fires at `at`), launch { bolt, from, flight }, fizzle { bolt } (its
-// drone went before it fired), miss { bolt }, strike { bolt } with what struck() says, end { result }.
+// Events: spawn, escape, charge (fires at `at`), launch, fizzle (its drone went first), miss, strike, end.
 export function step(run, dt, eye = STAND) {
   const ev = [];
   if (run.over) return ev;
@@ -90,9 +86,7 @@ function finish(run, ev) {
 // The trigger was pulled (once per shot, however many targets it goes on to hit).
 export function fired(run) { if (!run.over) run.shots++; }
 
-// A shot landed on target `id` in `zone` for `damage`. `first` is false for a second target hit by the same shot, so
-// accuracy counts shots that hit something, not targets. Events: hurt { id, hp, left (its share of strength still
-// there), weak }, kill { id, points, streak, weak, kind }, and fizzle for a bolt it was gathering.
+// `first` is false for a second target on the same shot, so accuracy counts shots, not targets.
 export function hit(run, id, zone, damage, first = true) {
   const g = run.live.get(id);
   if (run.over || !g) return [];

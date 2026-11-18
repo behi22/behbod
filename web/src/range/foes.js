@@ -4,11 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { lit } from './lit.js';
 import { spring, springStep, kick, critical } from '../pure/springs.js';
 
-// The range's robots, made like designer toys: soft white and orange vinyl over dark joints, lit eyes, chunky hands and
-// boots. The walker strolls across the hall side on, its core glowing through a porthole on each flank (the weak
-// spot), and now and then turns its screen face to look at you. The drone is a round little copter with one big amber
-// eye (its weak spot) and four guarded rotors. Each moving part is one mesh per finish, built once and shared by every
-// robot in the pool; every robot has its own materials, so it can flash when hit and run hot when hurt on its own.
+// Every robot has its own materials, so each can flash when hit and run hot when hurt; its meshes are shared by the pool.
 const PAL = { shell: 0xece7dd, cream: 0xd3ccbf, orange: 0xff6a1c, char: 0x2a2d34, ink: 0x131519, steel: 0x8a919b };
 const TEAL = [0.35, 2.4, 2.25], AMBER = [3.3, 1.35, 0.25], HOT = [4.6, 0.4, 0.7], BURN = [4.4, 0.7, 0.18], RED = [3.6, 0.25, 0.15], DEAD = [0.05, 0.035, 0.03];
 
@@ -42,8 +38,7 @@ function shapes(q) {
   };
 }
 
-// ---------- the walker ----------
-// Model axes: x ahead (the way it walks), y up, z to its left; 1.1 times this size in the hall.
+// ---------- the walker (x ahead, y up, z to its left; 1.1 times this size in the hall) ----------
 export const WALKER = { scale: 1.1, core: [0, 1.26, 0], coreR: 0.12, head: [0.01, 1.7, 0], headR: 0.17, chest: [0, 1.45, 0] };
 function walkerGeo(q) {
   const { rb, sph, cyl, cap, tor, disc, lathe } = shapes(q), { shell, cream, orange, char, ink, steel } = PAL, PI = Math.PI;
@@ -86,8 +81,7 @@ function walkerGeo(q) {
   };
 }
 
-// ---------- the drone ----------
-// Model axes: -z is its face (it turns that toward the firing line); 1.4 times this size in the hall.
+// ---------- the drone (-z is its face, turned to the line; 1.4 times this size in the hall) ----------
 export const DRONE = { scale: 1.4, eye: [0, -0.01, -0.2], eyeR: 0.09, bodyR: 0.36 };
 const ROTORS = [[1, 1], [-1, 1], [1, -1], [-1, -1]].map(([sx, sz]) => ({ sx, sz, at: [sx * 0.25, 0.035, sz * 0.215] }));
 function droneGeo(q) {
@@ -210,8 +204,7 @@ export function makeFoeKit({ low = false } = {}) {
 
 // ---------- moving them ----------
 const tmp = new THREE.Vector3();
-// A walker at `at` (its place in the room already set on g), `stride` metres along its way. `ctx` carries the frame:
-// { dt, t, steps(pos) }.
+// Posed by `stride`, the metres walked, not by time, so its feet never slide on the floor.
 export function poseWalker(o, at, stride, ctx) {
   const { dt, t } = ctx, P = o.part;
   o.g.rotation.y = at.heading > 0 ? 0 : Math.PI;

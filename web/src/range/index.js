@@ -176,7 +176,6 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   }
 
   // ---------- the dark, the bolts ----------
-  // Lights out for the dark stage (the breaker drops and the flashlight clicks on), and back again after it.
   function dark(on) {
     const to = on ? 0 : 1;
     if (to !== lightsTo && active) { sfx?.breaker?.(!on); sfx?.flashlight?.(on); }
@@ -193,8 +192,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     struckT = 0;
     kick(kickSide, (Math.random() < 0.5 ? -1 : 1) * 0.04 * Math.sqrt(kickSide.k) * Math.E); kick(kickUp, 0.03 * Math.sqrt(kickUp.k) * Math.E);
   }
-  // While bolts are about: a red edge when one in the air will hit me if I stay put, and arrows toward drones charging
-  // out of sight.
+  // Warned only of a bolt that will hit if I stay put, and pointed to drones charging out of sight, so no bolt is unfair.
   let lastHurt = 0;
   function warn() {
     const k = struckT < 0.14 ? 0.9 : 0;

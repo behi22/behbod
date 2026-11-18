@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { boltAt, BOLT } from '../pure/bolts.js';
 
-// The drones' bolts as you see them: a white-hot ball in a red glow with a short tail, flying the line the run worked
-// out. One that misses keeps going past you and fades; one that is shot pops into sparks.
+// A missed bolt flies on past you and fades, so a dodge is seen to be a dodge.
 const POOL = 8, TAIL = 5, PAST = 0.8;
 
 function glowTexture() {

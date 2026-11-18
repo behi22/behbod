@@ -16,8 +16,7 @@ function dodger(run, eye) {
   }
   return eye;
 }
-// Plays a whole stage: `plan(target, age)` returns the zone to shoot the target in once it is `age` seconds old, or
-// null to hold fire; `misses` is how many wasted shots go with each one that lands. On Hard the player dodges.
+// A whole stage played to its end, so stars and scores are judged as a player earns them.
 function play(stageId, difficulty, plan, { gun = 'pistol', misses = 0, seed = 3 } = {}) {
   const run = newRun(stageId, difficulty, seed), s = stats(gun);
   let guard = 0, eye = STAND;

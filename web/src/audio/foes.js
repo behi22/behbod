@@ -1,10 +1,7 @@
 import { tone, noisy } from './drums.js';
 import { makePanner, setPos, stats } from './core.js';
 
-// The robots' sounds, made here: a walker's boots and servos and the chirp it gives when it looks at you, a drone's
-// rotors (a loop that follows it about), the whine of a bolt gathering, the bolt leaving, passing you and being shot,
-// a shield taking a hit, and the flashlight's switch. `go(pos, wet)` starts a sound at a place in the room (or in the
-// head when pos is null); the rotors need nodes that live as long as the drone, so they are made from `env` directly.
+// The rotors outlive a one-off sound, so they are built from `env` directly instead of through `go`.
 export function foeSounds(go, env) {
   return {
     walkerStep(pos) {
@@ -25,8 +22,7 @@ export function foeSounds(go, env) {
       for (const [at, f0, f1] of [[0, 900, 1350], [0.1, 1200, 1750]]) { const o = tone(S, 'triangle', f0, 0.06, 0.004, 0.07, t + at); o.frequency.setValueAtTime(f0, t + at); o.frequency.exponentialRampToValueAtTime(f1, t + at + 0.06); }
       S.play(t, t + 0.3);
     },
-    // A drone's rotors: a buzz and a breath, chopped by the blades. Returns { move(pos, hurt), stop() }, or null when
-    // the sound is off.
+    // Returns { move, stop } (null with the sound off), since the rotors live as long as their drone.
     droneHum(pos) {
       const e = env.ready();
       if (!e) return null;

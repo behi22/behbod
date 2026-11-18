@@ -1,6 +1,4 @@
-// The bolts a drone fires on Hard. It glows for a moment first (the warning), then lets go of a slow ball of light
-// aimed at where your eyes were at that moment. The bolt flies straight: step along the line or duck while it is on
-// its way and it misses; shoot it and it is gone. Places are in range space: x across, d downrange, h up.
+// Aimed at where the eyes were when it fired, so stepping or ducking while it flies makes it miss.
 export const BOLT = { charge: 1.0, speed: 6, radius: 0.12 };
 // The body a bolt can strike, seen from downrange: this far either side of the eye, from the floor to over the head.
 export const BODY = { half: 0.24, crown: 0.14 };

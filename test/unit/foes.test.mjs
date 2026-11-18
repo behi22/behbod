@@ -6,8 +6,7 @@ import { STAGES, KINDS, DIFFICULTIES, script, place } from '../../web/src/pure/s
 
 const DT = 1 / 30;
 const near = (a, b, e = 1e-9) => Math.abs(a - b) <= e;
-// Plays a Hard run to its end: `move(run, eye)` gives where the eye is for the next frame, `shoot(run, ev)` acts on what
-// happened. Returns the run and every event in order.
+// A whole Hard run, so the bolt rules are judged the way a player meets them.
 function playHard(stage, seed, { move = (run, eye) => eye, shoot = () => {} } = {}) {
   const run = newRun(stage, 'hard', seed), all = [];
   let eye = STAND, guard = 0;
@@ -158,8 +157,7 @@ test('a drone shot while it glows never fires; one that leaves takes its warning
   const later = [];
   for (let i = 0; i < 60; i++) later.push(...step(run, DT));
   assert.ok(!later.some(e => e.type === 'launch' && e.from === c.id));
-  // No warning starts that could not end in a shot before the drone leaves: drones that stay only 2.5 seconds
-  // (their first shot would come at 2.7) never glow.
+  // A drone that stays 2.5 s would leave before its first shot at 2.7, so it must never glow.
   const r = newRun('swarm', 'hard', 2);
   for (const s of r.queue) if (s.kind === 'drone') s.life = 2.5;
   let glows = 0;

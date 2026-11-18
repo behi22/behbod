@@ -1,7 +1,4 @@
-// The range's robots and its last two stages, in a real browser on a computer and on a phone: the walker and the
-// drone as built, how they react to a hit and how they come apart, lights out with the flashlight, the long shot down
-// the tunnel, and on Hard the drones' warned bolts (struck, dodged, shot down) and the three shields.
-//   LOFT_URL=http://127.0.0.1:8815 node test/foes.js [outdir]
+// The range's robots and stages 4 and 5 in a real browser, computer and phone: LOFT_URL=http://127.0.0.1:8815 node test/foes.js [outdir]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const OUT = process.argv[2] || 'test-output/foes';

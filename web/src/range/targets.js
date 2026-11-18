@@ -5,9 +5,7 @@ import { place } from '../pure/stages.js';
 import { spring, springStep, kick, critical } from '../pure/springs.js';
 import { makeFoeKit, poseWalker, hurtWalker, poseDrone, hurtDrone, chargeDrone, calmDrone, WALKER, DRONE } from './foes.js';
 
-// What you shoot at: steel plates on pop-up stands, walkers that cross the hall between the fins, and drones.
-// Each is built once and kept in a pool (the robots' shapes are in foes.js). A target knows how to stand up, how to
-// be hit (which part a shot struck), how to come apart, and how to leave if nobody hit it.
+// Each kind is built once and pooled, so nothing is made in the middle of a run (the robots' shapes are in foes.js).
 const std = (color, rough, metal, extra = {}) => lit(new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra }));
 // A plate's radius, and how far its middle sits above the hinge it folds on.
 const PLATE_R = 0.25, PLATE_UP = 0.29;
@@ -39,8 +37,7 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
     const disc = mesh(new THREE.CylinderGeometry(PLATE_R, PLATE_R, 0.014, 32).rotateX(Math.PI / 2), M.steel, 0, PLATE_UP, 0);
     const face = mesh(new THREE.CircleGeometry(PLATE_R - 0.012, 32), M.white, 0, PLATE_UP, -0.0074);
     const ring = mesh(new THREE.RingGeometry(0.125, 0.175, 32), M.orange, 0, PLATE_UP, -0.0078), dot = mesh(new THREE.CircleGeometry(0.062, 24), M.orange, 0, PLATE_UP, -0.0078);
-    // Far down the tunnel a lit rim marks it out against the dark; with the lights out the rim glows faintly, like paint
-    // that holds the light, so a sweep of the flashlight can find it.
+    // With the lights out the rim glows faintly, like paint that holds the light, so a sweep of the flashlight finds it.
     const rim = mesh(new THREE.RingGeometry(PLATE_R * 0.97, PLATE_R * 1.14, 40), M.rim, 0, PLATE_UP, -0.009);
     face.rotation.y = ring.rotation.y = dot.rotation.y = rim.rotation.y = Math.PI;
     arm.add(neck, disc, face, ring, dot, rim);
@@ -248,8 +245,7 @@ export function makeTargets(stage, fx, meta, { sfx, low = false } = {}) {
       for (const o of [...live.values(), ...leaving]) { o.g.visible = false; o.busy = false; if (o.kind !== 'plate') o.reset(); if (o.kind === 'drone') { hum(o, false); hush(o); } }
       live.clear(); leaving.length = 0;
     },
-    // A point on a live target, for the checks to aim at (the weak spot when it has one).
-    // part: 'body' for a walker's chest above its core, a drone's hull below its eye.
+    // For the checks to aim at; `part` 'body' aims off the weak spot (a walker's chest, a drone's hull).
     aimPoint(id, part) {
       const o = live.get(id);
       if (!o) return null;

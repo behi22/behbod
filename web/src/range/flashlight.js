@@ -1,13 +1,8 @@
 import * as THREE from 'three';
 
-// The flashlight for the dark stage. Until the rail light (an attachment) is built, it is a plain lamp low on the gun's
-// right that points where you aim. The attachment takes it over with `mount(fn)`: from then on `fn(from, dir)` says,
-// each frame, where the light leaves from and which way it points (in the room), and the lamp follows. The lamp lights
-// the rooms and the targets (two scenes, one light in each); it is always there, at no strength when off, so turning
-// it on never makes the graphics card build anything.
+// Always there at no strength when off, so turning it on makes the graphics card build nothing; `mount(fn)` hands it to an attachment.
 export function makeFlashlight(room, stage) {
-  // stage: the share of it the targets get. They are bright toys and the rooms are dark concrete; one strength for both
-  // left the robots glaring white.
+  // stage: the targets' share, since one strength for the bright toys and the dark concrete left the robots glaring white.
   const look = { color: 0xfff0dc, intensity: 380, stage: 0.4, angle: 0.34, penumbra: 0.6, distance: 45, decay: 1.3 };
   const lamps = [room, stage].map(scene => { const l = new THREE.SpotLight(look.color, 0, look.distance, look.angle, look.penumbra, look.decay); scene.add(l, l.target); return l; });
   let on = false, level = 0, mount = null;

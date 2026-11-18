@@ -11,8 +11,7 @@ export const DIFFICULTIES = {
   normal: { name: 'Normal', speed: 1, life: 1, hp: 1, bolts: 0, shields: 3, score: 1 },
   hard: { name: 'Hard', speed: 1.3, life: 0.78, hp: 1.25, bolts: 1, shields: 3, score: 1.3 },
 };
-// What each kind of target is worth, how much it takes, and how its parts multiply a hit. On Hard a drone fires a
-// bolt every `bolt` seconds, the first half that long after it arrives.
+// A drone's first bolt on Hard comes half its `bolt` interval after it arrives, so it is seen before it fires.
 export const KINDS = {
   plate: { points: 100, hp: 1, zones: { plate: 1 } },
   walker: { points: 300, hp: 110, zones: { core: 2.5, head: 1.5, body: 1, limb: 0.6 }, weak: 'core' },
