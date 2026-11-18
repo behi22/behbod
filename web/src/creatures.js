@@ -337,14 +337,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       }));
     });
   }
-  // A story from the Shahnameh by the fire, a line at a time; each visit starts with a different one (the count of
-  // visits is kept in the browser), and asking again goes on to the next. Anything else BH-22 is given to do ends it.
-  let visit = 0, told = 0;
+  // Visits are counted in the browser so each one starts with a different story.
+  let visit = 0, told = 0, storyEarn = false;
   try { visit = (parseInt(localStorage.getItem('home.bh22.visit'), 10) || 0) + 1; localStorage.setItem('home.bh22.visit', String(visit)); } catch (e) { visit = Math.floor(Math.random() * 60); }
   const nearFire = p => byFire(p.x, -p.z, p.y);
   const STORY_LINE = 4.8;
-  // `earn`: told because I asked, so it counts as saying hi, once the story is over (an achievement's own note would
-  // otherwise cover its first line).
+  // Asked for, it counts as saying hi once it ends, however it ends: the achievement's note would cover its first line.
   function tellStory(earn = false) {
     endR2Fun();
     const lines = firesideAt(visit, told++);
@@ -352,7 +350,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     r2.cup.visible = false; r2.speed = r2.base;
     r2.bub.say('story time', now); sfx.word('hello', r2.pos);
     lines.forEach((l, i) => wait(r2, i * STORY_LINE, () => { if (r2.state === 'story') toast(`BH-22: ${i ? '' : 'A story from the Shahnameh. '}${l}`); }));
-    if (earn) wait(r2, lines.length * STORY_LINE, () => onEvent('bh22'));
+    storyEarn ||= earn;
   }
   // Sitting down by the fire calls it over to tell one.
   function comeTell(stand) {
@@ -396,6 +394,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     r2.state = 'pause'; r2.timer = 1.5;
   }
   function tickR2(dt, ctx) {
+    if (storyEarn && r2.state !== 'story') { storyEarn = false; onEvent('bh22'); }
     r2.chaseCool -= dt;
     const look = r2.moving ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
     if (look !== null) r2.dome.rotation.y += (look - r2.dome.rotation.y) * Math.min(1, dt * 3);

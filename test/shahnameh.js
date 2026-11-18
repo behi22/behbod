@@ -233,6 +233,8 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
     const left = await p.evaluate(() => __loft.creatures.bh22.state);
     const quiet = await toast(p); await p.waitForTimeout(5000);
     check('walking off ends the story', left !== 'story' && (await toast(p)) === quiet, `state ${left}`);
+    const hi = await p.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('loft.progress') || '{}')).includes('bh22'));
+    check('asking for it still counts as saying hi to BH-22, though I walked off', hi, String(hi));
     // BH-22 has gone back to its rounds by now: bring it over and hold it still while it is asked, turn by turn.
     const here = async () => {
       await p.evaluate(() => { const s = __loft.meta.points.spawn; Object.assign(__loft.creatures.bh22, { state: 'pause', timer: 30, route: [] }); __loft.creatures.bh22.pos.set(s[0] + 0.4, s[2], -s[1]); });
