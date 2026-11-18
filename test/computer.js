@@ -390,9 +390,12 @@ window.__probe = (async () => {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: tx, y: ty, id: 0 }] });
   await pp.waitForTimeout(400);
   const held = await pp.evaluate(() => __loft.screens.desktop.games.playing.st.vr);
-  await touch('touchEnd'); await pp.waitForTimeout(400);
+  // The finger left slides off the game, up onto the desktop's top bar, and lifts there.
+  const barBox = await pp.locator('.dt-bar').boundingBox();
+  for (let i = 1; i <= 6; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: tx, y: ty + (barBox.y + barBox.height / 2 - ty) * i / 6, id: 0 }] }); await pp.waitForTimeout(16); }
+  await touch('touchEnd'); await pp.waitForTimeout(700);
   const fell = await pp.evaluate(() => __loft.screens.desktop.games.playing.st.vr);
-  check('phone: Orbit climbs while a finger is down, and lifting a second finger does not let go', pclimb[0] === 'orbit' && pclimb[1] > 0 && held > 0 && fell < held, `${pclimb[1].toFixed(0)}, with one of two fingers lifted ${held.toFixed(0)}, all lifted ${fell.toFixed(0)}`);
+  check('phone: Orbit climbs while a finger is down; lifting one of two does not let go, the last one off lets go wherever it lifts', pclimb[0] === 'orbit' && pclimb[1] > 0 && held > 0 && fell < 0, `${pclimb[1].toFixed(0)}, with one of two fingers lifted ${held.toFixed(0)}, the last lifted off the game ${fell.toFixed(0)}`);
   await pp.tap('.dt-win[data-app="games"] .dt-pill:text-is("← Games")'); await pp.waitForTimeout(250);
   await pp.tap('.dt-win[data-app="games"] .dt-pill:text-is("Easy")'); await pp.waitForTimeout(300);
   const [ax, ay] = await pgame(560, 380), [zx, zy] = await pgame(600, 380);

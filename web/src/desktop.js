@@ -162,12 +162,9 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
   function makeGameCanvas() {
     const c = el('canvas', 'dt-game');
     c.setAttribute('role', 'img');
-    // The first finger of a touch (or the mouse) starts the count afresh, so one lost along the way cannot linger.
-    c.addEventListener('pointerdown', ev => { if (ev.isPrimary) fingers.clear(); fingers.add(ev.pointerId); c.setPointerCapture(ev.pointerId); gamePoint(ev, 'down'); });
+    // Lifting is heard by the page itself (see `lift`), wherever the finger has wandered by then.
+    c.addEventListener('pointerdown', ev => { fingers.add(ev.pointerId); c.setPointerCapture(ev.pointerId); gamePoint(ev, 'down'); });
     c.addEventListener('pointermove', ev => gamePoint(ev, 'move'));
-    const up = ev => { fingers.delete(ev.pointerId); if (!fingers.size) gamePoint(ev, 'up'); };
-    c.addEventListener('pointerup', up);
-    c.addEventListener('pointercancel', up);
     c.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') gamePoint(ev, 'leave'); });
     return c;
   }
@@ -381,8 +378,15 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
   };
   // Typing in the notes repaints the monitor but leaves the page alone, so the caret stays put.
   D.listen(() => { if (typing) { typing = false; return; } want(); });
-  addEventListener('pointerup', () => { if (down) { down = false; want(); } }, true);
-  addEventListener('pointercancel', () => { if (down) { down = false; want(); } }, true);
+  // The last finger off the game lets it go. While one is still on it nothing is redrawn, as a redraw would take the
+  // game's picture from under that finger. The first finger of a new touch (or the mouse) starts the count afresh.
+  const lift = e => {
+    if (fingers.delete(e.pointerId) && !fingers.size) G.point(NaN, NaN, 'up');
+    if (!fingers.size && down) { down = false; want(); }
+  };
+  addEventListener('pointerdown', e => { if (e.isPrimary) fingers.clear(); }, true);
+  addEventListener('pointerup', lift, true);
+  addEventListener('pointercancel', lift, true);
 
   // Clicks and drags on the desktop stay on it; only the notes may take the keyboard's focus.
   // Marked before any window's own handler runs, so focusing a back window cannot rebuild the page under the click.
