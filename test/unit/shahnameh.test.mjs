@@ -108,6 +108,14 @@ test('nowruz: the countdown, the days of Nowruz, and the year after', () => {
   for (const d of ['2026-01-01', '2026-06-01', '2026-12-31', '2027-03-25']) for (const l of nowruzLines(new Date(d + 'T12:00:00Z'))) assert.ok(l.length <= 66 && !/[\u2013\u2014]/.test(l), l);
 });
 
+test('nowruz: Tehran gets its own day when it is already the next one there, and days ago are Vancouver days', () => {
+  assert.equal(nowruzLines(new Date('2027-11-18T20:00:00Z'))[1], 'Sun 19 Mar 2028, 19:17 in Vancouver; Mon 20 Mar, 05:47 in Tehran.');
+  assert.equal(nowruzLines(new Date('2031-11-18T20:00:00Z'))[1], 'Fri 19 Mar 2032, 18:22 in Vancouver; Sat 20 Mar, 04:52 in Tehran.');
+  for (const y of [2026, 2027, 2028, 2031, 2032, 2035]) for (const l of nowruzLines(new Date(`${y}-01-01T12:00:00Z`))) assert.ok(l.length <= 66, l);
+  assert.equal(nowruzLines(new Date('2027-03-21T06:00:00Z'))[1], 'The year turned at the spring equinox, today.');
+  assert.equal(nowruzLines(new Date('2027-03-21T18:00:00Z'))[1], 'The year turned at the spring equinox, 1 day ago.');
+});
+
 test('the reader: tabs, picture and story inside the window and apart; one page each at the size it opens', async () => {
   const { readerLayout, newReader, readerGo } = await import('../../web/src/pure/reader.js');
   const { appById, textWidth, TITLE } = await import('../../web/src/pure/desktop.js');

@@ -30,8 +30,14 @@ export function nextNowruz(now) {
 const when = (date, timeZone) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
     .formatToParts(date).map(x => [x.type, x.value]));
-  return { day: `${p.weekday} ${p.day} ${p.month} ${p.year}`, time: `${p.hour}:${p.minute}` };
+  return { day: `${p.weekday} ${p.day} ${p.month} ${p.year}`, short: `${p.weekday} ${p.day} ${p.month}`, time: `${p.hour}:${p.minute}` };
 };
+// Calendar days, not 24-hour spans: Tehran can already be on the next day.
+const dayIn = (date, timeZone) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone, day: 'numeric', month: 'numeric', year: 'numeric' }).formatToParts(date).map(x => [x.type, +x.value]));
+  return Date.UTC(p.year, p.month - 1, p.day) / DAY;
+};
+const VAN = 'America/Vancouver', TEH = 'Asia/Tehran';
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 function left(ms) {
   const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor(m / 60) % 24, min = m % 60;
@@ -45,9 +51,10 @@ function left(ms) {
 export function nowruzLines(now = new Date()) {
   const at = nextNowruz(now), year = at.getUTCFullYear() - 621;
   if (now >= at) {
-    const days = Math.floor((now - at) / DAY);
+    const days = dayIn(now, VAN) - dayIn(at, VAN);
     return [`Nowruz mobarak: happy new year ${year}!`, days ? `The year turned at the spring equinox, ${plural(days, 'day')} ago.` : 'The year turned at the spring equinox, today.'];
   }
-  const v = when(at, 'America/Vancouver'), t = when(at, 'Asia/Tehran');
-  return [`Nowruz ${year} begins at the spring equinox:`, `${v.day}, ${v.time} in Vancouver, ${t.time} in Tehran.`, left(at - now)];
+  const v = when(at, VAN), t = when(at, TEH);
+  const tehran = dayIn(at, TEH) === dayIn(at, VAN) ? `, ${t.time} in Tehran.` : `; ${t.short}, ${t.time} in Tehran.`;
+  return [`Nowruz ${year} begins at the spring equinox:`, `${v.day}, ${v.time} in Vancouver${tehran}`, left(at - now)];
 }
