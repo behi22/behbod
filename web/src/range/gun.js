@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lit } from './lit.js';
 import { makeHand, makeHandMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
@@ -45,7 +46,8 @@ function flashTexture() {
 }
 
 export async function makeGun({ env, id = 'pistol', file = 'assets/range/p22.glb', onCue }) {
-  const gltf = await new GLTFLoader().loadAsync(file);
+  // The gun file is packed with meshopt (blender/squeeze.js).
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file);
   const model = gltf.scene;
   const scene = new THREE.Scene();
   scene.environment = env;
@@ -321,7 +323,5 @@ export async function makeGun({ env, id = 'pistol', file = 'assets/range/p22.glb
     // The gun's own right and up out in the room, for throwing the case.
     axes(right, upv) { camera.updateMatrixWorld(true); rig.getWorldQuaternion(q); right.set(1, 0, 0).applyQuaternion(q); upv.set(0, 1, 0).applyQuaternion(q); },
   };
-  // A gun file from before the hands were built here still carries its own: they stay hidden.
-  for (const n of ['P22_hand_r', 'P22_hand_l', 'P22_hand_l_mag']) { const o = P(n); if (o) o.visible = false; }
   return api;
 }

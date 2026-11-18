@@ -1,10 +1,11 @@
 """The range's guns, built part by part so every piece that moves on a real one moves here: the slide, the barrel, the
-trigger, the magazine and its top round, the slide stop and the magazine release, plus each attachment as its own piece,
-and the hands that hold it (my toy hands in my hoodie's sleeves, shaped to this gun's grip).
+trigger, the magazine and its top round, the slide stop and the magazine release, plus each attachment as its own piece.
+The hands that hold it are built in the page (web/src/range/hands.js), posed from web/src/pure/handling.js.
 Original designs: no real maker's shapes or names. X is forward (the muzzle), Y is the shooter's left, Z is up, and
 z = 0 is the line where the slide rides on the frame.
 
-blender -b --factory-startup -P blender/build_guns.py                 (build and export web/assets/range/p22.glb)
+blender -b --factory-startup -P blender/build_guns.py                 (build and export blender/build/p22.glb, then
+                                                                       node blender/squeeze.js makes web/assets/range/p22.glb)
 blender -b --factory-startup -P blender/build_guns.py -- <prefix>     (also render look-at pictures to <prefix>-*.png)
 """
 import bpy, bmesh, sys, os, math
@@ -35,14 +36,6 @@ M = {
     'reticle': cad.material('G_Reticle', (0.0, 0.0, 0.0), 0.5, 0.0, emit=(1.0, 0.12, 0.06), emit_strength=8.0),
     'beam': cad.material('G_LightLens', (0.9, 0.93, 1.0), 0.1, 0.0, emit=(0.9, 0.95, 1.0), emit_strength=0.4),
 }
-# The hands and sleeves take the character's own material names, so the page can give them the colours he is wearing.
-KNIT = cad.grain('T_Knit', kind='speckle', amp=2.0, seed=3)
-RIB = cad.grain('T_Rib', kind='brushed', amp=2.4, seed=9)
-M.update({
-    'toy': cad.material('M_Toy', (0.83, 0.82, 0.79), 0.5),
-    'sleeve': cad.material('M_Hoodie', (0.04, 0.055, 0.11), 0.9, 0.0, KNIT, 90, 0.5),
-    'rib': cad.material('M_Hoodie_Rib', (0.035, 0.05, 0.1), 0.92, 0.0, RIB, 26, 0.9),
-})
 BZ = 0.0155          # the bore's height above the frame line
 GRIP_Z = -0.112      # the bottom of the grip
 front = lambda z: 0.027 + (z + 0.050) * 0.353          # the front strap's line
@@ -306,129 +299,6 @@ def build_scope():
     return cad.join('P22_att_scope', [top] + parts + [lens_f, lens_r]), za
 
 
-# ---------- the hands ----------
-GRIP_B = 0.0152                                         # the grip's half-width where the hands close on it
-grip_back = lambda z: back(z) - 0.0035 * math.sin(math.pi * max(0.0, min(1.0, (-z - 0.035) / 0.08)))
-
-
-def chain(pts, radii):
-    """A finger, a thumb or a wrist: rounded rods through these points, tapering from each radius to the next."""
-    return [cad.capsule('seg', pts[i], pts[i + 1], radii[i], seg=14, rings=4, r2=radii[i + 1]) for i in range(len(pts) - 1)]
-
-
-def ball(c, r):
-    bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=18, v_segments=10, radius=1.0)
-    bmesh.ops.scale(bm, vec=Vector(r), verts=bm.verts)
-    bmesh.ops.translate(bm, vec=Vector(c), verts=bm.verts)
-    return cad.obj_from('ball', bm)
-
-
-def fuse(name, parts, voxel=0.0017, soften=13, keep=4200):
-    """Melts overlapping rounded pieces into one skin (a toy hand is one moulded piece), smooths it, and thins the mesh."""
-    o = cad.join(name, parts)
-    o.data.remesh_voxel_size = voxel
-    bpy.ops.object.voxel_remesh()
-    o = bpy.context.view_layer.objects.active
-    m = o.modifiers.new('soft', 'SMOOTH')
-    m.factor, m.iterations = 0.6, soften
-    cad._apply(o, m)
-    n = cad.tris([o])
-    if n > keep:
-        m = o.modifiers.new('thin', 'DECIMATE')
-        m.ratio = keep / n
-        cad._apply(o, m)
-    o.data.materials.clear()
-    o.data.materials.append(M['toy'])
-    for f in o.data.polygons:
-        f.use_smooth = True
-    cad.box_uv(o)
-    o.name = o.data.name = name
-    return o
-
-
-def sleeve(name, wrist, elbow, r0=0.0305, r1=0.052, cuff=0.042, n=20):
-    """A hoodie sleeve from the wrist back toward the elbow: a ribbed cuff, then loose cloth with a few soft folds."""
-    a, b = Vector(wrist), Vector(elbow)
-    ax = (b - a).normalized()
-    u = ax.cross(Vector((0, 0, 1))).normalized()
-    v = ax.cross(u)
-    L = (b - a).length
-    def tube_(s0, s1, steps, rad, mat):
-        rings = []
-        for i in range(steps + 1):
-            sdist = s0 + (s1 - s0) * i / steps
-            c = a + ax * sdist
-            rings.append([tuple(c + (u * math.cos(2 * math.pi * k / n) + v * math.sin(2 * math.pi * k / n)) * rad(sdist, k)) for k in range(n)])
-        o = cad.loft('sl', rings, mat)
-        for f in o.data.polygons:
-            f.use_smooth = True
-        cad.box_uv(o)
-        return o
-    rib = tube_(-0.006, cuff, 5, lambda sd, k: r0 + 0.0022 * math.sin(math.pi * min(1.0, max(0.0, sd / cuff))), M['rib'])
-    along = lambda sd: max(0.0, sd - cuff)
-    fold = lambda sd, k: 1 + 0.045 * math.sin(sd * 46 + k * 0.9) * math.sin(k * 0.6 + 1.0) * min(1.0, along(sd) / 0.03)
-    cloth = tube_(cuff - 0.004, L, 16, lambda sd, k: (r0 + 0.0055 + (r1 - r0 - 0.0055) * (along(sd) / (L - cuff)) ** 0.8) * fold(sd, k), M['sleeve'])
-    return cad.join(name, [rib, cloth])
-
-
-def wrap(z, out, r, side=1, reach=0.017, start=0.016, tip=0.0082):
-    """A finger closed round the grip at height z, from its knuckle on one side panel, round the front strap, to its
-    tip on the other side. `out`: how far outside the grip it runs (a finger of the other hand may lie under it);
-    side: -1 starts on the right panel (the right hand), 1 on the left."""
-    xf, B, s = front(z), GRIP_B, side
-    pts = [(xf - start, s * (B + out + r * 0.95), z), (xf + 0.004, s * (B + out + r * 0.8), z + 0.001), (xf + out + r * 0.95, s * (B * 0.45 + out * 0.5), z + 0.002),
-           (xf + out + r, -s * (B * 0.45 + out * 0.5) * 0.9, z + 0.002), (xf + out * 0.8 + r * 0.1, -s * (B + out + r * 0.8), z + 0.001), (xf - reach, -s * (B + out * 0.9 + r * 0.85), z)]
-    return chain(pts, [r * 1.08, r * 1.03, r, r * 0.97, r * 0.93, tip])
-
-
-def build_hands():
-    RF = 0.0095
-    rows = (-0.0685, -0.0885)
-    # The right hand: high on the back strap, two fingers round the grip, the first on the trigger, the thumb forward
-    # along the frame under the slide.
-    right = []
-    for z in rows:
-        right += wrap(z, 0.0, RF, side=-1)
-        right += chain([(front(z) - 0.016, -(GRIP_B + RF * 0.95), z), (-0.052, -(GRIP_B + 0.011), z - 0.004)], [0.0108, 0.0112])
-    right += chain([(0.012, -0.0229, -0.0445), (0.036, -0.0223, -0.0385), (0.0535, -0.0165, -0.0345), (0.0625, -0.0075, -0.0335), (0.0635, 0.0035, -0.0335)], [0.0100, 0.0094, 0.0088, 0.0082, 0.0078])
-    right += chain([(0.012, -0.0229, -0.0445), (-0.050, -0.0255, -0.047)], [0.0104, 0.0112])
-    right += chain([(-0.034, 0.002, -0.034), (-0.020, 0.0165, -0.020), (0.004, 0.0225, -0.0125), (0.026, 0.0235, -0.0105)], [0.0135, 0.0118, 0.0105, 0.0092])
-    right += [ball((-0.0405, -0.003, -0.026), (0.016, 0.017, 0.0135)), ball((-0.020, -0.0265, -0.064), (0.032, 0.0105, 0.031))]
-    right += chain([(-0.047, -0.005, -0.040), (-0.057, -0.008, -0.088)], [0.0185, 0.0175])
-    right += chain([(-0.058, -0.016, -0.066), (-0.094, -0.027, -0.084)], [0.0215, 0.0235])
-    hand_r = fuse('hand_r', right)
-    arm_r = cad.join('P22_hand_r', [hand_r, sleeve('sl', (-0.088, -0.0255, -0.081), (-0.40, -0.13, -0.235))])
-
-    # The left hand: its palm on the left of the grip, its fingers over the right hand's, the first under the trigger
-    # guard, the thumb forward along the frame below the right thumb.
-    left = []
-    OUT = 2 * RF * 0.9
-    for z in (-0.0705, -0.0890, -0.1065):
-        left += wrap(z, OUT, RF, side=1, reach=0.004, start=0.022)
-        left += chain([(front(z) - 0.022, GRIP_B + OUT + RF * 0.95, z), (-0.050, 0.054, z - 0.006)], [0.0108, 0.0112])
-    left += chain([(-0.030, 0.034, -0.052), (-0.008, 0.0345, -0.036), (0.022, 0.0305, -0.0265), (0.050, 0.0275, -0.0215)], [0.0135, 0.0118, 0.0105, 0.0092])
-    left += [ball((-0.022, 0.052, -0.088), (0.031, 0.0105, 0.031))]
-    left += chain([(-0.030, 0.040, -0.058), (-0.040, 0.043, -0.105)], [0.0185, 0.0175])
-    left += chain([(-0.050, 0.052, -0.098), (-0.084, 0.069, -0.119)], [0.0215, 0.0235])
-    hand_l = fuse('hand_l', left)
-    arm_l = cad.join('P22_hand_l', [hand_l, sleeve('sl', (-0.078, 0.066, -0.116), (-0.33, 0.27, -0.30))])
-
-    # The left hand bringing a magazine: cupped under its foot, thumb up the back, fingers up the front and the side.
-    # Made where the magazine sits when it is home; the page moves hand and magazine together.
-    zb = GRIP_Z - 0.0105
-    xc = front(zb) - 0.022
-    cup = [ball((xc - 0.004, 0.006, zb - 0.0165), (0.036, 0.030, 0.0145))]
-    cup += chain([(xc - 0.026, 0.020, zb - 0.014), (xc - 0.0275, 0.012, zb + 0.005), (xc - 0.0255, 0.004, zb + 0.020)], [0.0125, 0.0108, 0.0092])
-    cup += chain([(xc + 0.020, 0.030, zb - 0.014), (xc + 0.031, 0.018, zb + 0.003), (xc + 0.033, 0.004, zb + 0.017)], [0.0108, 0.0098, 0.0084])
-    cup += chain([(xc + 0.006, 0.034, zb - 0.015), (xc + 0.008, 0.0262, zb + 0.004), (xc + 0.006, 0.0222, zb + 0.018)], [0.0108, 0.0098, 0.0084])
-    cup += chain([(xc - 0.012, 0.034, zb - 0.016), (xc - 0.011, 0.0262, zb + 0.002), (xc - 0.012, 0.0222, zb + 0.016)], [0.0108, 0.0098, 0.0084])
-    cup += chain([(xc - 0.010, 0.030, zb - 0.020), (xc - 0.022, 0.058, zb - 0.045)], [0.0215, 0.0235])
-    hand_m = fuse('hand_m', cup)
-    arm_m = cad.join('P22_hand_l_mag', [hand_m, sleeve('sl', (xc - 0.020, 0.054, zb - 0.041), (xc - 0.22, 0.27, zb - 0.27))])
-    return arm_r, arm_l, arm_m
-
-
 def empty(name, at, parent):
     e = bpy.data.objects.new(name, None)
     cad.SC().objects.link(e)
@@ -455,16 +325,12 @@ def pistol():
     casing.location = (0.05, -0.03, 0.03)
     light, sup, holo = build_light(), build_suppressor(), build_holo()
     scope, scope_z = build_scope()
-    hands = build_hands()
     base = [frame, slide, barrel, trigger, stop, rel, mag] + [rounds[0][0]]
     # Soft shadow and worn edges, painted with the gun assembled; each attachment against the gun it sits on.
     cad.shade(base)
     for extra in ([mag_ext, rounds[1][0]], [light], [sup], [holo], [scope], [casing]):
         cad.shade(base + extra, only=extra)
-    # The hands' shadows: both on the grip together, and the cupped one against the magazine alone.
-    cad.shade(base + list(hands[:2]), only=list(hands[:2]), reach=0.05, depth=0.6, wear=0.0)
-    cad.shade([mag, hands[2]], only=[hands[2]], reach=0.05, depth=0.6, wear=0.0)
-    for o in (frame, slide, barrel, trigger, stop, rel, mag, mag_ext, casing, light, sup, scope, *hands):
+    for o in (frame, slide, barrel, trigger, stop, rel, mag, mag_ext, casing, light, sup, scope):
         o.parent = root
     holo.parent = slide
     for r, parent in rounds:
@@ -521,26 +387,6 @@ if PREVIEW:
         scn.render.filepath = f'{PREVIEW}-{tag}.png'
         bpy.ops.render.render(write_still=True)
     bpy.data.objects['P22_casing'].hide_render = True
-    HANDS = [bpy.data.objects[n] for n in ('P22_hand_r', 'P22_hand_l', 'P22_hand_l_mag')]
-    def hands(*show):
-        for o in HANDS:
-            o.hide_render = o.name[9:] not in show
-    if 'HANDS' in PREVIEW:
-        cam.data.lens = 30
-        hands('r', 'l')
-        shot('fp-hip', (-0.42, 0.075, 0.115), (0.3, -0.03, -0.02))
-        shot('fp-aim', (-0.40, 0.0, 0.0345), (0.3, 0.0, 0.03))
-        cam.data.lens = 60
-        shot('h-left', (-0.02, 0.6, -0.02), (-0.02, 0, -0.05))
-        shot('h-right', (-0.02, -0.6, -0.02), (-0.02, 0, -0.05))
-        shot('h-under', (0.0, 0.1, -0.6), (0.0, 0, -0.05))
-        shot('h-front', (0.6, 0.12, 0.0), (0.0, 0, -0.05))
-        shot('h-back', (-0.6, 0.1, 0.12), (0.0, 0, -0.05))
-        hands('r', 'l_mag')
-        shot('h-mag', (-0.1, 0.55, -0.2), (-0.02, 0, -0.09))
-        shot('h-mag-fp', (-0.42, 0.075, 0.115), (0.3, -0.03, -0.1))
-        cam.data.lens = 85
-    hands()
     shot('left', (0.06, 0.62, 0.02))
     shot('right', (0.06, -0.62, 0.02))
     shot('3q', (-0.28, 0.42, 0.2))
@@ -553,7 +399,7 @@ if PREVIEW:
     for n in ('key', 'fill', 'rim', 'under', 'cam'):
         bpy.data.objects.remove(bpy.data.objects[n])
 
-out = ROOT + '/web/assets/range'
+out = ROOT + '/blender/build'
 os.makedirs(out, exist_ok=True)
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.export_scene.gltf(filepath=out + '/p22.glb', export_format='GLB', use_selection=True, export_yup=True, export_apply=True,
