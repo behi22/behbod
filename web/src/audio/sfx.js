@@ -111,6 +111,25 @@ function brass(S, t, m, dur, level) {
   amp.gain.setTargetAtTime(0, t + dur, 0.12);
 }
 
+// One note of a stadium horn: buzzy saws that scoop up to pitch, then hold.
+function horn(S, t, m, dur, level) {
+  const f = midiToFreq(m), lp = S.filt('lowpass', 500, 1.5), amp = S.gain();
+  for (const c of [-7, 0, 7]) {
+    const o = S.at(S.osc('sawtooth', f), t, t + dur + 0.4);
+    o.detune.setValueAtTime(c - 45, t);
+    o.detune.linearRampToValueAtTime(c, t + 0.07);
+    o.connect(lp);
+  }
+  lp.frequency.setValueAtTime(500, t);
+  lp.frequency.linearRampToValueAtTime(2600, t + 0.05);
+  lp.frequency.setTargetAtTime(1900, t + 0.05, 0.25);
+  lp.connect(amp).connect(S.out);
+  amp.gain.setValueAtTime(0, t);
+  amp.gain.linearRampToValueAtTime(level, t + 0.025);
+  amp.gain.setValueAtTime(level, t + dur);
+  amp.gain.setTargetAtTime(0, t + dur, 0.05);
+}
+
 function creak(S, t, dur, lo, hi, bands, level) {
   const o = S.at(S.osc('sawtooth', lo), t, t + dur + 0.05), g = S.gain();
   for (let x = 0; x < dur; x += 0.035) o.frequency.setValueAtTime(lo + (hi - lo) * Math.random(), t + x);
@@ -370,6 +389,15 @@ export function makeSfx(env) {
       const b = tone(S, 'sine', 210 * f, 0.22, 0.001, 0.035, t + 0.014);
       b.frequency.exponentialRampToValueAtTime(130 * f, t + 0.05);
       S.play(t, t + 0.12);
+    },
+    // Two blasts in a low chord, the second held.
+    goalHorn(pos) {
+      const S = go(pos, 0.35);
+      if (!S) return;
+      const t = S.t;
+      for (const [a, d] of [[0, 0.3], [0.42, 1.3]]) for (const m of [46, 50, 53, 58]) horn(S, t + a, m, d, 0.045);
+      noisy(S, 'bandpass', 700, 0.7, 0.08, 0.005, 0.25, t + 0.42);
+      S.play(t, t + 2.3);
     },
   };
 }

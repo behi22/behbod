@@ -1,6 +1,8 @@
 // Striker 22: five penalties to take, five to save, then sudden death. A night-match goal view drawn on a canvas.
 import * as S from './pure/striker.js';
 import { h, fit, endCard, injectStyles, ACCENT, BAD, INK, DIM, MONO, reducedMotion } from './ui.js';
+import { strikerKits } from './pure/kits.js';
+import { kitId } from './kit.js';
 
 const STYLE = { id: 'striker', css: `
 .g-st-hud { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; padding: 8px 16px 6px; }
@@ -18,17 +20,13 @@ const STYLE = { id: 'striker', css: `
 ` };
 
 const CAM_Z = 20, CAM_H = 3.0, KEEPER_Z = 0.3, NET_Z = -1.8, BOARD_Z = -6;
-const KITS = {
-  you: { shirt: '#f3f4f8', shade: '#c9cbd6', trim: '#7d4fe0', shorts: '#f3f4f8', socks: '#f3f4f8', band: '#7d4fe0', gloves: '#7d4fe0', name: 'BEHI', num: '22' },
-  them: { shirt: '#1f2533', shade: '#141923', trim: '#ff8a3d', shorts: '#1f2533', socks: '#ff8a3d', band: '#1f2533', gloves: '#ff8a3d', name: 'BOT', num: '9' },
-  themKeeper: { shirt: '#ff8a3d', shade: '#d96c25', trim: '#1b1f29', shorts: '#1b1f29', socks: '#ff8a3d', band: '#1b1f29', gloves: '#f3f4f8', name: 'BOT', num: '1' },
-};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = t => 1 - (1 - t) * (1 - t);
 
 export function mount(body, api) {
   injectStyles(STYLE);
+  const KITS = strikerKits(kitId());
   const tallyYou = h('div', { class: 'g-st-dots' }), tallyThem = h('div', { class: 'g-st-dots' });
   const tip = h('div', { class: 'g-st-tip', 'aria-live': 'polite' });
   const canvas = h('canvas', { 'aria-label': 'Penalty shootout' });

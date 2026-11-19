@@ -109,7 +109,7 @@ test('every window lays its rows out inside itself, with no text running under a
     { id: 'persian', title: 'Dastgah', mood: 'Persian-inspired: santur in Shur over tombak and a soft drone' },
     { id: 'piano', title: 'Rain Piano', mood: 'Soft solo piano' },
   ];
-  const ctx = { records, playing: 'synth', sound: true, quality: 'ultra', hood: true, scenes: ['chill', 'focus', 'matchday', 'off', 'party', 'holiday'], scene: 'chill', coolant: 'teal' };
+  const ctx = { records, playing: 'synth', sound: true, quality: 'ultra', hood: true, scenes: ['chill', 'focus', 'matchday', 'off', 'party', 'visualizer'], scene: 'chill', coolant: 'teal' };
   for (const app of ['projects', 'about', 'music', 'settings']) {
     const [x, y, w, h] = appById(app).rect, win = { x, y, w, h };
     const L = layout(win, rows(app, ctx));
@@ -132,7 +132,7 @@ test('every window lays its rows out inside itself, with no text running under a
 
 test('on the narrow phone layout every button stays inside its window, wrapping to a new line if it must', async () => {
   const { layout } = await import('../../web/src/pure/desktop.js');
-  const ctx = { records: [{ id: 'a', title: 'Night Shift', mood: 'Chill lo-fi' }], sound: true, quality: 'ultra', hood: true, scenes: ['chill', 'focus', 'matchday', 'off', 'party'], scene: 'chill', coolant: 'teal' };
+  const ctx = { records: [{ id: 'a', title: 'Night Shift', mood: 'Chill lo-fi' }], sound: true, quality: 'ultra', hood: true, scenes: ['chill', 'focus', 'matchday', 'off', 'party', 'visualizer'], scene: 'chill', coolant: 'teal' };
   for (const app of ['projects', 'about', 'music', 'settings']) {
     const win = { x: 0, y: 34, w: 540, h: 900 }, L = layout(win, rows(app, ctx));
     for (const p of L.pills) assert.ok(p.x >= win.x && p.x + p.w <= win.x + win.w, `${app}: ${p.label} at ${p.x}..${p.x + p.w}`);

@@ -2,11 +2,9 @@
 // perspective, the players in their kits, the score bug and the LIVE tag. Used by the TV in the room and by the game
 // when you join in.
 import { LEN, WID, GOAL } from '../pure/match.js';
+import { matchKits } from './pure/kits.js';
 
-export const KITS = [
-  { name: 'BEHI FC', short: 'BEHI', shirt: '#f3f4f8', trim: '#7d4fe0', shorts: '#e3e4ec', keeper: '#7d4fe0', keeperTrim: '#f3f4f8', ink: '#2b2140' },
-  { name: 'BOTS', short: 'BOTS', shirt: '#1f2533', trim: '#ff8a3d', shorts: '#161b26', keeper: '#ff8a3d', keeperTrim: '#1b1f29', ink: '#ffd7bd' },
-];
+export const KITS = matchKits('home');
 const SANS = "'Segoe UI', system-ui, sans-serif", MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const VIEW = 26;
 
@@ -54,7 +52,7 @@ function stadium(w, h, sc) {
   return out;
 }
 
-export function drawMatch(g, w, h, m, cam, { you = null, minute = 0, live = true, banner = '' } = {}) {
+export function drawMatch(g, w, h, m, cam, { you = null, minute = 0, live = true, banner = '', kits = KITS } = {}) {
   const P = projector(w, h, cam);
   g.fillStyle = '#1c2b45'; g.fillRect(0, 0, w, h);
   const st = stadium(w, h, Math.max(1, Math.abs(g.getTransform().a))), shift = ((cam.x * 9) % w + w) % w;
@@ -97,7 +95,7 @@ export function drawMatch(g, w, h, m, cam, { you = null, minute = 0, live = true
       g.fillStyle = '#f7f7f2'; g.beginPath(); g.arc(q.x, q.y - r, r, 0, 7); g.fill();
       continue;
     }
-    const p = d.p, q = P(p.x, p.y), k = KITS[p.team], u = q.s, keeper = p.role === 'keeper';
+    const p = d.p, q = P(p.x, p.y), k = kits[p.team], u = q.s, keeper = p.role === 'keeper';
     const run = Math.sin((m.clock * 9 + p.num) * (p === m.ball.owner ? 1.2 : 1)) * 0.18 * u;
     g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(q.x, q.y, u * 0.32, u * 0.1, 0, 0, 7); g.fill();
     g.strokeStyle = '#1c1d22'; g.lineWidth = Math.max(1.5, u * 0.11);
@@ -115,10 +113,10 @@ export function drawMatch(g, w, h, m, cam, { you = null, minute = 0, live = true
   // The score bug and the LIVE tag.
   const fs = Math.round(h / 22), pad = fs * 0.6;
   g.font = `800 ${fs}px ${SANS}`; g.textAlign = 'left';
-  const label = `${KITS[0].short} ${m.score[0]} - ${m.score[1]} ${KITS[1].short}`, lw = g.measureText(label).width;
+  const label = `${kits[0].short} ${m.score[0]} - ${m.score[1]} ${kits[1].short}`, lw = g.measureText(label).width;
   g.fillStyle = 'rgba(8,10,16,.86)'; g.fillRect(pad, pad, lw + fs * 4.6, fs * 1.7);
-  g.fillStyle = KITS[0].trim; g.fillRect(pad, pad, fs * 0.25, fs * 1.7);
-  g.fillStyle = KITS[1].trim; g.fillRect(pad + lw + fs * 4.35, pad, fs * 0.25, fs * 1.7);
+  g.fillStyle = kits[0].badge; g.fillRect(pad, pad, fs * 0.25, fs * 1.7);
+  g.fillStyle = kits[1].badge; g.fillRect(pad + lw + fs * 4.35, pad, fs * 0.25, fs * 1.7);
   g.fillStyle = '#e8edf5'; g.fillText(label, pad + fs * 0.7, pad + fs * 1.18);
   g.font = `600 ${Math.round(fs * 0.8)}px ${MONO}`; g.fillStyle = '#9aa6bd'; g.fillText(`${minute}'`, pad + lw + fs * 1.4, pad + fs * 1.15);
   if (live) {

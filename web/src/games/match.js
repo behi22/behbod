@@ -2,6 +2,8 @@
 // in the same five-a-side the TV shows. The match itself lives in pure/match.js; this steers one player and draws it.
 import { newMatch, stepMatch } from '../pure/match.js';
 import { drawMatch, makeCamera, follow } from './matchdraw.js';
+import { matchKits } from './pure/kits.js';
+import { kitId } from './kit.js';
 import { h, button, fit, endCard, injectStyles, DIM } from './ui.js';
 
 const STYLE = { id: 'match', css: `
@@ -18,7 +20,7 @@ export function mount(body, api, mode = 'striker') {
   const stage = h('div', { class: 'g-stage' }), canvas = h('canvas', { 'aria-label': `The match, playing as ${mode}` });
   stage.append(canvas);
   const tip = h('div', { class: 'g-mt-tip' }), tally = h('div', { class: 'g-mt-tally' });
-  const keeper = mode === 'keeper';
+  const keeper = mode === 'keeper', kits = matchKits(kitId());
   tip.textContent = keeper ? 'Arrows or WASD to move along your line, Space to dive, E to throw it out.' : 'Arrows or WASD to run, Space to shoot, Shift or E to pass.';
   // Touch: a direction pad on the left, the actions on the right; each holds while pressed.
   const held = { left: false, right: false, up: false, down: false, shoot: false, pass: false, dive: false };
@@ -91,7 +93,7 @@ export function mount(body, api, mode = 'striker') {
     follow(cam, m, dt);
     if (view) {
       view.g.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-      drawMatch(view.g, view.w, view.h, m, cam, { you, minute: Math.floor(((TIME - left) / TIME) * 90), banner: bannerT > 0 ? banner : '' });
+      drawMatch(view.g, view.w, view.h, m, cam, { you, minute: Math.floor(((TIME - left) / TIME) * 90), banner: bannerT > 0 ? banner : '', kits });
     }
     raf = requestAnimationFrame(frame);
   }

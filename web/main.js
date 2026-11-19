@@ -207,7 +207,7 @@ function enterRange(bench = false) {
   me.root.visible = false; $('prompt').classList.remove('on');
 }
 // Penalties at the mini goal, BH-22 in goal.
-const pens = makePenalties(scene, meta, { creatures, sfx: audio.sfx, toast, onGoal: () => earn('goal'), onExit: () => { mode = 'walk'; me.root.visible = true; } });
+const pens = makePenalties(scene, meta, { creatures, sfx: audio.sfx, toast, onGoal: () => { earn('goal'); world.goal(performance.now() / 1000); }, onExit: () => { mode = 'walk'; me.root.visible = true; } });
 function enterPens() {
   if (mode !== 'walk' || !pens) return;
   wardrobe.hide();
@@ -246,6 +246,7 @@ function playRecord() {
   if (recAt >= recs.length) { recAt = -1; audio.music.stop(); world.setRecord(false); toast('Record off.'); return; }
   if (audio.music.play(recs[recAt].id)) { world.setRecord(true); earn('record'); toast(`Now playing: ${recs[recAt].title}. ${recs[recAt].mood}.`); }
 }
+world.listen(audio.music, () => (sound.on ? audio.musicLevel() : 0));
 
 // ---------- the terminal at the desk: commands beyond the built-in ones ----------
 screens.command('achievements', say => {
@@ -255,7 +256,10 @@ screens.command('achievements', say => {
 screens.command('hood', say => { me.toggleHood(); say(me.hoodUp ? 'hood up.' : 'hood down.'); });
 screens.command('shoo', say => say(creatures.shoo() ? 'pishi hops off the keyboard.' : 'nobody is on the keyboard.'));
 screens.command('deploy', say => { say('deploying...', 'build passed. shipped.'); world.deploy(performance.now() / 1000); audio.sfx.deploy(); earn('deploy'); });
-screens.command('scene', (say, arg) => say(world.scene(arg) ? `lights: ${arg}` : 'scenes: ' + world.scenes.join('  ')));
+screens.command('scene', (say, arg) => {
+  if (!world.scene(arg)) return say('scenes: ' + world.scenes.join('  '));
+  say(`lights: ${arg}`, ...(arg === 'visualizer' && !(sound.on && audio.music.current) ? ['play a record and it moves with the music.'] : []));
+});
 screens.command('lights', (say, arg) => { const r = lightsCommand(arg, lights.on); if (r.set !== null) lights.set(r.set); say(...r.lines); });
 screens.command('coolant', (say, arg) => say(world.coolant(arg) ? `coolant: ${arg}` : 'coolant colours: teal  purple  red  gold  white'));
 screens.command('fan', say => say(world.fan() ? 'fan on.' : 'fan off.'));
@@ -439,7 +443,7 @@ function playGame(name, actions) {
     actions,
     onEvent: (type, d) => {
       if (type === 'win' && GAME_WIN[d.game]) earn(GAME_WIN[d.game]);
-      if (type === 'goal' && d.by === 'you') earn('goal');
+      if (type === 'goal' && d.by === 'you') { earn('goal'); world.goal(performance.now() / 1000); audio.sfx.goalHorn(); }
     },
   });
 }

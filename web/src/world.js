@@ -3,6 +3,8 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
 import { onSwitch } from './pure/lamps.js';
+import { BANDS, settle, follow, kicked, fade, pulse, lively, goalStart, goalShows } from './pure/leds.js';
+import { stripViz } from './stripviz.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
   E_led_green: [0.25, 1.0, 0.45, 3.5], E_led_blue: [0.25, 0.55, 1.0, 3.5], E_aria_eye: [0.25, 1.0, 0.85, 3.2], E_warm_soft: [1.0, 0.75, 0.45, 2.4], E_bias: [0.35, 0.45, 1.0, 2.6],
@@ -142,7 +144,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     if (l.role === 'rgb') rgbLight = light;
   }
   // The studio's RGB: light scenes from the terminal, holiday colours by default on a holiday, a green sweep on DEPLOY.
-  const SCENES = { chill: [[0.55, 0.15, 1.0], [0.1, 0.9, 0.8]], focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[0.1, 0.85, 0.25], [0.95, 0.95, 0.95]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null };
+  const CHILL = [[0.55, 0.15, 1.0], [0.1, 0.9, 0.8]];
+  const SCENES = { chill: CHILL, focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[0.1, 0.85, 0.25], [0.95, 0.95, 0.95]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null, visualizer: CHILL };
   const COOLANT = { teal: [0.1, 0.9, 0.8], purple: [0.55, 0.15, 1.0], red: [1.0, 0.12, 0.1], gold: [1.0, 0.7, 0.15], white: [0.9, 0.95, 1.0] };
   // The PC's lights are one mesh per channel, so the whole glass case is three draw calls.
   for (const [fam, list] of Object.entries(pcParts)) {
@@ -151,7 +154,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
-  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, coolantName = 'teal';
+  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, goalBeats = null, flashing = false, coolantName = 'teal';
   function paintRGB(a, b) {
     for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
     for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
@@ -164,6 +167,36 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     else if (SCENES[sceneName]) paintRGB(rgb(SCENES[sceneName][0]), rgb(SCENES[sceneName][1]));
   }
   applyScene();
+  // `mk` eases a record in and out of the strips and lands on 0 with them exactly as they were.
+  let records = null, through = () => 0, mk = 0, avg = 0.4, kick = 0, viz = null, still = false;
+  const A = new THREE.Color(), B = new THREE.Color(), heard = new Float32Array(BANDS), usual = new Float32Array(BANDS).fill(-1);
+  function sceneColours(t) {
+    if (sceneName === 'party') { const h = (t * 0.15) % 1; A.setHSL(h, 0.9, 0.5); B.setHSL((h + 0.33) % 1, 0.9, 0.5); }
+    else if (sceneName === 'holiday') { A.copy(holidayRGB[0]); B.copy(holidayRGB[1]); }
+    else { A.setRGB(...SCENES[sceneName][0]); B.setRGB(...SCENES[sceneName][1]); }
+  }
+  function tickMusic(dt, t) {
+    const was = mk, g = records?.current ? through() : 0;
+    mk = settle(mk, g > 0.05, dt);
+    if (viz) viz.uViz.value = 0;
+    if (!mk) {
+      if (was) applyScene();
+      if (sceneName === 'party') { sceneColours(t); paintRGB(A, B); }
+      return;
+    }
+    const level = records.level();
+    avg = follow(avg, level, dt);
+    kick = fade(kick, dt);
+    sceneColours(t);
+    if (sceneName === 'visualizer' && viz) {
+      lively(records.spectrum(heard), usual, viz.uBands.value, dt);
+      if (!goalShows(goalBeats, t) && !deployUntil) viz.uViz.value = mk * Math.min(1, g);
+    } else {
+      const m = pulse(level, avg, kick, mk * Math.min(1, g));
+      A.multiplyScalar(m); B.multiplyScalar(m);
+    }
+    paintRGB(A, B);
+  }
   named('holiday_thing').forEach((o, i) => { o.visible = !!screens.holiday && i === (screens.holiday.id.length % 4); });
 
   // The live mirror in the dressing area.
@@ -282,13 +315,6 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   steamGeo.setAttribute('position', new THREE.BufferAttribute(steamPos, 3));
   if (tea) scene.add(new THREE.Points(steamGeo, new THREE.PointsMaterial({ size: 0.035, color: 0x9aa4b4, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending })));
 
-  // Dust motes drifting slowly through the light in the double-height part of the loft.
-  const MOTES = 420, motePos = new Float32Array(MOTES * 3), moteSeed = Float32Array.from({ length: MOTES }, (_, i) => (i * 0.618) % 1);
-  for (let i = 0; i < MOTES; i++) motePos.set([1 + ((i * 7.31) % 14), 0.4 + ((i * 3.17) % 5), -(4 + ((i * 5.13) % 7.5))], i * 3);
-  const moteGeo = new THREE.BufferGeometry();
-  moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
-  scene.add(new THREE.Points(moteGeo, new THREE.PointsMaterial({ size: 0.014, color: 0xffe6c0, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, userData: { lamp: 'room' } })));
-
   const clockFmt = {};
   let clockAt = -1;
   // The hands only need the time once a second; asking for it every frame was a steady cost.
@@ -313,7 +339,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     ariaK += ((busy ? 1 : 0) - ariaK) * Math.min(1, dt * 2);
     if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 0.3 + 0.7 * ariaK; }
     if (aria.tip) { const k = (1.2 + 0.8 * ariaK) + Math.sin(t * (1.5 + 2 * ariaK)) * (0.5 + 0.5 * ariaK); aria.tip.material.color.setRGB(1.0 * k, 0.62 * k, 0.3 * k); }
-    if (sceneName === 'party') { const h = (t * 0.15) % 1; paintRGB(new THREE.Color().setHSL(h, 0.9, 0.5), new THREE.Color().setHSL((h + 0.33) % 1, 0.9, 0.5)); }
+    tickMusic(dt, t);
+    const flash = goalShows(goalBeats, t, still);
+    if (flash) { flashing = true; paintRGB(A.setRGB(...flash[0]), B.setRGB(...flash[1])); }
+    else if (flashing) { flashing = false; applyScene(); }
     if (deployUntil) {
       const left = deployUntil - t;
       if (left > 0) {
@@ -363,13 +392,6 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       const solid = d.k < 0.6;
       if (d.solid !== solid) { d.solid = solid; onDoor?.(d.collider, solid); }
     }
-    for (let i = 0; i < MOTES; i++) {
-      const k = i * 3, sd = moteSeed[i];
-      motePos[k] += Math.sin(t * 0.13 + sd * 40) * dt * 0.02;
-      motePos[k + 1] += (Math.sin(t * 0.09 + sd * 17) * 0.5 - 0.15) * dt * 0.03;
-      if (motePos[k + 1] < 0.3) motePos[k + 1] = 5.4;
-    }
-    moteGeo.attributes.position.needsUpdate = true;
     tickClocks(t);
   }
 
@@ -382,7 +404,14 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     scenes: Object.keys(SCENES),
     get sceneName() { return sceneName; },
     get coolantName() { return coolantName; },
-    scene(name) { if (!Object.hasOwn(SCENES, name)) return false; sceneName = name; applyScene(); return true; },
+    scene(name) {
+      if (!Object.hasOwn(SCENES, name)) return false;
+      sceneName = name;
+      // Built when first picked, so the house never pays for it otherwise.
+      if (name === 'visualizer') viz ||= stripViz([...(emits.E_purple || []), ...(emits.E_teal || [])].filter(m => !pcFam.has(m)));
+      applyScene();
+      return true;
+    },
     coolant(name) {
       if (!Object.hasOwn(COOLANT, name)) return false;
       coolantName = name;
@@ -390,6 +419,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       return true;
     },
     deploy(t) { deployUntil = t + 3; },
+    goal(t) { goalBeats = goalStart(goalBeats, t); still = matchMedia('(prefers-reduced-motion: reduce)').matches; },
+    // gate: how much of the records comes through, 0 with the sound off or faded for the piano.
+    listen(music, gate) { records = music; through = gate; music.onBeat(b => { kick = kicked(kick, b.strength); }); },
+    get leds() { return { music: mk, viz: viz ? viz.uViz.value : 0, bands: viz ? Array.from(viz.uBands.value) : null, goal: !!goalBeats && performance.now() / 1000 < goalBeats.until, deploy: deployUntil > 0 }; },
     fan() { fanOn = !fanOn; return fanOn; },
     setRecord(on) { spinning = on; },
     // The fleet (src/fleet.js) replaces the two baked ships.

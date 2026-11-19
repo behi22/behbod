@@ -2,6 +2,7 @@ import { RECORDS, generateRecord } from './pure/records.js';
 import { stats, shot, perc, ahead } from './core.js';
 import * as D from './drums.js';
 import * as Y from './synths.js';
+import { toBands } from '../pure/leds.js';
 
 const PLAY = { lkick: D.lkick, lsnare: D.lsnare, lhat: D.lhat, rim: D.rim, skick: D.skick, gsnare: D.gsnare, shat: D.shat, sohat: D.sohat, tom: D.tom, bak: D.bak, tik: D.tik, rhodes: Y.rhodes, keys: Y.keys, lbass: Y.lbass, sbass: Y.sbass, pad: Y.pad, arp: Y.arp, lead: Y.lead, santur: Y.santur, drone: Y.drone, piano: Y.piano };
 const FX = {
@@ -89,7 +90,7 @@ export function offlineRecord(e, id, opts) {
 
 export function makeMusic(env) {
   const listeners = new Set();
-  let current = null, lvl = 0, lastT = 0, buf = null;
+  let current = null, lvl = 0, lastT = 0, buf = null, bins = null;
 
   function retire(p, now, secs) {
     const g = p.P.fade.gain;
@@ -169,6 +170,15 @@ export function makeMusic(env) {
       lastT = t;
       lvl += (target - lvl) * (1 - Math.exp(-dt / (target > lvl ? 0.04 : 0.25)));
       return lvl;
+    },
+    // For the LED strips' visualizer.
+    spectrum(out) {
+      const e = env.eng();
+      if (!e) return out.fill(0);
+      const a = e.analyser;
+      if (!bins) bins = new Uint8Array(a.frequencyBinCount);
+      a.getByteFrequencyData(bins);
+      return toBands(bins, e.ctx.sampleRate, a.fftSize, out);
     },
     onBeat(fn) {
       if (typeof fn !== 'function') return () => {};
