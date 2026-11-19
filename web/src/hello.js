@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { makeKit } from './persia/kit.js';
-import { FINDS, HOOP, SPOT, SAYS, stitches, helloWorld } from './pure/hello.js';
+import { FINDS, HOOP, SPOT, SAYS, stitches } from './pure/hello.js';
 
 const INK = ['#22314f', '#138f83', '#e8574a'];
 
@@ -62,7 +62,7 @@ export function makeHello(scene, { day = () => 0 } = {}) {
     found.add(where);
     dispatchEvent(new CustomEvent('loft:hello', { detail: { where, found: FINDS.filter(f => found.has(f)) } }));
   };
-  addEventListener('loft:cmd', e => { if (helloWorld(e.detail?.cmd)) find('terminal'); });
+  addEventListener('loft:cmd', e => { if (e.detail?.hello) find('terminal'); });
   let said = 0, dayK = -1;
   return {
     group, spots: [spot],

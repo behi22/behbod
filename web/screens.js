@@ -426,12 +426,14 @@ export function makeCanvases(meta, opts = {}) {
       say('$ ' + text.slice(0, 60));
       term.input = '';
       if (cmd === 'exit') { exit(); return; }
-      const [word, ...rest] = cmd.split(' '), hello = helloWorld(text);
-      if (hello) say(...hello.lines);
-      else if (CMDS[cmd]) CMDS[cmd]();
+      const [word, ...rest] = cmd.split(' ');
+      let hello = null;
+      // The commands that were here first keep every line they took, print "hello world" included.
+      if (CMDS[cmd]) CMDS[cmd]();
       else if (Object.hasOwn(EXTRA, word)) EXTRA[word](say, rest.join(' '));
+      else if ((hello = helloWorld(text))) say(...hello.lines);
       else if (cmd) say(`command not found: ${cmd}. try 'help'`);
-      if (cmd) dispatchEvent(new CustomEvent('loft:cmd', { detail: { cmd, say } }));
+      if (cmd) dispatchEvent(new CustomEvent('loft:cmd', { detail: { cmd, say, hello: !!hello } }));
       changed();
     },
     terminalKey(e, exit) {

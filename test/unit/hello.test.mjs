@@ -22,7 +22,6 @@ test('a hello world program in each language prints its string as written and na
   const cases = [
     ['print("hello world")', 'python', 'hello world'],
     ["print('Hello, World!')", 'python', 'Hello, World!'],
-    ['print "hello world"', 'python 2', 'hello world'],
     ['console.log("hello world");', 'javascript', 'hello world'],
     ['console.log(`Hello World`)', 'javascript', 'Hello World'],
     ['alert("hello, world")', 'javascript', 'hello, world'],
@@ -64,15 +63,9 @@ test('C wrapped in main() as in the 1978 book gets its own line; other mains are
   }
 });
 
-test('the terminal hands the lowercased command to the house, and that still counts', () => {
-  for (const s of ['System.out.println("Hello, World!");', 'Console.WriteLine("Hello World");', 'Write-Host "Hello World"']) {
-    const cmd = s.trim().toLowerCase().replace(/\s+/g, ' ');
-    assert.ok(helloWorld(cmd), cmd);
-  }
-});
-
 test('anything else is left to the terminal: near misses, other strings, the printer, hello friend', () => {
   for (const s of ['hello', 'world', 'hello worlds', 'helloworld', 'hello there world', 'say hello world', 'print("vase")', 'print hello world',
+    'print "hello world"', "print 'Hello, World!'", raw`print "Hello, World!\n";`,
     'print(hello world)', 'print("hello world"', 'echo hi', 'echo "hello world', 'hello friend', 'hello, friend', '', '   ', 'printf("hello world\\t")',
     'x'.repeat(81), null, undefined, 42]) {
     assert.equal(helloWorld(s), null, String(s));

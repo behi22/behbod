@@ -10,7 +10,6 @@ const PHRASE = /^hello,?\s+world[.!]*$/i;
 const Q = String.raw`(["'])(.*)\1`, DQ = String.raw`"(.*)"`;
 const PROGRAMS = [
   ['python', String.raw`print\s*\(\s*${Q}\s*\)`],
-  ['python 2', String.raw`print\s+${Q}`],
   ['javascript', String.raw`console\.log\s*\(\s*(["'\x60])(.*)\1\s*\)`],
   ['javascript', String.raw`(?:window\.)?alert\s*\(\s*(["'\x60])(.*)\1\s*\)`],
   ['c', String.raw`printf\s*\(\s*${DQ}\s*\)`],

@@ -121,6 +121,8 @@ const ones = s => s.room.every(v => v === 1) && s.bulb.every(v => v === 1) && s.
     if (want('terminal')) {
       const { ctx, p, errs } = await open(b, DESK);
       await sit(p);
+      await type(p, String.raw`MAIN() { printf("hello, world\n"); }`);
+      check('a line the terminal does not run is not counted as finding it', (await termLines(p)).at(-1).startsWith('command not found') && (await p.evaluate(() => __hello.found)).length === 0, (await termLines(p)).at(-1));
       await type(p, 'hello world');
       let lines = await termLines(p);
       check('hello world at the terminal answers hello, world', lines.slice(-4).join('|') === ['$ hello world', 'hello, world', 'every programmer\'s first program.', 'try it in your favourite language too.'].join('|'), lines.slice(-4).join(' | '));
@@ -140,6 +142,11 @@ const ones = s => s.room.every(v => v === 1) && s.bulb.every(v => v === 1) && s.
       lines = await termLines(p);
       const i = lines.lastIndexOf('$ hello friend');
       check('hello friend, the printer and the scenes answer as before', lines[i + 1] === 'hello, friend.' && lines[i + 2] === '$ print vase' && lines[i + 3] && !/hello world|command not found/.test(lines[i + 3]) && lines.at(-1) === 'lights: focus', lines.slice(i).join(' | '));
+      for (const s of ['print "hello world"', 'print ("hello world")']) {
+        await type(p, s);
+        lines = await termLines(p);
+        check(`${s} still goes to the printer`, /^(printing|reprinting) /.test(lines[lines.lastIndexOf('$ ' + s) + 1] || ''), lines.slice(-3).join(' | '));
+      }
       await type(p, 'hello');
       lines = await termLines(p);
       check('a near miss is still not found', lines.at(-1) === "command not found: hello. try 'help'", lines.at(-1));
