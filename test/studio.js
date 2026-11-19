@@ -1,5 +1,5 @@
-// Team colours for the football games in a real Chrome, and the dust motes gone.
-//   LOFT_URL=http://127.0.0.1:8815 node test/studio.js [outdir] [only: kits,phone,stored,motes]
+// Team colours for the football games and the studio's LEDs with the music in a real Chrome, and the dust motes gone.
+//   LOFT_URL=http://127.0.0.1:8815 node test/studio.js [outdir] [only: kits,phone,stored,music,motes]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -44,6 +44,20 @@ const near = (p, sel, hex) => p.evaluate(([s, h]) => {
   for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - R) < 7 && Math.abs(d[i + 1] - G) < 7 && Math.abs(d[i + 2] - B) < 7) k++;
   return k;
 }, [sel, hex]);
+// The studio's purple strips: the one material the merged strip is drawn with, found by its colour at the start.
+// (The PC's purple parts are merged in that colour too, so the strips are the biggest such mesh.)
+const findStrip = p => p.evaluate(() => {
+  let found = null;
+  __loft.scene.traverse(o => {
+    if (o.isMesh && /^merged_/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6
+      && (!found || o.geometry.attributes.position.count > found.geometry.attributes.position.count)) found = o;
+  });
+  window.__strip = found?.material || null;
+  return found ? { name: found.name, colour: found.material.color.toArray() } : null;
+});
+const strip = p => p.evaluate(() => ({ colour: __strip.color.toArray(), leds: __loft.world.leds, key: __strip.customProgramCacheKey() }));
+const CHILL = [0.55 * 3.2, 0.15 * 3.2, 1.0 * 3.2];
+const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 (async () => {
   const K = await import('../web/src/games/pure/kits.js');
@@ -181,6 +195,74 @@ const near = (p, sel, hex) => p.evaluate(([s, h]) => {
       check('with storage blocked the first kit shows and a pick still works', r0.every(x => x.on.join() === 'home') && r1.every(x => x.on.join() === 'black'), JSON.stringify([r0, r1]));
       check('blocked storage: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.context().close();
+    }
+    // ---------- the LEDs and the music ----------
+    if (want('music')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      const s0 = await findStrip(p);
+      check('the purple strip is found in its chill colour', !!s0 && exact(s0.colour, CHILL), JSON.stringify(s0));
+      await standAt(p, [15.6, 4.4, 0.45], -2.2);
+      // Sound off: a record cannot start, and nothing moves.
+      await p.evaluate(() => __loft.act('records'));
+      await p.waitForTimeout(1500);
+      let s = await strip(p);
+      check('with the sound off the strips stay exactly as they were', exact(s.colour, CHILL) && s.leds.music === 0 && s.key !== 'stripviz', JSON.stringify(s));
+      await p.click('#snd'); await p.waitForTimeout(300);
+      await p.evaluate(() => __loft.audio.music.play('night-shift'));
+      await p.waitForFunction(() => __loft.world.leds.music === 1, null, { timeout: 8000 }).catch(() => {});
+      const seen = [];
+      for (let i = 0; i < 24; i++) { seen.push((await strip(p)).colour[2]); await p.waitForTimeout(90); }
+      const lo = Math.min(...seen), hi = Math.max(...seen);
+      check('with a record on, the strips pulse with it', (await strip(p)).leds.music === 1 && hi - lo > 0.6 && lo < 3.2 * 0.95, `blue channel ${lo.toFixed(2)} to ${hi.toFixed(2)} (steady is 3.2)`);
+      await p.screenshot({ path: path.join(OUT, 'studio-pulse.png') });
+      // The piano fades the records out, and with them the pulse.
+      await p.evaluate(() => __loft.audio.duckMusic(0, 0.3));
+      await p.waitForFunction(() => __loft.world.leds.music === 0, null, { timeout: 8000 }).catch(() => {});
+      s = await strip(p);
+      check('faded for the piano, the strips settle back exactly', s.leds.music === 0 && exact(s.colour, CHILL), JSON.stringify(s));
+      await p.evaluate(() => __loft.audio.duckMusic(1, 0.3));
+      await p.waitForFunction(() => __loft.world.leds.music === 1, null, { timeout: 8000 }).catch(() => {});
+      // The visualizer.
+      await p.evaluate(() => __loft.world.scene('visualizer'));
+      await p.waitForTimeout(1500);
+      const bands = [];
+      for (let i = 0; i < 12; i++) { bands.push((await strip(p)).leds.bands); await p.waitForTimeout(120); }
+      s = await strip(p);
+      const moving = bands.some((x, i) => i && x.some((v, j) => Math.abs(v - bands[i - 1][j]) > 0.05));
+      check('the visualizer lays the spectrum along the strips, and it moves', s.key === 'stripviz' && s.leds.viz > 0.9 && moving && exact(s.colour, CHILL), JSON.stringify({ key: s.key, viz: s.leds.viz, moving }));
+      await p.screenshot({ path: path.join(OUT, 'studio-visualizer.png') });
+      // Off: the record stopped, the strips are exactly the chill scene again and the visualizer is idle.
+      await p.evaluate(() => __loft.audio.music.stop());
+      await p.waitForFunction(() => __loft.world.leds.music === 0, null, { timeout: 8000 }).catch(() => {});
+      s = await strip(p);
+      check('with the record stopped, the visualizer goes still and the colours are exactly the scene', s.leds.music === 0 && s.leds.viz === 0 && exact(s.colour, CHILL), JSON.stringify(s));
+      // The sound switched off mid-record does the same.
+      await p.evaluate(() => { __loft.world.scene('chill'); __loft.audio.music.play('lions-gate'); });
+      await p.waitForFunction(() => __loft.world.leds.music === 1, null, { timeout: 8000 }).catch(() => {});
+      await p.click('#snd');
+      await p.waitForFunction(() => __loft.world.leds.music === 0, null, { timeout: 8000 }).catch(() => {});
+      s = await strip(p);
+      check('the sound switched off mid-record puts the strips back exactly', s.leds.music === 0 && exact(s.colour, CHILL), JSON.stringify(s));
+      await p.click('#snd');
+      await p.evaluate(() => __loft.audio.music.stop());
+      // Party keeps turning with no record on.
+      await p.evaluate(() => __loft.world.scene('party'));
+      const a1 = (await strip(p)).colour; await p.waitForTimeout(700); const a2 = (await strip(p)).colour;
+      check('party still turns through the colours with no record', !exact(a1, a2), JSON.stringify([a1, a2]));
+      await p.evaluate(() => __loft.world.scene('chill'));
+      // The terminal and Settings offer it like the other scenes.
+      await p.evaluate(() => __loft.useDesk());
+      await p.waitForFunction(() => document.querySelector('.dt.on'), null, { timeout: 15000 });
+      await p.waitForTimeout(700);
+      await p.keyboard.type('scene'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+      await p.keyboard.type('scene visualizer'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+      const lines = await p.evaluate(() => __loft.screens.desktop.term.lines.slice(-5));
+      check('the terminal lists it and picks it, with a hint while nothing plays', lines.join('|') === ['$ scene', 'scenes: chill  focus  matchday  off  party  visualizer', '$ scene visualizer', 'lights: visualizer', 'play a record and it moves with the music.'].join('|'), lines.join(' | '));
+      check('the Settings lights row has every scene', await p.evaluate(async () => { const { rows } = await import('/src/pure/desktop.js'); return rows('settings', { scenes: __loft.world.scenes, scene: 'visualizer' }).find(r => r.text[0][0] === 'lights').pills.map(x => x.label).join() === 'chill,focus,matchday,off,party,visualizer'; }));
+      await p.evaluate(() => __loft.leaveDesk());
+      await p.waitForTimeout(1500);
+      check('music: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
     }
     // ---------- the dust motes are gone; the light switch still works ----------
     if (want('motes')) {
