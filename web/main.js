@@ -28,6 +28,9 @@ import { makePenalties } from './src/penalties.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
+import { makeHello } from './src/hello.js';
+import { makeLights } from './src/lightswitch.js';
+import { lightsCommand } from './src/pure/lamps.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -180,6 +183,7 @@ const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t }
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
 const shah = makeShahnameh(scene, meta);
+const hello = makeHello(scene, { day: () => out3d?.light.dayK ?? 0 }); window.__hello = hello;
 world.retireFighters();
 const tvMatch = meta.screens.tv ? makeTvMatch({ texture: screens.textures.tv, at: b2t(...meta.screens.tv.center).toArray(), normal: [1, 0, 0], fps: () => (tierName === 'low' ? 5 : 10) }) : null;
 // The range is fetched behind the scenes, with no click: as soon as I head for the library, where its door is, or
@@ -213,6 +217,9 @@ function enterPens() {
 }
 // The knight in the glass case, and his saber in my hand.
 const knight = makeKnight(scene, meta, [scene], { renderer });
+// The light switch by the front door; the knight's glass case keeps its own light.
+const lights = makeLights(scene, world, { sfx: audio.sfx, skip: [knight?.root] }); window.__lights = lights;
+persia.tableReady.then(() => lights.adopt());
 const saber = makeSaber({ engine, camera, canvas, coarse, knight, meta, audio: audio.saber, store, onExit: () => { mode = 'walk'; me.root.visible = true; } });
 const saberEye = new THREE.Vector3();
 window.__saber = saber;
@@ -249,6 +256,7 @@ screens.command('hood', say => { me.toggleHood(); say(me.hoodUp ? 'hood up.' : '
 screens.command('shoo', say => say(creatures.shoo() ? 'pishi hops off the keyboard.' : 'nobody is on the keyboard.'));
 screens.command('deploy', say => { say('deploying...', 'build passed. shipped.'); world.deploy(performance.now() / 1000); audio.sfx.deploy(); earn('deploy'); });
 screens.command('scene', (say, arg) => say(world.scene(arg) ? `lights: ${arg}` : 'scenes: ' + world.scenes.join('  ')));
+screens.command('lights', (say, arg) => { const r = lightsCommand(arg, lights.on); if (r.set !== null) lights.set(r.set); say(...r.lines); });
 screens.command('coolant', (say, arg) => say(world.coolant(arg) ? `coolant: ${arg}` : 'coolant colours: teal  purple  red  gold  white'));
 screens.command('fan', say => say(world.fan() ? 'fan on.' : 'fan off.'));
 screens.command('print', (say, arg) => {
@@ -287,6 +295,8 @@ let yaw = meta.spawn?.yaw ?? 0, pitch = meta.spawn?.pitch ?? 0.3, dist = coarse 
 let route = null;
 const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
+things.items.push(...hello.spots);
+things.items.push(...lights.spots);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
@@ -471,6 +481,8 @@ function act(it) {
   if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
   if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
   if (it.id === 'rg_bench') return enterRange(true);
+  { const said = lights.poke(it.id); if (said) return toast(said); }
+  { const said = hello.poke(it.id); if (said) return toast(said); }
   { const read = shah.read(it.id); if (read) return toast(read); }
   { const said = range.poke(it.id); if (said) return toast(said); }
   toast(SAY[it.id] || it.label);
@@ -656,6 +668,8 @@ function tapMove(e) {
   aim(e);
   if (aria?.hit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(aria.say()); }); return; }
   if (shah.noteHit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(shah.noteSay); }); return; }
+  { const it = hello.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
+  { const it = lights.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
   // Clicking a resident walks me over to them and says hello on arrival.
   const who = creatures.hit(ray);
@@ -860,6 +874,8 @@ function step() {
     scene.fog.color.lerpColors(FOG_NIGHT, FOG_DAY, k);
     world.daylight(k);
   }
+  hello.tick();
+  lights.tick(dt, out3d ? out3d.light.dayK : 0, pos);
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
   ambience(dt);
@@ -901,6 +917,7 @@ engine.resize();
 const start = follow();
 camera.position.copy(start.p); camLook.copy(start.l);
 $('note').textContent = 'Getting the room ready';
+lights.adopt();
 await engine.warmUp();
 $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
 function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }

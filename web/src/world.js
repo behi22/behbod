@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
+import { onSwitch } from './pure/lamps.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
   E_led_green: [0.25, 1.0, 0.45, 3.5], E_led_blue: [0.25, 0.55, 1.0, 3.5], E_aria_eye: [0.25, 1.0, 0.85, 3.2], E_warm_soft: [1.0, 0.75, 0.45, 2.4], E_bias: [0.35, 0.45, 1.0, 2.6],
@@ -100,6 +101,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
         o.material = new THREE.MeshBasicMaterial({ map: screens.textures[key] || null, color: new THREE.Color(k, k, k), fog: name !== 'backdrop' });
         if (!screens.textures[key]) console.warn('[loft] no canvas for screen', key);
         if (name === 'onair') o.material.color.setScalar(2.2);
+        if (k > 1) o.material.userData.lamp = 'glow';
         // The kilim's fringe hangs below its weave: the gaps between the threads show the wall, not black.
         if (name === 'screen_kilim') o.material.alphaTest = 0.5;
       } else if (m.name?.startsWith('G_')) {
@@ -110,6 +112,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
         const [r, g, b, k] = EMISSIVE[m.name];
         o.material = new THREE.MeshBasicMaterial({ color: new THREE.Color(r * k, g * k, b * k), fog: true });
         (emits[m.name] ||= []).push(o.material);
+        o.material.userData.lamp = onSwitch(name, m.name) ? 'bulb' : 'glow';
         if (name.startsWith('led_')) leds.push(o);
         if (name.startsWith('aria_eye')) (aria.eyes ||= []).push(o);
         if (name === 'aria_tip') aria.tip = o;
@@ -129,11 +132,13 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
 
   // Lights only touch the character; the loft's light is baked.
   let rgbLight = null;
+  const lights = [];
   for (const l of meta.lights) {
-    if (l.kind === 'hemi') { scene.add(new THREE.HemisphereLight(l.sky, l.ground, l.power)); continue; }
+    if (l.kind === 'hemi') { const h = new THREE.HemisphereLight(l.sky, l.ground, l.power); scene.add(h); lights.push([h, l]); continue; }
     const light = l.kind === 'sun' ? new THREE.DirectionalLight(l.color, l.power) : new THREE.PointLight(l.color, l.power, l.range, 2);
     light.position.copy(b2t(...l.at));
     scene.add(light);
+    lights.push([light, l]);
     if (l.role === 'rgb') rgbLight = light;
   }
   // The studio's RGB: light scenes from the terminal, holiday colours by default on a holiday, a green sweep on DEPLOY.
@@ -228,7 +233,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   for (const o of loose) {
     const m = o.material;
     if (!o.parent || o.name.endsWith('_baked') || isScreen(o.name) || !m.isMeshBasicMaterial || m.map || m.transparent || pinned(o) || /^(holiday_thing|unlock_|fish)/.test(o.name)) continue;
-    const k = m.color.getHexString() + (m.fog ? 'f' : '');
+    const k = m.color.getHexString() + (m.fog ? 'f' : '') + (m.userData.lamp || '');
     if (!buckets.has(k)) buckets.set(k, []);
     buckets.get(k).push(o);
   }
@@ -282,7 +287,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   for (let i = 0; i < MOTES; i++) motePos.set([1 + ((i * 7.31) % 14), 0.4 + ((i * 3.17) % 5), -(4 + ((i * 5.13) % 7.5))], i * 3);
   const moteGeo = new THREE.BufferGeometry();
   moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
-  scene.add(new THREE.Points(moteGeo, new THREE.PointsMaterial({ size: 0.014, color: 0xffe6c0, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending })));
+  scene.add(new THREE.Points(moteGeo, new THREE.PointsMaterial({ size: 0.014, color: 0xffe6c0, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, userData: { lamp: 'room' } })));
 
   const clockFmt = {};
   let clockAt = -1;
@@ -369,7 +374,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
 
   return {
-    tick, setGloss, deskThings, doors, merged, printParts,
+    tick, setGloss, deskThings, doors, merged, printParts, lights,
     setMirror(on) { liveMirror = on; },
     toggleDoor(id) { const d = doors[id]; if (!d) return null; d.open = !d.open; return d; },
     openWardrobe(t) { wardrobeOpen = t + 6; },

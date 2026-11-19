@@ -11,6 +11,7 @@ import { nowruzLines } from './src/pure/nowruz.js';
 import { WALLPAPERS } from './src/pure/desktop.js';
 import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
 import { paintStory, paintWallpaper } from './src/shah/scenes.js';
+import { helloWorld } from './src/pure/hello.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -426,10 +427,13 @@ export function makeCanvases(meta, opts = {}) {
       term.input = '';
       if (cmd === 'exit') { exit(); return; }
       const [word, ...rest] = cmd.split(' ');
+      let hello = null;
+      // The commands that were here first keep every line they took, print "hello world" included.
       if (CMDS[cmd]) CMDS[cmd]();
       else if (Object.hasOwn(EXTRA, word)) EXTRA[word](say, rest.join(' '));
+      else if ((hello = helloWorld(text))) say(...hello.lines);
       else if (cmd) say(`command not found: ${cmd}. try 'help'`);
-      if (cmd) dispatchEvent(new CustomEvent('loft:cmd', { detail: { cmd, say } }));
+      if (cmd) dispatchEvent(new CustomEvent('loft:cmd', { detail: { cmd, say, hello: !!hello } }));
       changed();
     },
     terminalKey(e, exit) {
