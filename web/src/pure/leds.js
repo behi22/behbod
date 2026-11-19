@@ -1,5 +1,5 @@
 // The studio's LEDs with a record playing, and their flash for a goal.
-export const BANDS = 16, GOAL_TIME = 2.2;
+export const BANDS = 16, GOAL_BEAT = 0.25, GOAL_TIME = 9 * GOAL_BEAT;
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -45,6 +45,14 @@ export function lively(bands, avg, out, dt) {
   return out;
 }
 
-// Under three flashes a second, the safe limit for flashing light; held still for anyone who asks for less motion.
+// One change a beat stays under three flashes in any second, the safe limit; held still for anyone asking for less motion.
 const WHITE = [1, 1, 1], GOLD = [1, 0.72, 0.18];
-export const goalFlash = (s, still = false) => (!still && Math.floor(s * 5) % 2 ? [GOLD, WHITE] : [WHITE, GOLD]);
+export const goalFlash = (s, still = false) => (!still && Math.floor(s / GOAL_BEAT) % 2 ? [GOLD, WHITE] : [WHITE, GOLD]);
+
+// A goal while the flash runs, or within a beat of its end, keeps to the same beats and waits for the next one.
+export function goalStart(f, t) {
+  if (!f || t > f.until + GOAL_BEAT) return { at: t, from: t, until: t + GOAL_TIME };
+  const beat = x => f.at + Math.ceil((x - f.at) / GOAL_BEAT - 1e-9) * GOAL_BEAT;
+  return { at: f.at, from: t < f.until ? f.from : beat(t), until: beat(t + GOAL_TIME) };
+}
+export const goalShows = (f, t, still = false) => (f && t >= f.from && t < f.until ? goalFlash(t - f.at, still) : null);

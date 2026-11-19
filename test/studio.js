@@ -1,5 +1,5 @@
 // Team colours for the football games, the studio's LEDs with the music, the goal reactions and the horn, in a real Chrome.
-//   LOFT_URL=http://127.0.0.1:8815 node test/studio.js [outdir] [only: kits,phone,stored,music,goals,horn,motes]
+//   LOFT_URL=http://127.0.0.1:8815 node test/studio.js [outdir] [only: kits,phone,stored,music,goals,flash,horn,motes]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -331,6 +331,41 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       check('the TV match: a goal sounds the horn and flashes the strips', /^1 scored/.test(tv.tally) && tv.horns.join() === 'at the goal,everywhere,everywhere' && tv.leds.goal, JSON.stringify(tv));
       check('goals: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
+    }
+    // ---------- the goal flash's pace, frame by frame, also with a second goal while it runs ----------
+    if (want('flash')) {
+      // Every change of the purple strip's colour from a goal on (the change at the goal itself included), in ms.
+      const changes = (p, again) => p.evaluate(([again]) => new Promise(done => {
+        const t0 = performance.now(), at = [];
+        let prev = __strip.color.toArray().join(), second = again == null;
+        __loft.world.goal(t0 / 1000);
+        const rec = () => {
+          const now = performance.now(), c = __strip.color.toArray().join();
+          if (c !== prev) { at.push(now - t0); prev = c; }
+          if (!second && now - t0 >= again * 1000) { second = true; __loft.world.goal(now / 1000); }
+          if (now - t0 < 4600) requestAnimationFrame(rec); else done({ at, back: c, goal: __loft.world.leds.goal });
+        };
+        requestAnimationFrame(rec);
+      }), [again]);
+      const pace = at => {
+        let most = 0, gap = Infinity;
+        for (let i = 0; i < at.length; i++) { let n = 0; for (let j = i; j < at.length && at[j] - at[i] <= 1000; j++) n++; most = Math.max(most, n); if (i) gap = Math.min(gap, at[i] - at[i - 1]); }
+        return { most, gap: Math.round(gap) };
+      };
+      const chill = CHILL.join();
+      for (const motion of ['full', 'reduce']) {
+        const { ctx, p, errs } = await open(b, { ...DESK, reducedMotion: motion === 'reduce' ? 'reduce' : 'no-preference' });
+        await findStrip(p);
+        for (const again of [null, 1.0, 1.85, 1.95]) {
+          const r = await changes(p, again), f = pace(r.at);
+          const ok = motion === 'reduce' ? r.at.length === 2 : f.most <= 5 && f.gap >= 200;
+          check(`the goal flash (${motion} motion${again ? `, a second goal at ${again} s` : ''}): under three flashes in any second, never a quick flicker, then exactly the scene`,
+            ok && r.back === chill && !r.goal, `${r.at.length} changes, at most ${f.most} in a second, closest ${f.gap} ms apart: ${r.at.map(Math.round).join(' ')}`);
+          await p.waitForTimeout(300);
+        }
+        check(`flash (${motion}): no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+        await ctx.close();
+      }
     }
     // ---------- the horn itself, rendered offline ----------
     if (want('horn')) {

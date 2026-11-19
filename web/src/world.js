@@ -3,7 +3,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
 import { onSwitch } from './pure/lamps.js';
-import { BANDS, GOAL_TIME, settle, follow, kicked, fade, pulse, lively, goalFlash } from './pure/leds.js';
+import { BANDS, settle, follow, kicked, fade, pulse, lively, goalStart, goalShows } from './pure/leds.js';
 import { stripViz } from './stripviz.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
@@ -154,7 +154,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
-  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, goalAt = -1, coolantName = 'teal';
+  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, goalBeats = null, flashing = false, coolantName = 'teal';
   function paintRGB(a, b) {
     for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
     for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
@@ -190,7 +190,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     sceneColours(t);
     if (sceneName === 'visualizer' && viz) {
       lively(records.spectrum(heard), usual, viz.uBands.value, dt);
-      if (goalAt < 0 && !deployUntil) viz.uViz.value = mk * Math.min(1, g);
+      if (!goalShows(goalBeats, t) && !deployUntil) viz.uViz.value = mk * Math.min(1, g);
     } else {
       const m = pulse(level, avg, kick, mk * Math.min(1, g));
       A.multiplyScalar(m); B.multiplyScalar(m);
@@ -340,10 +340,9 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 0.3 + 0.7 * ariaK; }
     if (aria.tip) { const k = (1.2 + 0.8 * ariaK) + Math.sin(t * (1.5 + 2 * ariaK)) * (0.5 + 0.5 * ariaK); aria.tip.material.color.setRGB(1.0 * k, 0.62 * k, 0.3 * k); }
     tickMusic(dt, t);
-    if (goalAt >= 0) {
-      if (t - goalAt < GOAL_TIME) { const [a, b] = goalFlash(t - goalAt, still); paintRGB(A.setRGB(...a), B.setRGB(...b)); }
-      else { goalAt = -1; applyScene(); }
-    }
+    const flash = goalShows(goalBeats, t, still);
+    if (flash) { flashing = true; paintRGB(A.setRGB(...flash[0]), B.setRGB(...flash[1])); }
+    else if (flashing) { flashing = false; applyScene(); }
     if (deployUntil) {
       const left = deployUntil - t;
       if (left > 0) {
@@ -420,10 +419,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       return true;
     },
     deploy(t) { deployUntil = t + 3; },
-    goal(t) { goalAt = t; still = matchMedia('(prefers-reduced-motion: reduce)').matches; },
+    goal(t) { goalBeats = goalStart(goalBeats, t); still = matchMedia('(prefers-reduced-motion: reduce)').matches; },
     // gate: how much of the records comes through, 0 with the sound off or faded for the piano.
     listen(music, gate) { records = music; through = gate; music.onBeat(b => { kick = kicked(kick, b.strength); }); },
-    get leds() { return { music: mk, viz: viz ? viz.uViz.value : 0, bands: viz ? Array.from(viz.uBands.value) : null, goal: goalAt >= 0, deploy: deployUntil > 0 }; },
+    get leds() { return { music: mk, viz: viz ? viz.uViz.value : 0, bands: viz ? Array.from(viz.uBands.value) : null, goal: !!goalBeats && performance.now() / 1000 < goalBeats.until, deploy: deployUntil > 0 }; },
     fan() { fanOn = !fanOn; return fanOn; },
     setRecord(on) { spinning = on; },
     // The fleet (src/fleet.js) replaces the two baked ships.

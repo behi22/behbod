@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BANDS, GOAL_TIME, settle, follow, kicked, fade, pulse, toBands, lively, goalFlash } from '../../web/src/pure/leds.js';
+import { BANDS, GOAL_TIME, GOAL_BEAT, settle, follow, kicked, fade, pulse, toBands, lively, goalFlash, goalStart, goalShows } from '../../web/src/pure/leds.js';
 
 test('with the music not counting, the strips are exactly the scene: 1, whatever the level or the beat', () => {
   for (const level of [0, 0.2, 0.7, 1]) for (const kick of [0, 0.6, 1]) assert.equal(pulse(level, 0.4, kick, 0), 1);
@@ -80,18 +80,53 @@ test('each band moves against its own usual level: steady sits at 0.4, a hit lig
   for (const v of [0, 0.3, 1]) for (let i = 0; i < 50; i++) { lively(Float32Array.from([v, 1 - v, v, 0.5]), avg, out, 0.05); assert.ok(out.every(x => x >= 0 && x <= 1)); }
 });
 
-test('a goal flashes white and gold, the two strip colours out of step, under three flashes a second', () => {
-  const [a, b] = goalFlash(0), [c, d] = goalFlash(0.21);
+test('a goal flashes white and gold, the two strip colours out of step, one change a beat', () => {
+  const [a, b] = goalFlash(0), [c, d] = goalFlash(GOAL_BEAT + 0.01);
   assert.notDeepEqual(a, b);
   assert.deepEqual(a, d);
   assert.deepEqual(b, c);
+  assert.deepEqual(goalFlash(GOAL_BEAT - 0.01), goalFlash(0));
   assert.ok([a, b].every(x => x.every(v => v >= 0 && v <= 1)));
-  let changes = 0;
-  for (let ms = 1; ms <= 1000; ms++) if (goalFlash(ms / 1000)[0] !== goalFlash((ms - 1) / 1000)[0]) changes++;
-  assert.ok(changes <= 6 && changes >= 2, `${changes} changes in a second`);
   assert.ok(GOAL_TIME > 1 && GOAL_TIME < 4);
+  // The flash ends on a beat, so its last change is a whole beat after the one before.
+  assert.ok(Math.abs(GOAL_TIME / GOAL_BEAT - Math.round(GOAL_TIME / GOAL_BEAT)) < 1e-9);
 });
 
-test('asked for less motion, a goal holds white and gold still', () => {
+// The strips as world.js drives them, frame by frame: every change of what they show (the scene, or a flash colour).
+function run(goals, fps, offset, still = false) {
+  let f = null, shown = 'scene', g = 0;
+  const at = [], frames = [];
+  for (let t = offset; t < 7; t += 1 / fps) {
+    while (g < goals.length && goals[g] <= t) f = goalStart(f, goals[g++]);
+    const c = goalShows(f, t, still), now = c ? c[0].join() : 'scene';
+    frames.push([t, now]);
+    if (now !== shown) { at.push(t); shown = now; }
+  }
+  return { at, end: shown, frames };
+}
+const GOALS = [[0], [0, 0.3], [0, 1], [0, 1.72], [0, 1.85], [0, 1.95], [0, GOAL_TIME - 0.01], [0, GOAL_TIME], [0, GOAL_TIME + 0.02],
+  [0, GOAL_TIME + GOAL_BEAT - 0.01], [0, GOAL_TIME + GOAL_BEAT + 0.01], [0, 1.8, 3.6], [0, 0.1, 0.2, 0.3, 2.3, 2.4]];
+
+test('the goal flash stays under three flashes in any second, however the goals and the frames fall, and ends on the scene', () => {
+  for (const goals of GOALS) for (const fps of [144, 60, 30, 24]) for (const offset of [0, 0.004, 0.013]) {
+    const { at, end, frames } = run(goals, fps, offset), what = `${goals} at ${fps} fps +${offset}: ${at.map(x => x.toFixed(3)).join(' ')}`;
+    assert.equal(end, 'scene', what);
+    for (let i = 0; i < at.length; i++) {
+      // A flash is two changes; three flashes would be six changes within a second.
+      assert.ok(at.filter(x => x >= at[i] && x - at[i] <= 1).length <= 5, what);
+      if (i) assert.ok(at[i] - at[i - 1] >= GOAL_BEAT - 1 / fps - 1e-9, what);
+    }
+    // Every goal shows: the strips are flashing within a beat of it.
+    for (const t of goals) assert.ok(frames.some(([x, c]) => x >= t && x <= t + GOAL_BEAT + 1 / fps + 1e-9 && c !== 'scene'), `${what}: the goal at ${t} never flashed`);
+  }
+});
+
+test('asked for less motion, a goal holds white and gold still, one change in and one out', () => {
   for (let s = 0; s < GOAL_TIME; s += 0.01) assert.deepEqual(goalFlash(s, true), goalFlash(0, true));
+  for (const goals of GOALS) {
+    const { at, end } = run(goals, 60, 0.004, true);
+    assert.equal(end, 'scene');
+    assert.ok(at.length % 2 === 0 && at.length <= 2 * goals.length, `${goals}: ${at.length} changes`);
+    for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= GOAL_BEAT - 1 / 60 - 1e-9, `${goals}: ${at.join(' ')}`);
+  }
 });
