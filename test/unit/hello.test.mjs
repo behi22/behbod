@@ -56,8 +56,12 @@ test('a hello world program in each language prints its string as written and na
 
 test('C wrapped in main() as in the 1978 book gets its own line; other mains are plain C', () => {
   assert.deepEqual(helloWorld(raw`main() { printf("hello, world\n"); }`).lines, ['hello, world', 'that was c, as kernighan and ritchie printed it in 1978.']);
-  assert.deepEqual(helloWorld(raw`int main(void) { printf("hello, world\n"); return 0; }`).lines[1], 'that was c, as kernighan and ritchie printed it in 1978.');
+  assert.deepEqual(helloWorld(raw`main(){printf("hello, world\n");}`).lines[1], 'that was c, as kernighan and ritchie printed it in 1978.');
   assert.deepEqual(helloWorld(raw`int main() { printf("Hello World\n"); }`).lines, ['Hello World', 'that was c. everyone starts here.']);
+  // The book's main() had no int, no void and no return 0, so later C is not said to be as printed in 1978.
+  for (const s of [raw`int main(void) { printf("hello, world\n"); return 0; }`, raw`int main() { printf("hello, world\n"); }`, raw`main(void) { printf("hello, world\n"); }`, raw`main() { printf("hello, world\n"); return 0; }`]) {
+    assert.deepEqual(helloWorld(s).lines, ['hello, world', 'that was c. everyone starts here.'], s);
+  }
 });
 
 test('the terminal hands the lowercased command to the house, and that still counts', () => {

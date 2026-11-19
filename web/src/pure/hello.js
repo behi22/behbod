@@ -31,8 +31,8 @@ const PROGRAMS = [
   ['sql', String.raw`select\s+'(.*)'`],
   ['lisp', String.raw`\(\s*(?:print|princ|format\s+t)\s+${DQ}\s*\)`],
 ].map(([lang, src]) => [lang, new RegExp(`^${src}$`, 'i')]);
-// C's own form, wrapped in main() as in the 1978 book, is unwrapped and read again.
-const MAIN = /^(?:int\s+)?main\s*\(\s*(?:void)?\s*\)\s*\{\s*(.*?)\s*;?\s*(?:return\s+0\s*;)?\s*\}$/;
+// C wrapped in main() is unwrapped and read again; the 1978 book's own main() had no int, void or return.
+const MAIN = /^(int\s+)?main\s*\(\s*(void)?\s*\)\s*\{\s*(.*?)\s*;?\s*(return\s+0\s*;)?\s*\}$/;
 
 const tidy = s => s.trim().replace(/\s+/g, ' ').replace(/\s*;+$/, '');
 // A string literal's text as it would print: a trailing newline escape dropped.
@@ -45,13 +45,13 @@ export function helloWorld(text) {
   if (!line || line.length > 80) return null;
   if (PHRASE.test(line)) return { lang: null, lines: ['hello, world', 'every programmer\'s first program.', 'try it in your favourite language too.'] };
   const wrapped = MAIN.exec(line);
-  if (wrapped) line = tidy(wrapped[1]);
+  if (wrapped) line = tidy(wrapped[3]);
   for (const [lang, re] of PROGRAMS) {
     const m = re.exec(line);
     if (!m) continue;
     const out = printed(m.slice(1).filter(x => x !== undefined).pop() ?? '');
     if (!PHRASE.test(out.trim())) return null;
-    const classic = wrapped && lang === 'c' && out === 'hello, world';
+    const classic = wrapped && !wrapped[1] && !wrapped[2] && !wrapped[4] && lang === 'c' && out === 'hello, world';
     return { lang, lines: [out, classic ? 'that was c, as kernighan and ritchie printed it in 1978.' : `that was ${lang}. everyone starts here.`] };
   }
   return null;
