@@ -26,11 +26,13 @@ test('no image when the head or the eye is behind the mirror, or level with the 
   assert.equal(mirrorImage([0, 1.6, 0], [0, 1.6, 2], M), null);
 });
 
-test('no image when the eye looks past the side of the glass, unless within the margin', () => {
-  // The eye far off to the side: its line to the image crosses the wall 0.9 m from the middle.
+test('no image when the eye looks past the side of the glass, unless some of the head shows on it', () => {
+  // The eye far off to the side: its line to the image crosses the wall 0.9 m from the middle, 0.5 past the edge. The
+  // image is 4 m from the eye and the glass 3 m, so on the glass a head shows at three quarters of its size.
   const head = [0.2, 1.6, 1], eye = [3.0, 1.6, 3];
   assert.equal(mirrorImage(head, eye, M), null);
-  assert.ok(near(mirrorImage(head, eye, M, 0.55), [0.2, 1.6, -1]));
+  assert.equal(mirrorImage(head, eye, M, 0.6), null);
+  assert.ok(near(mirrorImage(head, eye, M, 0.7), [0.2, 1.6, -1]));
   // Above the glass: a head 2.8 m up seen level crosses the wall above its top edge at 2.4.
   assert.equal(mirrorImage([0, 2.8, 1], [0, 2.8, 3], M), null);
 });
