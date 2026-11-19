@@ -65,6 +65,36 @@ async function rings(p, a, b, cx, cy, R) {
     return { core: bands[0][0] / bands[0][1], edge: bands[1][0] / bands[1][1], outside: bands[2][0] / bands[2][1], fineVeiled: fineA, fineBare: fineB };
   }, [`data:image/png;base64,${a.toString('base64')}`, `data:image/png;base64,${b.toString('base64')}`, cx, cy, R]);
 }
+// The toy head's drawn eyes and mouth where they show in the picture now (CSS pixels), the side turned to the camera only.
+const features = p => p.evaluate(async () => {
+  const THREE = await import('three');
+  const L = __loft, cam = L.camera, toy = L.scene.getObjectByName('V3_head_toy'), v = new THREE.Vector3(), pts = [];
+  const mid = new THREE.Box3().setFromObject(toy, true).getCenter(new THREE.Vector3());
+  toy.traverse(o => {
+    if (!o.isSkinnedMesh || o.material.name !== 'M_Toy_Face') return;
+    for (let i = 0; i < o.geometry.attributes.position.count; i++) {
+      const w = o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+      if (w.clone().sub(mid).dot(cam.position.clone().sub(w)) <= 0) continue;
+      const s = w.project(cam);
+      pts.push([(s.x + 1) / 2 * innerWidth, (1 - s.y) / 2 * innerHeight]);
+    }
+  });
+  return pts;
+});
+// Fine detail left within 2 px of those points, veiled against bare.
+async function detailAt(p, a, b, pts) {
+  return p.evaluate(async ([a, b, pts]) => {
+    const load = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = src; });
+    const [A, B] = await Promise.all([load(a), load(b)]);
+    const px = img => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
+    const da = px(A), db = px(B), W = A.width, H = A.height, L = (d, i) => 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
+    const mask = new Uint8Array(W * H);
+    for (const [x, y] of pts) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const X = Math.round(x) + dx, Y = Math.round(y) + dy; if (X > 0 && Y > 0 && X < W - 1 && Y < H - 1) mask[Y * W + X] = 1; }
+    let veiled = 0, bare = 0;
+    for (let j = 0; j < mask.length; j++) if (mask[j]) { const i = j * 4; veiled += Math.abs(L(da, i) - L(da, i + 4)) + Math.abs(L(da, i) - L(da, i + 4 * W)); bare += Math.abs(L(db, i) - L(db, i + 4)) + Math.abs(L(db, i) - L(db, i + 4 * W)); }
+    return { veiled, bare };
+  }, [`data:image/png;base64,${a.toString('base64')}`, `data:image/png;base64,${b.toString('base64')}`, pts]);
+}
 const drawn = (p, names) => p.evaluate(ns => ns.map(n => { const o = __loft.scene.getObjectByName(n); if (!o) return null; let v = false; o.traverse(c => { if (!c.isMesh) return; let ok = true; for (let x = c; x; x = x.parent) ok = ok && x.visible; v = v || ok; }); return v; }), names);
 
 async function desktop(b) {
@@ -130,6 +160,23 @@ async function desktop(b) {
   const ring = await rings(p, veiled, bare, cx, cy, R);
   check('the face under it is blurred: under a third of its fine detail is left', ring.fineVeiled < ring.fineBare / 3, `${Math.round(ring.fineVeiled)} of ${Math.round(ring.fineBare)}`);
   check('it fades out at its edge and changes nothing beyond it', ring.core > 4 && ring.edge < ring.core && ring.outside < 0.5, `change in the middle ${ring.core.toFixed(1)}, at the edge ${ring.edge.toFixed(1)}, outside ${ring.outside.toFixed(2)}`);
+
+  // The drawn eyes and mouth stay in the full blur from the front, three quarters and the side, near and at the usual distance.
+  const seen = [];
+  let faceOk = true;
+  for (const [turn, dist] of [[0, 1.8], [0.9, 1.8], [1.3, 1.8], [-0.9, 1.8], [0, 3.3]]) {
+    await stand(p, SPOT, { turn, dist });
+    await freeze(p, true); await p.waitForTimeout(400);
+    const pts = await features(p);
+    const a = await p.screenshot();
+    await mosaicOff(p, true); await p.waitForTimeout(300);
+    const bare2 = await p.screenshot();
+    await mosaicOff(p, false); await freeze(p, false);
+    const d = await detailAt(p, a, bare2, pts);
+    if (!(pts.length > 0 && d.veiled < d.bare / 3)) faceOk = false;
+    seen.push(`${turn}/${dist}m ${Math.round(d.veiled)} of ${Math.round(d.bare)}`);
+  }
+  check('the face\'s eyes and mouth are blurred from every side: under a third of their detail is left', faceOk, seen.join(', '));
 
   // In the mirror: a second mosaic over my head's image, only while the mirror shows it.
   await p.evaluate(() => __loft.me.setLook({ head: 'mosaic', hood: null }));

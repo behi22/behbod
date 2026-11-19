@@ -222,6 +222,23 @@ export function makeMe(scene, gltf, opts) {
   // The mosaic over the toy head is a post effect, so it only shows where post effects run. A wall mirror gets a second
   // one over the head it shows.
   const VEIL_R = 0.2 * HEIGHT * HEAD_SIZE;
+  // The veil sits in the head's own frame, 30% of the way from its middle to its drawn face, so the eyes and mouth stay
+  // in the full blur from any side.
+  const veilAt = (() => {
+    const at = {};
+    for (const g of parts.V3_head_toy || []) g.traverse(o => {
+      if (!o.isSkinnedMesh) return;
+      o.geometry.computeBoundingBox();
+      at[o.material.name] = o.geometry.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(o.bindMatrix).applyMatrix4(o.skeleton.boneInverses[o.skeleton.bones.indexOf(bones.Head)]);
+    });
+    return at.M_Toy && at.M_Toy_Face ? at.M_Toy.lerp(at.M_Toy_Face, 0.3) : null;
+  })();
+  const veilPos = new THREE.Vector3();
+  function veilCentre() {
+    if (!veilAt) return headNow().add(new THREE.Vector3(0, 0.04, 0));
+    bones.Head.updateWorldMatrix(true, false);
+    return bones.Head.localToWorld(veilPos.copy(veilAt));
+  }
   let mirrors = null;
   function findMirrors() {
     mirrors = [];
@@ -245,7 +262,7 @@ export function makeMe(scene, gltf, opts) {
   function tickMosaic(now, camera, u) {
     u.radius.value = 0; u.radius2.value = 0;
     if (look.head !== 'mosaic' || !root.visible) return;
-    const h = headNow().add(new THREE.Vector3(0, 0.04, 0));
+    const h = veilCentre();
     veilOver(h, camera, u.centre, u.radius);
     if (!mirrors) findMirrors();
     const eye = camera.position.toArray(), head = h.toArray();
