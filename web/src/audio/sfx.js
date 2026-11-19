@@ -358,5 +358,18 @@ export function makeSfx(env) {
       }
       S.play(t, t + 2.7);
     },
+    // A rocker switch: the snap of the contact, then the rocker landing; on a touch higher than off.
+    lightSwitch(on, pos) {
+      const S = go(pos, 0.15);
+      if (!S) return;
+      const t = S.t, f = on ? 1 : 0.86;
+      noisy(S, 'bandpass', 4200 * f, 2.5, 0.5, 0.0004, 0.008, t);
+      const c = tone(S, 'sine', 2600 * f, 0.18, 0.0004, 0.012, t);
+      c.frequency.exponentialRampToValueAtTime(1500 * f, t + 0.01);
+      noisy(S, 'bandpass', 1300 * f, 1.4, 0.35, 0.0006, 0.02, t + 0.014);
+      const b = tone(S, 'sine', 210 * f, 0.22, 0.001, 0.035, t + 0.014);
+      b.frequency.exponentialRampToValueAtTime(130 * f, t + 0.05);
+      S.play(t, t + 0.12);
+    },
   };
 }
