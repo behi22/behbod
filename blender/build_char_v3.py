@@ -786,8 +786,8 @@ def build_pants(name, radii=(0.092, 0.082, 0.074), end=PANT_END, squeeze=0.88, s
     keep_linings(name, bm, [q for hem in hems for q in lining(bm, hem, (0, 0, -1), 0.025, 0.9)])
     finish(o, bm, 0.008, 0, True)
     o.data.materials.append(M_PANTS)
-    # Cargo pockets with a flap, on the outside of each thigh, projected onto the leg.
-    pz = (zb('thigh_l') + zb('calf_l')) / 2 + 0.02
+    # Cargo pockets with a flap, on the outside of each thigh low down towards the knee (his ask), projected onto the leg.
+    pz = zb('calf_l') + 0.12
     parts = []
     for s in (1, -1):
         hip, knee, _ = LEG['l' if s > 0 else 'r']
@@ -1306,6 +1306,8 @@ M_RING = mat('M_Ring', (0.15, 0.9, 0.78), 0.4, emit=(0.15, 0.9, 0.78), strength=
 M_VOID = mat('M_Void', (0.0, 0.0, 0.0), 1.0)
 M_EYES = mat('M_Eye_Glow', (0, 0, 0), 0.5, emit=(0.2, 1.0, 0.85), strength=6)
 M_CURL = mat('M_Hair', (0.06, 0.05, 0.05), 0.6)
+M_BEARD = mat('M_Beard', (0.33, 0.3, 0.28), 0.9)
+M_FACE = mat('M_Toy_Face', (0.02, 0.018, 0.018), 0.3)
 
 # The neck socket every head sits in: a short soft-white neck with a ring around it.
 socket_z = head_pivot.z - 0.005
@@ -1336,12 +1338,41 @@ def build_tv(b):
         cyl(b, 0.016, 0.016, 0.016, c + Vector((0.138, -0.138, 0.04 - k * 0.065)), axis='Y', mi=1)
     for k in range(5):
         rbox(b, (0.004, 0.15, 0.01), c + Vector((0.166, 0.03, -0.065 + k * 0.028)), mi=1)
-    cyl(b, 0.05, 0.06, 0.04, (PLUG[0], PLUG[1], PLUG[2] + 0.005), mi=1)
 
 
 tv = piece('V3_head_tv', build_tv, [M_TV, M_TV_TRIM, M_SCREEN_TV, M_RING], smooth=False)
 for p in tv.data.polygons:
     p.use_smooth = p.material_index != 2
+TV_BOTTOM = HC.z + 0.03 - 0.135
+
+
+# The TV sits straight on the neck with no ring (his ask); the neck bends with the head so no gap opens as it turns.
+def build_tv_neck(b):
+    n0, n1, N, R = neck_z - 0.075, TV_BOTTOM + 0.015, 32, 12
+    rings = []
+    for k in range(R + 1):
+        z = n0 + (n1 - n0) * k / R
+        r = 0.05 + (0.046 - 0.05) * k / R
+        rings.append([b.verts.new((math.cos(2 * math.pi * j / N) * r, neck_c.y + 0.004 + math.sin(2 * math.pi * j / N) * r, z)) for j in range(N)])
+    for a, c in zip(rings, rings[1:]):
+        for j in range(N):
+            b.faces.new((a[j], a[(j + 1) % N], c[(j + 1) % N], c[j]))
+    for ring, z, flip in ((rings[0], n0, True), (rings[-1], n1, False)):
+        m = b.verts.new((0, neck_c.y + 0.004, z))
+        for j in range(N):
+            b.faces.new((ring[(j + 1) % N], ring[j], m) if flip else (ring[j], ring[(j + 1) % N], m))
+    b.normal_update()
+
+
+tv_neck = piece('V3_head_tv_neck', build_tv_neck, M_TOY, bone='neck_01')
+tv_neck.vertex_groups.new(name='Head')
+for v in tv_neck.data.vertices:
+    k = max(0.0, min(1.0, (v.co.z - (head_pivot.z - 0.01)) / 0.045))
+    k = k * k * (3 - 2 * k)
+    tv_neck.vertex_groups['Head'].add([v.index], k, 'REPLACE')
+    tv_neck.vertex_groups['neck_01'].add([v.index], 1 - k, 'REPLACE')
+
+
 def build_tv_antennas(b):
     c = HC + Vector((0, -0.005, 0.03))
     for s in (-1, 1):
@@ -1388,15 +1419,37 @@ def build_leds(b):
 leds = piece('V3_head_visor_face', build_leds, M_LED)
 
 
+EMOJI_C, EMOJI_R, EMOJI_D = HC + Vector((0, 0.025, -0.012)), 0.172, 0.165
+
+
 def build_emoji(b):
-    c = HC + Vector((0, 0, 0.0))
-    cyl(b, 0.165, 0.165, 0.085, c, axis='Y', seg=56, mi=0)
-    cyl(b, 0.168, 0.168, 0.014, c + Vector((0, -0.037, 0)), axis='Y', seg=56, cap=False, mi=1)
-    screen(b, 0, 0, c + Vector((0, -0.0435, 0)), 2, round_r=0.15)
-    cyl(b, 0.05, 0.06, 0.06, (PLUG[0], PLUG[1], PLUG[2] - 0.005), mi=0)
+    # A round head behind the screen (his ask), down round the neck like the visor so the socket's ring hides inside.
+    c, R, D, U, V, CUT = EMOJI_C, EMOJI_R, EMOJI_D, 48, 20, 7
+    rows = []
+    for k in range(CUT, V + 1):
+        t = math.pi * k / V
+        if k == V:
+            rows.append([b.verts.new(c + Vector((0, D, 0)))])
+            continue
+        rows.append([b.verts.new(c + Vector((math.cos(2 * math.pi * j / U) * R * math.sin(t), -D * math.cos(t), math.sin(2 * math.pi * j / U) * R * math.sin(t)))) for j in range(U)])
+    for a, d in zip(rows, rows[1:]):
+        for j in range(U):
+            q = (a[(j + 1) % U], a[j], d[0]) if len(d) == 1 else (a[(j + 1) % U], a[j], d[j], d[(j + 1) % U])
+            b.faces.new(q).material_index = 0
+    face_y, rim = c.y - D * math.cos(math.pi * CUT / V), R * math.sin(math.pi * CUT / V)
+    screen(b, 0, 0, (c.x, face_y - 0.001, c.z), 0, round_r=rim)
+    cyl(b, rim + 0.003, rim + 0.003, 0.014, (c.x, face_y + 0.002, c.z), axis='Y', seg=U, cap=False, mi=1)
+    screen(b, 0, 0, (c.x, face_y - 0.0025, c.z), 2, round_r=rim - 0.012)
 
 
 emoji = piece('V3_head_emoji', build_emoji, [M_TV, M_RING, M_SCREEN_EMOJI])
+# The ring must stay inside the emoji head at full size and at the page's 90% head (scaled about the head's pivot).
+RING = [v.co.copy() for p in socket.data.polygons if p.material_index == 1 for v in (socket.data.vertices[i] for i in p.vertices)]
+for size in (1.0, 0.9):
+    at = head_pivot + (EMOJI_C - head_pivot) * size
+    reach = max((p.x / (EMOJI_R * size)) ** 2 + ((p.y - at.y) / (EMOJI_D * size)) ** 2 + ((p.z - at.z) / (EMOJI_R * size)) ** 2 for p in RING)
+    print(f'socket ring inside the emoji head at {size:.0%}: reach {reach:.2f} (under 1 is inside)')
+    assert reach < 0.96, 'the socket ring shows under the emoji head'
 
 
 def build_void(b):
@@ -1424,30 +1477,74 @@ def merge(b, src, mi):
     src.free()
 
 
+TOY_E, TOY_C = Vector((0.118, 0.13, 0.15)), HC + Vector((0, 0, -0.005))
+
+
+def toy_at(q, lift=0.0):
+    p = Vector((q.x * TOY_E.x, q.y * TOY_E.y, q.z * TOY_E.z))
+    return TOY_C + p + Vector((p.x / TOY_E.x ** 2, p.y / TOY_E.y ** 2, p.z / TOY_E.z ** 2)).normalized() * lift
+
+
+def toy_front(x, z, lift=0.0):
+    return toy_at(Vector((x / TOY_E.x, -math.sqrt(max(0.0, 1 - (x / TOY_E.x) ** 2 - (z / TOY_E.z) ** 2)), z / TOY_E.z)), lift)
+
+
+def hair_reach(q):
+    # Radians inside the hairline: it is 50 degrees from the crown at the front, 65 at the sides (his ~15% bare), 105 behind.
+    phi = math.atan2(q.x, -q.y)
+    return math.radians(71.25 - 27.5 * math.cos(phi) + 6.25 * math.cos(2 * phi)) - math.acos(max(-1.0, min(1.0, q.z)))
+
+
+def toy_shell(lift):
+    s, dirs = bmesh.new(), {}
+    bmesh.ops.create_uvsphere(s, u_segments=64, v_segments=40, radius=1.0)
+    for v in s.verts:
+        q = dirs[v] = v.co.normalized()
+        v.co = toy_at(q, lift(q) if callable(lift) else lift)
+    return s, dirs
+
+
 def build_toyhead(b):
-    # His head as a designer toy: smooth egg, small ears, a curly mohawk with bare sides, and a short beard.
-    sphere(b, (0.118, 0.13, 0.15), HC + Vector((0, 0, -0.005)), mi=0)
+    # His head as a designer toy, with his asks: a face to blur, a wide low curly top, a light short beard.
+    sphere(b, tuple(TOY_E), TOY_C, mi=0, sub=4)
     for s in (-1, 1):
         sphere(b, (0.018, 0.012, 0.03), HC + Vector((s * 0.118, 0.01, -0.01)), mi=0, sub=2)
-    rng = random.Random(7)
-    for i in range(90):
-        u = rng.random()
-        y = HC.y - 0.11 + u * 0.24
-        x = rng.uniform(-1, 1) * 0.05 * (1 - 0.3 * u)
-        zz = HC.z - 0.005 + 0.15 * math.sqrt(max(0.0, 1 - ((y - HC.y) / 0.135) ** 2)) * math.sqrt(max(0.0, 1 - (x / 0.118) ** 2)) + 0.01
-        r = rng.uniform(0.017, 0.025)
-        sphere(b, (r, r, r * 0.9), (x, y, zz), mi=1, sub=2)
-    beard = bmesh.new()
-    bmesh.ops.create_uvsphere(beard, u_segments=28, v_segments=16, radius=1.0)
-    bmesh.ops.scale(beard, vec=Vector((0.124, 0.136, 0.135)), verts=beard.verts)
-    bmesh.ops.translate(beard, vec=HC + Vector((0, -0.006, -0.03)), verts=beard.verts)
-    cut(beard, (0, 0, HC.z - 0.06), (0, 0, 1))
-    cut(beard, (0, HC.y + 0.005, 0), (0, 1, 0))
-    merge(b, beard, 1)
-    sphere(b, (0.035, 0.012, 0.009), HC + Vector((0, -0.128, -0.05)), mi=1, sub=2)
+    ease = lambda k: k * k * (3 - 2 * k)
+    cap, dirs = toy_shell(lambda q: 0.0012 + 0.0055 * ease(max(0.0, min(1.0, hair_reach(q) / 0.14))))
+    inside = {v: hair_reach(q) for v, q in dirs.items()}
+    bmesh.ops.delete(cap, geom=[f for f in cap.faces if sum(inside[v] for v in f.verts) < 0], context='FACES')
+    bmesh.ops.delete(cap, geom=[v for v in cap.verts if not v.link_faces], context='VERTS')
+    merge(b, cap, 1)
+    rng, N = random.Random(7), 900
+    for i in range(N):
+        z = 1 - 2 * (i + 0.5) / N
+        a = i * math.pi * (3 - math.sqrt(5))
+        q = (Vector((math.cos(a) * math.sqrt(1 - z * z), math.sin(a) * math.sqrt(1 - z * z), z)) + Vector([rng.uniform(-0.025, 0.025) for _ in range(3)])).normalized()
+        if hair_reach(q) < 0.02:
+            continue
+        r = rng.uniform(0.0095, 0.0125) * (0.8 if hair_reach(q) < 0.1 else 1.0)
+        sphere(b, (r, r, r), toy_at(q, 0.0025), mi=1, sub=1)
+    # Each cheek's beard lies below a line from the sideburn to the corner of the mouth.
+    for s in (1, -1):
+        half, _ = toy_shell(0.0016)
+        n = Vector((s * 0.115, 0.0, 0.015)).cross(Vector((s * 0.04, -0.12, -0.058))) * s
+        cut(half, TOY_C, (-s, 0, 0))
+        cut(half, TOY_C, (0, 1, 0))
+        cut(half, TOY_C, -n)
+        merge(b, half, 2)
+    lip, _ = toy_shell(0.0022)
+    for co, no in (((0, 0, -0.045), (0, 0, 1)), ((0, 0, -0.074), (0, 0, -1)), ((0.046, 0, 0), (1, 0, 0)), ((-0.046, 0, 0), (-1, 0, 0)), ((0, -0.06, 0), (0, 1, 0))):
+        cut(lip, TOY_C + Vector(co), no)
+    merge(b, lip, 2)
+    for s in (-1, 1):
+        sphere(b, (0.0125, 0.0045, 0.0165), toy_front(s * 0.042, 0.008, -0.0005), mi=3, sub=2)
+        for x, z, size in ((0.024, 0.036, (0.009, 0.005, 0.0055)), (0.042, 0.042, (0.011, 0.005, 0.006)), (0.06, 0.038, (0.009, 0.005, 0.005))):
+            sphere(b, size, toy_front(s * x, z), mi=1, sub=2)
+    sphere(b, (0.012, 0.011, 0.019), toy_front(0, -0.028, 0.002), mi=0, sub=2)
+    sphere(b, (0.021, 0.004, 0.0032), toy_front(0, -0.0755, 0.001), mi=3, sub=2)
 
 
-toyhead = piece('V3_head_toy', build_toyhead, [M_TOY, M_CURL])
+toyhead = piece('V3_head_toy', build_toyhead, [M_TOY, M_CURL, M_BEARD, M_FACE])
 HOOD_CHECK = {'hood': (['V3_head_void'], HOOD_C, HOOD_R), 'tv': (['V3_head_tv'], *TV_HOOD),
               'visor': (['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], HOOD_C, HOOD_R),
               'emoji': (['V3_head_emoji'], HOOD_C, HOOD_R), 'mosaic': (['V3_head_toy'], HOOD_C, HOOD_R)}
@@ -1669,14 +1766,14 @@ HOODIE = lambda sfx: ['V3_hoodie' + sfx, 'V3_pocket' + sfx]
 PANTS = lambda sfx: [n + sfx for n in ('V3_pants', 'V3_cargo_l', 'V3_cargo_r', 'V3_flap_l', 'V3_flap_r')]
 HOOD_HEAD = ['V3_socket', 'V3_hood_up', 'V3_head_void']
 # What is worn together, and which joints that look is checked at (the page hides the neck socket under the hood
-# head with its hood down, and gives the TV its own hood).
+# head with its hood down, and gives the TV its own neck and hood).
 LOOKS = {
     'boxy hoodie, straight trousers': (WORN + HOODIE('') + PANTS('') + HOOD_HEAD, list(JOINTS)),
     'short hoodie, tapered trousers': (WORN + HOODIE('_short') + PANTS('_tapered') + HOOD_HEAD, list(JOINTS)),
     'relaxed hoodie, tapered trousers': (WORN + HOODIE('_relaxed') + PANTS('_tapered') + HOOD_HEAD, list(JOINTS)),
     'hood head, hood down': (WORN + HOODIE('') + ['V3_hood_down', 'V3_head_void_full'], ['neck']),
-    'tv, hood up': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_up_tv', 'V3_head_tv'], ['neck']),
-    'tv, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_tv', 'V3_head_tv_antennas'], ['neck']),
+    'tv, hood up': (WORN + HOODIE('') + ['V3_head_tv_neck', 'V3_hood_up_tv', 'V3_head_tv'], ['neck']),
+    'tv, hood down': (WORN + HOODIE('') + ['V3_head_tv_neck', 'V3_hood_down', 'V3_head_tv', 'V3_head_tv_antennas'], ['neck']),
     'visor, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], ['neck']),
     'emoji, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_emoji'], ['neck']),
     'toy head, hood down': (WORN + HOODIE('') + ['V3_socket', 'V3_hood_down', 'V3_head_toy'], ['neck']),
@@ -1773,8 +1870,8 @@ if 'DEBUG' in PREVIEW:
 # `-- <prefix>HEADS`: every head with its hood up and with it down, from the front three-quarter and from behind.
 if PREVIEW and 'HEADS' in PREVIEW:
     from preview_lib import render_views
-    SETS = {'hood': (['V3_head_void'], ['V3_head_void_full']), 'tv': (['V3_head_tv'], ['V3_head_tv', 'V3_head_tv_antennas']),
-            'visor': (['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'],) * 2, 'emoji': (['V3_head_emoji'],) * 2, 'mosaic': (['V3_head_toy'],) * 2}
+    SETS = {'hood': (['V3_head_void', 'V3_socket'], ['V3_head_void_full']), 'tv': (['V3_head_tv', 'V3_head_tv_neck'], ['V3_head_tv', 'V3_head_tv_neck', 'V3_head_tv_antennas']),
+            'visor': (['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face', 'V3_socket'],) * 2, 'emoji': (['V3_head_emoji', 'V3_socket'],) * 2, 'mosaic': (['V3_head_toy', 'V3_socket'],) * 2}
     every = {n for up, down in SETS.values() for n in up + down} | {'V3_hood_up', 'V3_hood_up_tv', 'V3_hood_down'} | {o.name for o in bpy.data.objects if o.name.startswith('V3_acc_')}
     for o in bpy.data.objects:
         if o.name.endswith(('_short', '_relaxed', '_tapered')):
@@ -1817,9 +1914,9 @@ elif PREVIEW and 'FEET' in PREVIEW:
     arm.animation_data.action = None
 elif PREVIEW:
     from preview_lib import render_views
-    HEADSET = {'hood': ['V3_hood_up', 'V3_head_void'], 'tv': ['V3_head_tv', 'V3_hood_down'],
-               'visor': ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face', 'V3_hood_down'],
-               'emoji': ['V3_head_emoji', 'V3_hood_down'], 'toy': ['V3_head_toy', 'V3_hood_down'], 'mosaic': ['V3_head_toy', 'V3_hood_up']}
+    HEADSET = {'hood': ['V3_hood_up', 'V3_head_void', 'V3_socket'], 'tv': ['V3_head_tv', 'V3_head_tv_neck', 'V3_hood_down'],
+               'visor': ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face', 'V3_hood_down', 'V3_socket'],
+               'emoji': ['V3_head_emoji', 'V3_hood_down', 'V3_socket'], 'toy': ['V3_head_toy', 'V3_hood_down', 'V3_socket'], 'mosaic': ['V3_head_toy', 'V3_hood_up', 'V3_socket']}
     swap = {n for v in HEADSET.values() for n in v} | {o.name for o in bpy.data.objects if o.name.startswith('V3_acc_')}
     VARIANTS = [o for o in bpy.data.objects if o.name.endswith(('_short', '_relaxed', '_tapered'))]
     for o in VARIANTS:
