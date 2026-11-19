@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { EffectComposer, RenderPass, Pass, EffectPass, Effect, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
+import { EffectComposer, RenderPass, Pass, EffectPass, Effect, EffectAttribute, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
 
 // Blender is Z-up with the room's north at +Y; glTF/three is Y-up, so Blender (x, y, z) lands at (x, z, -y).
 export const b2t = (x, y, z) => new THREE.Vector3(x, z, -y);
@@ -12,14 +12,30 @@ export const TIERS = {
   ultra: { ratio: 2, post: true, bloom: true, smaa: true, grain: true },
 };
 
-// The mosaic that hides the toy head moves the image's UVs, so it needs its own pass ahead of the others.
-const MOSAIC_FS = `uniform vec2 centre, drift; uniform float radius, cells, aspect;
-  void mainUv(inout vec2 uv) {
-    vec2 d = (uv - centre) * vec2(aspect, 1.0);
-    if (radius > 0.0 && length(d / vec2(0.8, 1.0)) < radius) {
-      vec2 cell = vec2(cells * aspect, cells), off = drift / cell;
-      uv = (floor((uv + off) * cell) + 0.5) / cell - off;
-    }
+// The mosaic over the toy head (and its mirror image) blurs what is round each pixel, so it has its own pass ahead of the others.
+const MOSAIC_FS = `uniform vec2 centre, centre2, drift; uniform float radius, radius2, cells, aspect;
+  vec3 block(vec2 at, vec2 cell) {
+    vec3 s = vec3(0.0);
+    for (int a = 0; a < 4; a++) for (int b = 0; b < 4; b++) s += texture2D(inputBuffer, at + (vec2(float(a), float(b)) - 1.5) * cell * 0.36).rgb;
+    return s / 16.0;
+  }
+  vec3 veil(vec3 col, vec2 uv, vec2 c, float r) {
+    float k = 1.0 - smoothstep(0.62 * r, 1.2 * r, length((uv - c) * vec2(aspect / 0.85, 1.0)));
+    if (k <= 0.0) return col;
+    vec2 cell = vec2(r / cells / aspect, r / cells);
+    vec2 h = (uv - c) / cell + drift - 0.5, i = floor(h), f = fract(h);
+    vec2 at = c + (i + 0.5 - drift) * cell;
+    vec3 q00 = block(at, cell), q10 = block(at + vec2(cell.x, 0.0), cell), q01 = block(at + vec2(0.0, cell.y), cell), q11 = block(at + cell, cell);
+    vec3 soft = mix(mix(q00, q10, f.x), mix(q01, q11, f.x), f.y);
+    vec2 n = smoothstep(0.44, 0.56, f);
+    vec3 hard = mix(mix(q00, q10, n.x), mix(q01, q11, n.x), n.y);
+    return mix(col, mix(soft, hard, 0.22), k);
+  }
+  void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+    vec3 col = inputColor.rgb;
+    if (radius > 0.0) col = veil(col, uv, centre, radius);
+    if (radius2 > 0.0) col = veil(col, uv, centre2, radius2);
+    outputColor = vec4(col, inputColor.a);
   }`;
 
 export function makeEngine(canvas, coarse) {
@@ -33,7 +49,8 @@ export function makeEngine(canvas, coarse) {
   scene.background = new THREE.Color(0x0a0f1c);
   scene.fog = new THREE.FogExp2(0x0a0f1c, 0.05);
   const camera = new THREE.PerspectiveCamera(coarse ? 60 : 55, 1, 0.05, 120);
-  const mosaicU = { centre: new THREE.Uniform(new THREE.Vector2()), drift: new THREE.Uniform(new THREE.Vector2()), radius: new THREE.Uniform(0), cells: new THREE.Uniform(40), aspect: new THREE.Uniform(1) };
+  const mosaicU = { centre: new THREE.Uniform(new THREE.Vector2()), centre2: new THREE.Uniform(new THREE.Vector2()), drift: new THREE.Uniform(new THREE.Vector2()),
+    radius: new THREE.Uniform(0), radius2: new THREE.Uniform(0), cells: new THREE.Uniform(3.4), aspect: new THREE.Uniform(1) };
   const onTier = [], layers = [];
   let composer = null, tier = TIERS.medium, bg = null, bgOn = true;
 
@@ -83,7 +100,7 @@ export function makeEngine(canvas, coarse) {
     composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
     if (bg) composer.addPass(new BackgroundPass());
     else { composer.addPass(new RenderPass(scene, camera)); composer.addPass(new LayersPass()); }
-    composer.addPass(new EffectPass(camera, new Effect('Mosaic', MOSAIC_FS, { uniforms: new Map(Object.entries(mosaicU)) })));
+    composer.addPass(new EffectPass(camera, new Effect('Mosaic', MOSAIC_FS, { attributes: EffectAttribute.CONVOLUTION, uniforms: new Map(Object.entries(mosaicU)) })));
     const fx = [];
     if (tier.bloom) fx.push(new BloomEffect({ luminanceThreshold: 0.82, luminanceSmoothing: 0.25, intensity: 1.15, mipmapBlur: true, radius: 0.72 }));
     fx.push(new VignetteEffect({ offset: 0.32, darkness: 0.55 }));

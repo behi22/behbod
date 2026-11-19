@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LOCO, CROUCH, STRIDE, blendWeights, strideRate } from './pure/blend.js';
 import { HEADS as ORDER, HEAD_NAMES as NAMES, FITS, sanitizeLook, hoodUp, wornColours } from './pure/look.js';
+import { veilRadius, mirrorImage } from './pure/veil.js';
 
 const HEADS = { hood: ['V3_head_void'], tv: ['V3_head_tv'], visor: ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], emoji: ['V3_head_emoji'], mosaic: ['V3_head_toy'] };
 export const HEAD_NAMES = Object.fromEntries(Object.entries(NAMES).map(([k, v]) => [k, 'Head: ' + v]));
@@ -218,16 +219,42 @@ export function makeMe(scene, gltf, opts) {
     h.quaternion.copy(qParent.invert().multiply(lookQ.multiply(qWorld)));
   }
 
-  // The mosaic over the toy head is a post effect, so it only shows where post effects run.
+  // The mosaic over the toy head is a post effect, so it only shows where post effects run. A wall mirror gets a second
+  // one over the head it shows.
+  const VEIL_R = 0.2 * HEIGHT * HEAD_SIZE;
+  let mirrors = null;
+  function findMirrors() {
+    mirrors = [];
+    const q = new THREE.Quaternion(), arr = v => v.toArray();
+    for (const o of scene.children) {
+      const g = o.geometry?.parameters;
+      if (!o.isReflector || !g?.width) continue;
+      o.getWorldQuaternion(q);
+      const n = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      if (Math.abs(n.y) > 0.5) continue;
+      mirrors.push({ o, m: { p: arr(o.getWorldPosition(new THREE.Vector3())), n: arr(n), u: arr(new THREE.Vector3(1, 0, 0).applyQuaternion(q)), v: arr(new THREE.Vector3(0, 1, 0).applyQuaternion(q)), w: g.width, h: g.height } });
+    }
+  }
+  const onScreen = new THREE.Vector3(), imageAt = new THREE.Vector3();
+  function veilOver(p, camera, centre, radius) {
+    onScreen.copy(p).project(camera);
+    if (onScreen.z > 1) return;
+    centre.value.set(onScreen.x * 0.5 + 0.5, onScreen.y * 0.5 + 0.5);
+    radius.value = veilRadius(VEIL_R, camera.position.distanceTo(p), camera.fov);
+  }
   function tickMosaic(now, camera, u) {
-    if (look.head !== 'mosaic' || !root.visible) { u.radius.value = 0; return; }
-    const h = headNow().add(new THREE.Vector3(0, 0.04, 0)), dd = camera.position.distanceTo(h);
-    h.project(camera);
-    u.centre.value.set(h.x * 0.5 + 0.5, h.y * 0.5 + 0.5);
-    // A head of radius r at distance dd covers r / (dd tan(fov/2)) of the half screen height; UVs span the full height.
-    u.radius.value = 0.5 * 0.2 * HEIGHT * HEAD_SIZE / dd / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    u.radius.value = 0; u.radius2.value = 0;
+    if (look.head !== 'mosaic' || !root.visible) return;
+    const h = headNow().add(new THREE.Vector3(0, 0.04, 0));
+    veilOver(h, camera, u.centre, u.radius);
+    if (!mirrors) findMirrors();
+    const eye = camera.position.toArray(), head = h.toArray();
+    for (const { o, m } of mirrors) {
+      const img = o.visible && mirrorImage(head, eye, m, VEIL_R);
+      if (img) { veilOver(imageAt.fromArray(img), camera, u.centre2, u.radius2); break; }
+    }
     u.aspect.value = camera.aspect;
-    u.cells.value = Math.max(30, Math.min(110, 26 * dd));
+    u.cells.value = 3.4;
     u.drift.value.set(Math.sin(now / 900) * 0.5, Math.cos(now / 1300) * 0.5);
   }
 
