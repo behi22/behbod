@@ -282,13 +282,6 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   steamGeo.setAttribute('position', new THREE.BufferAttribute(steamPos, 3));
   if (tea) scene.add(new THREE.Points(steamGeo, new THREE.PointsMaterial({ size: 0.035, color: 0x9aa4b4, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending })));
 
-  // Dust motes drifting slowly through the light in the double-height part of the loft.
-  const MOTES = 420, motePos = new Float32Array(MOTES * 3), moteSeed = Float32Array.from({ length: MOTES }, (_, i) => (i * 0.618) % 1);
-  for (let i = 0; i < MOTES; i++) motePos.set([1 + ((i * 7.31) % 14), 0.4 + ((i * 3.17) % 5), -(4 + ((i * 5.13) % 7.5))], i * 3);
-  const moteGeo = new THREE.BufferGeometry();
-  moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
-  scene.add(new THREE.Points(moteGeo, new THREE.PointsMaterial({ size: 0.014, color: 0xffe6c0, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, userData: { lamp: 'room' } })));
-
   const clockFmt = {};
   let clockAt = -1;
   // The hands only need the time once a second; asking for it every frame was a steady cost.
@@ -363,13 +356,6 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       const solid = d.k < 0.6;
       if (d.solid !== solid) { d.solid = solid; onDoor?.(d.collider, solid); }
     }
-    for (let i = 0; i < MOTES; i++) {
-      const k = i * 3, sd = moteSeed[i];
-      motePos[k] += Math.sin(t * 0.13 + sd * 40) * dt * 0.02;
-      motePos[k + 1] += (Math.sin(t * 0.09 + sd * 17) * 0.5 - 0.15) * dt * 0.03;
-      if (motePos[k + 1] < 0.3) motePos[k + 1] = 5.4;
-    }
-    moteGeo.attributes.position.needsUpdate = true;
     tickClocks(t);
   }
 
