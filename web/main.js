@@ -28,6 +28,7 @@ import { makePenalties } from './src/penalties.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
+import { makeHello } from './src/hello.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
@@ -180,6 +181,7 @@ const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t }
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
 const shah = makeShahnameh(scene, meta);
+const hello = makeHello(scene, { day: () => out3d?.light.dayK ?? 0 }); window.__hello = hello;
 world.retireFighters();
 const tvMatch = meta.screens.tv ? makeTvMatch({ texture: screens.textures.tv, at: b2t(...meta.screens.tv.center).toArray(), normal: [1, 0, 0], fps: () => (tierName === 'low' ? 5 : 10) }) : null;
 // The range is fetched behind the scenes, with no click: as soon as I head for the library, where its door is, or
@@ -287,6 +289,7 @@ let yaw = meta.spawn?.yaw ?? 0, pitch = meta.spawn?.pitch ?? 0.3, dist = coarse 
 let route = null;
 const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
+things.items.push(...hello.spots);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
@@ -471,6 +474,7 @@ function act(it) {
   if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
   if (/^video\d$/.test(it.id)) return playVideo(+it.id.slice(5));
   if (it.id === 'rg_bench') return enterRange(true);
+  { const said = hello.poke(it.id); if (said) return toast(said); }
   { const read = shah.read(it.id); if (read) return toast(read); }
   { const said = range.poke(it.id); if (said) return toast(said); }
   toast(SAY[it.id] || it.label);
@@ -656,6 +660,7 @@ function tapMove(e) {
   aim(e);
   if (aria?.hit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(aria.say()); }); return; }
   if (shah.noteHit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(shah.noteSay); }); return; }
+  { const it = hello.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
   // Clicking a resident walks me over to them and says hello on arrival.
   const who = creatures.hit(ray);
@@ -860,6 +865,7 @@ function step() {
     scene.fog.color.lerpColors(FOG_NIGHT, FOG_DAY, k);
     world.daylight(k);
   }
+  hello.tick();
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
   ambience(dt);
