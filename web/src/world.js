@@ -3,7 +3,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
 import { onSwitch } from './pure/lamps.js';
-import { BANDS, settle, follow, kicked, fade, pulse, lively } from './pure/leds.js';
+import { BANDS, GOAL_TIME, settle, follow, kicked, fade, pulse, lively, goalFlash } from './pure/leds.js';
 import { stripViz } from './stripviz.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
@@ -154,7 +154,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
-  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, coolantName = 'teal';
+  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, goalAt = -1, coolantName = 'teal';
   function paintRGB(a, b) {
     for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
     for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
@@ -168,7 +168,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   applyScene();
   // `mk` eases a record in and out of the strips and lands on 0 with them exactly as they were.
-  let records = null, through = () => 0, mk = 0, avg = 0.4, kick = 0, viz = null;
+  let records = null, through = () => 0, mk = 0, avg = 0.4, kick = 0, viz = null, still = false;
   const A = new THREE.Color(), B = new THREE.Color(), heard = new Float32Array(BANDS), usual = new Float32Array(BANDS).fill(-1);
   function sceneColours(t) {
     if (sceneName === 'party') { const h = (t * 0.15) % 1; A.setHSL(h, 0.9, 0.5); B.setHSL((h + 0.33) % 1, 0.9, 0.5); }
@@ -190,7 +190,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     sceneColours(t);
     if (sceneName === 'visualizer' && viz) {
       lively(records.spectrum(heard), usual, viz.uBands.value, dt);
-      if (!deployUntil) viz.uViz.value = mk * Math.min(1, g);
+      if (goalAt < 0 && !deployUntil) viz.uViz.value = mk * Math.min(1, g);
     } else {
       const m = pulse(level, avg, kick, mk * Math.min(1, g));
       A.multiplyScalar(m); B.multiplyScalar(m);
@@ -340,6 +340,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 0.3 + 0.7 * ariaK; }
     if (aria.tip) { const k = (1.2 + 0.8 * ariaK) + Math.sin(t * (1.5 + 2 * ariaK)) * (0.5 + 0.5 * ariaK); aria.tip.material.color.setRGB(1.0 * k, 0.62 * k, 0.3 * k); }
     tickMusic(dt, t);
+    if (goalAt >= 0) {
+      if (t - goalAt < GOAL_TIME) { const [a, b] = goalFlash(t - goalAt, still); paintRGB(A.setRGB(...a), B.setRGB(...b)); }
+      else { goalAt = -1; applyScene(); }
+    }
     if (deployUntil) {
       const left = deployUntil - t;
       if (left > 0) {
@@ -416,9 +420,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       return true;
     },
     deploy(t) { deployUntil = t + 3; },
+    goal(t) { goalAt = t; still = matchMedia('(prefers-reduced-motion: reduce)').matches; },
     // gate: how much of the records comes through, 0 with the sound off or faded for the piano.
     listen(music, gate) { records = music; through = gate; music.onBeat(b => { kick = kicked(kick, b.strength); }); },
-    get leds() { return { music: mk, viz: viz ? viz.uViz.value : 0, bands: viz ? Array.from(viz.uBands.value) : null, deploy: deployUntil > 0 }; },
+    get leds() { return { music: mk, viz: viz ? viz.uViz.value : 0, bands: viz ? Array.from(viz.uBands.value) : null, goal: goalAt >= 0, deploy: deployUntil > 0 }; },
     fan() { fanOn = !fanOn; return fanOn; },
     setRecord(on) { spinning = on; },
     // The fleet (src/fleet.js) replaces the two baked ships.

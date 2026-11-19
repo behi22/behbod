@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BANDS, settle, follow, kicked, fade, pulse, toBands, lively } from '../../web/src/pure/leds.js';
+import { BANDS, GOAL_TIME, settle, follow, kicked, fade, pulse, toBands, lively, goalFlash } from '../../web/src/pure/leds.js';
 
 test('with the music not counting, the strips are exactly the scene: 1, whatever the level or the beat', () => {
   for (const level of [0, 0.2, 0.7, 1]) for (const kick of [0, 0.6, 1]) assert.equal(pulse(level, 0.4, kick, 0), 1);
@@ -80,3 +80,18 @@ test('each band moves against its own usual level: steady sits at 0.4, a hit lig
   for (const v of [0, 0.3, 1]) for (let i = 0; i < 50; i++) { lively(Float32Array.from([v, 1 - v, v, 0.5]), avg, out, 0.05); assert.ok(out.every(x => x >= 0 && x <= 1)); }
 });
 
+test('a goal flashes white and gold, the two strip colours out of step, under three flashes a second', () => {
+  const [a, b] = goalFlash(0), [c, d] = goalFlash(0.21);
+  assert.notDeepEqual(a, b);
+  assert.deepEqual(a, d);
+  assert.deepEqual(b, c);
+  assert.ok([a, b].every(x => x.every(v => v >= 0 && v <= 1)));
+  let changes = 0;
+  for (let ms = 1; ms <= 1000; ms++) if (goalFlash(ms / 1000)[0] !== goalFlash((ms - 1) / 1000)[0]) changes++;
+  assert.ok(changes <= 6 && changes >= 2, `${changes} changes in a second`);
+  assert.ok(GOAL_TIME > 1 && GOAL_TIME < 4);
+});
+
+test('asked for less motion, a goal holds white and gold still', () => {
+  for (let s = 0; s < GOAL_TIME; s += 0.01) assert.deepEqual(goalFlash(s, true), goalFlash(0, true));
+});

@@ -207,7 +207,7 @@ function enterRange(bench = false) {
   me.root.visible = false; $('prompt').classList.remove('on');
 }
 // Penalties at the mini goal, BH-22 in goal.
-const pens = makePenalties(scene, meta, { creatures, sfx: audio.sfx, toast, onGoal: () => earn('goal'), onExit: () => { mode = 'walk'; me.root.visible = true; } });
+const pens = makePenalties(scene, meta, { creatures, sfx: audio.sfx, toast, onGoal: () => { earn('goal'); world.goal(performance.now() / 1000); }, onExit: () => { mode = 'walk'; me.root.visible = true; } });
 function enterPens() {
   if (mode !== 'walk' || !pens) return;
   wardrobe.hide();
@@ -443,7 +443,7 @@ function playGame(name, actions) {
     actions,
     onEvent: (type, d) => {
       if (type === 'win' && GAME_WIN[d.game]) earn(GAME_WIN[d.game]);
-      if (type === 'goal' && d.by === 'you') earn('goal');
+      if (type === 'goal' && d.by === 'you') { earn('goal'); world.goal(performance.now() / 1000); audio.sfx.goalHorn(); }
     },
   });
 }

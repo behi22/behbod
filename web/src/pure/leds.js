@@ -1,5 +1,5 @@
-// The studio's LEDs with a record playing.
-export const BANDS = 16;
+// The studio's LEDs with a record playing, and their flash for a goal.
+export const BANDS = 16, GOAL_TIME = 2.2;
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -44,3 +44,7 @@ export function lively(bands, avg, out, dt) {
   }
   return out;
 }
+
+// Under three flashes a second, the safe limit for flashing light; held still for anyone who asks for less motion.
+const WHITE = [1, 1, 1], GOLD = [1, 0.72, 0.18];
+export const goalFlash = (s, still = false) => (!still && Math.floor(s * 5) % 2 ? [GOLD, WHITE] : [WHITE, GOLD]);
