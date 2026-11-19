@@ -1,5 +1,4 @@
-// "hello, world" in the house: the terminal answers it, and a cross-stitch hoop in the studio says it. No browser APIs.
-// Blender axes (x east, y north, z up), metres.
+// "hello, world" in the terminal and on the studio wall. Blender axes (x east, y north, z up), metres.
 
 // Where it can be found; a later achievement asks for both.
 export const FINDS = ['hoop', 'terminal'];
@@ -73,8 +72,7 @@ const GLYPHS = {
 export const HOOP_LINES = ['hello,', 'world'];
 const ROWS = 8, GAP = 2, CURSOR = { w: 3, h: 6 };
 
-// Every stitch on the cloth, centred on (0, 0) with v going up: { u, v, ink } where ink is 0 for the first line, 1 for
-// the second and 2 for the cursor after it. Also the block's size in stitches.
+// ink: 0 the first line, 1 the second, 2 the cursor after it; u and v are centred on the cloth, v going up.
 export function stitches() {
   const out = [];
   const width = s => [...s].reduce((w, ch, i) => w + GLYPHS[ch][0].length + (i ? 1 : 0), 0);
