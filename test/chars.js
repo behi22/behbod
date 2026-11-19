@@ -15,7 +15,10 @@ async function open(b, opts, q) {
   const ctx = await b.newContext(opts), p = await ctx.newPage(), errs = [];
   p.on('pageerror', e => errs.push(e.message));
   p.on('response', r => { if (r.status() >= 400 && !OUTSIDE.test(r.url())) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`); });
-  p.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text()) && !OUTSIDE.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200)); });
+  p.on('console', m => {
+    if (m.type() === 'error' && !/favicon/.test(m.text()) && !OUTSIDE.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200));
+    if (m.type() === 'warning' && /WebGLProgram|WebGLShader/.test(m.text())) errs.push(m.text().slice(0, 200));
+  });
   await p.goto(`${BASE}/?auto&mosaic&q=${q}`);
   await p.waitForFunction(() => window.__loft && __loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
   // The mosaic's settings are handed to the character each frame; keep a hold of them to read.

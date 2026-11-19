@@ -16,7 +16,8 @@ export const TIERS = {
 const MOSAIC_FS = `uniform vec2 centre, centre2, drift; uniform float radius, radius2, cells, aspect;
   vec3 block(vec2 at, vec2 cell) {
     vec3 s = vec3(0.0);
-    for (int a = 0; a < 4; a++) for (int b = 0; b < 4; b++) s += texture2D(inputBuffer, at + (vec2(float(a), float(b)) - 1.5) * cell * 0.36).rgb;
+    // A fixed level: these reads sit behind a branch only some pixels take, where the implicit level is undefined.
+    for (int a = 0; a < 4; a++) for (int b = 0; b < 4; b++) s += textureLod(inputBuffer, at + (vec2(float(a), float(b)) - 1.5) * cell * 0.36, 0.0).rgb;
     return s / 16.0;
   }
   vec3 veil(vec3 col, vec2 uv, vec2 c, float r) {
