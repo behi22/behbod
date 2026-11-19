@@ -1,11 +1,12 @@
 // The loft's mini games as full-screen overlays. Each game loads only when it is first opened.
 import { injectStyles, h, button } from './ui.js';
+import { kitRow } from './kit.js';
 
 const GAMES = {
   // The arcade cabinet's own menu: its two games side by side.
-  arcade: { title: 'ARCADE', menu: [['skills', 'Skills Shooter', 'The Claude game. Shoot the skills, dodge the bugs, catch Claude.'], ['striker', 'Striker 22', 'Five penalties to take, five to save, then sudden death.']] },
+  arcade: { title: 'ARCADE', menu: [['skills', 'Skills Shooter', 'The Claude game. Shoot the skills, dodge the bugs, catch Claude.'], ['striker', 'Striker 22', 'Five penalties to take, five to save, then sudden death.', 'kit']] },
   // The TV's menu: join the live match in either role, or put my videos or my film on instead.
-  tv: { title: 'MATCH NIGHT', menu: [['match-striker', 'Join as striker', 'Ninety seconds up front for BEHI FC. Score what you can.'], ['match-keeper', 'Join as keeper', 'Ninety seconds in goal. The bots are coming.'], ['@videos', 'Watch my videos', 'Switch the TV over to my channel.'], ['@film', 'Watch my film', 'Two minutes: how I got here, from day one.']] },
+  tv: { title: 'MATCH NIGHT', menu: [['match-striker', 'Join as striker', 'Ninety seconds up front for BEHI FC. Score what you can.', 'kit'], ['match-keeper', 'Join as keeper', 'Ninety seconds in goal. The bots are coming.', 'kit'], ['@videos', 'Watch my videos', 'Switch the TV over to my channel.'], ['@film', 'Watch my film', 'Two minutes: how I got here, from day one.']] },
   'match-striker': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'striker') })) },
   'match-keeper': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'keeper') })) },
   skills: { title: 'SKILLS SHOOTER', load: () => import('./skills.js') },
@@ -77,8 +78,8 @@ export function openGame(name, { onClose, onEvent, actions = {} } = {}) {
   requestAnimationFrame(() => root.classList.add('g-on'));
   if (def.menu) {
     // A menu hands over to the game picked: that game opens in place of the menu, with the same hooks.
-    body.replaceChildren(h('div', { class: 'g-menu' }, def.menu.map(([id, title, line]) =>
-      h('div', { class: 'g-card g-pick' }, h('h2', { text: title }), h('p', { text: line }),
+    body.replaceChildren(h('div', { class: 'g-menu' }, def.menu.map(([id, title, line, kit]) =>
+      h('div', { class: 'g-card g-pick' }, h('h2', { text: title }), h('p', { text: line }), kit ? kitRow() : null,
         h('div', { class: 'g-row' }, button(id.startsWith('@') ? 'Go' : 'Play', () => {
           // An entry starting with @ is not a game: it closes the menu and hands back to the room.
           if (id.startsWith('@')) { handle.close(); actions[id.slice(1)]?.(); } else openGame(id, { onClose, onEvent, actions });

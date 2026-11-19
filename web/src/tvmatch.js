@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { newMatch, stepMatch } from './pure/match.js';
 import { drawMatch, makeCamera, follow } from './games/matchdraw.js';
+import { matchKits } from './games/pure/kits.js';
+import { kitId } from './games/kit.js';
 
 // The live match on the TV: a five-a-side that keeps playing whether or not anyone watches (a 90 minute match in ten
 // real ones), painted onto the TV only when it is near, faced and on screen, since every repaint is an upload.
@@ -31,7 +33,7 @@ export function makeTvMatch({ texture, at, normal, fps = () => 10 }) {
       paint += dt;
       if (paint < 1 / fps()) return;
       paint = 0;
-      drawMatch(g, c.width, c.height, m, cam, { minute: minute() });
+      drawMatch(g, c.width, c.height, m, cam, { minute: minute(), kits: matchKits(kitId()) });
       texture.needsUpdate = true;
     },
   };
