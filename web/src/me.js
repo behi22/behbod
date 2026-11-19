@@ -3,7 +3,7 @@ import { LOCO, CROUCH, STRIDE, blendWeights, strideRate } from './pure/blend.js'
 import { HEADS as ORDER, HEAD_NAMES as NAMES, FITS, sanitizeLook, hoodUp, wornColours } from './pure/look.js';
 import { veilRadius, mirrorImage } from './pure/veil.js';
 
-const HEADS = { hood: ['V3_head_void'], tv: ['V3_head_tv'], visor: ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], emoji: ['V3_head_emoji'], mosaic: ['V3_head_toy'] };
+const HEADS = { hood: ['V3_head_void'], tv: ['V3_head_tv', 'V3_head_tv_neck'], visor: ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], emoji: ['V3_head_emoji'], mosaic: ['V3_head_toy'] };
 export const HEAD_NAMES = Object.fromEntries(Object.entries(NAMES).map(([k, v]) => [k, 'Head: ' + v]));
 // His picked proportions: 90% height overall and the head at 90%.
 const HEIGHT = 0.9, HEAD_SIZE = 0.9;
@@ -86,7 +86,7 @@ export function makeMe(scene, gltf, opts) {
     if (tv) show('V3_head_tv_antennas', !up);
     // The hood head with its hood down is a whole black head with the glowing eyes, not just the face inside the hood.
     if (look.head === 'hood') { show('V3_head_void', up); show('V3_head_void_full', !up); }
-    show('V3_socket', !(look.head === 'hood' && !up));
+    show('V3_socket', !(look.head === 'hood' && !up) && !tv);
     for (const [k, sfx] of Object.entries(FITS.hoodie)) { show('V3_hoodie' + sfx, look.fit.hoodie === k); show('V3_pocket' + sfx, look.fit.hoodie === k); }
     for (const [k, sfx] of Object.entries(FITS.pants)) for (const n of ['V3_pants', 'V3_cargo_l', 'V3_cargo_r', 'V3_flap_l', 'V3_flap_r']) show(n + sfx, look.fit.pants === k);
     for (const a of look.acc) show('V3_acc_' + a, true);
