@@ -134,8 +134,20 @@ export function makeEngine(canvas, coarse) {
     const hidden = [];
     scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
     try {
-      if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera);
-      if (bg) { if (renderer.compileAsync) await renderer.compileAsync(bg.scene, bg.camera); else renderer.compile(bg.scene, bg.camera); }
+      // Each shader is built both ways three draws: straight to the screen (the low tier) and into a picture (every
+      // other tier and the reflections), so a change of tier or a first look somewhere new has nothing left to build.
+      // three picks the way by what is being drawn into when it is asked, so a picture is put in place to ask.
+      const picture = new THREE.WebGLRenderTarget(1, 1);
+      for (const [s, cam] of [[scene, camera], bg && [bg.scene, bg.camera]].filter(Boolean)) {
+        for (const target of [null, picture]) {
+          const was = renderer.getRenderTarget();
+          let job = null;
+          try { renderer.setRenderTarget(target); if (renderer.compileAsync) job = renderer.compileAsync(s, cam); else renderer.compile(s, cam); }
+          finally { renderer.setRenderTarget(was); }
+          await job;
+        }
+      }
+      picture.dispose();
       // Pictures go to the graphics card the first time they are drawn: a 4096 px lightmap is a long stall, so send
       // every one now instead of when its zone first comes into view.
       const textures = new Set();
