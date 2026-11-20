@@ -1,5 +1,5 @@
 // The 3D printer in a real Chrome: its screen, its prints, its sound, typing to it, at a computer and on phones.
-//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth,fail]
+//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth,fail,keys]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -335,6 +335,28 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       const again = await seen();
       check('then Print works again', !again.failed && again.k === 1 && /^Done: a yellow rubber duck/.test(again.status) && (await state(p)).built?.tris > 1000, JSON.stringify(again));
       check('the failure: no error but the forced one', errs.filter(e => !/forced by the test/.test(e)).length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- the keyboard alone: Tab stays in the screen, Esc puts focus back ----------
+    if (want('keys')) {
+      const { ctx, p, errs } = await open(b, DESK, { save: null });
+      await standAt(p, SPOT); await facePrinter(p);
+      for (let i = 0; i < 12 && (await p.evaluate(() => document.activeElement?.id)) !== 'snd'; i++) await p.keyboard.press('Tab');
+      const before = await p.evaluate(() => document.activeElement?.id);
+      await p.keyboard.press('KeyE');
+      await p.waitForSelector('.pn-printer .ps-grid', { timeout: 5000 }).catch(() => {});
+      await p.waitForTimeout(1500);
+      const where = () => p.evaluate(() => { const a = document.activeElement; return { inside: !!a?.closest('.pn-printer'), what: a ? a.tagName + (a.textContent ? ':' + a.textContent.slice(0, 18) : '') + (a.ariaLabel ? ':' + a.ariaLabel : '') : null }; });
+      const walk = async key => { const seen = []; for (let i = 0; i < 60; i++) { await p.keyboard.press(key); seen.push(await where()); } return seen; };
+      const fwd = await walk('Tab'), back = await walk('Shift+Tab');
+      const out = [...fwd, ...back].filter(s => !s.inside);
+      const kinds = new Set(fwd.map(s => s.what));
+      check('Tab and Shift+Tab go round the screen\'s own controls and never leave it', before === 'snd' && out.length === 0 && kinds.size > 40, `started on ${before}; left it ${out.length} times ${JSON.stringify(out.slice(0, 3))}; ${kinds.size} controls visited`);
+      await p.keyboard.press('Escape');
+      await p.waitForTimeout(800);
+      const shut = await p.evaluate(() => ({ mode: __loft.mode, panel: !!document.querySelector('.pn'), focus: document.activeElement?.id }));
+      check('Esc closes it and focus goes back to where it was', shut.mode === 'walk' && !shut.panel && shut.focus === 'snd', JSON.stringify(shut));
+      check('the keys: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
     // ---------- smooth on a slow phone: no long frames when the screen opens or a model is built ----------

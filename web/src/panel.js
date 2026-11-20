@@ -20,6 +20,7 @@ const CSS = `
 .pn-box .pn-said { color: #3ee6c4; margin-bottom: 0; }
 `;
 const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; };
+const FOCUSABLE = 'button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])';
 
 export function makePanels(store) {
   if (!document.getElementById('pn-css')) { const s = document.createElement('style'); s.id = 'pn-css'; s.textContent = CSS + PRINTER_CSS; document.head.append(s); }
@@ -28,7 +29,7 @@ export function makePanels(store) {
   addEventListener('resize', () => { sized++; });
   function show(title, build, variant = '', onClose = null) {
     close();
-    const box = el('div', { className: 'pn-box' });
+    const back = document.activeElement, box = el('div', { className: 'pn-box' });
     const shut = el('button', { type: 'button', textContent: 'Close' });
     shut.addEventListener('click', close);
     const root = el('div', { className: variant ? `pn pn-${variant}` : 'pn' }, box);
@@ -36,11 +37,21 @@ export function makePanels(store) {
     root.addEventListener('pointerdown', e => { if (e.target === root) close(); });
     const render = () => { box.replaceChildren(el('h2', {}, title, shut), ...build(render)); };
     render();
-    // Keys typed into the panel stay in it; Esc closes it.
-    const onKey = e => { e.stopPropagation(); if (e.key === 'Escape') close(); };
+    // Keys typed into the panel stay in it, Tab and Shift+Tab go round its own controls only, and Esc closes it.
+    const onKey = e => {
+      e.stopPropagation();
+      if (e.key === 'Escape') close();
+      else if (e.key === 'Tab') { e.preventDefault(); cycle(box, e.shiftKey ? -1 : 1); }
+    };
     addEventListener('keydown', onKey, true);
     document.body.append(root);
-    open = { root, box, onKey, onClose, variant };
+    open = { root, box, onKey, onClose, variant, back };
+  }
+  function cycle(box, dir) {
+    const all = [...box.querySelectorAll(FOCUSABLE)].filter(n => !n.disabled && n.getClientRects().length);
+    if (!all.length) return;
+    const i = all.indexOf(document.activeElement);
+    all[i < 0 ? (dir > 0 ? 0 : all.length - 1) : (i + dir + all.length) % all.length].focus();
   }
   function close() {
     if (!open) return;
@@ -49,6 +60,7 @@ export function makePanels(store) {
     was.root.remove();
     open = null;
     was.onClose?.();
+    if (was.back?.isConnected && was.back !== document.body) was.back.focus({ preventScroll: true });
   }
   const load = key => { try { const v = JSON.parse(store.get(key) || '[]'); return Array.isArray(v) ? v.filter(x => x && typeof x.text === 'string').slice(-30) : []; } catch (e) { return []; } };
   const save = (key, list) => store.set(key, JSON.stringify(list.slice(-30)));
