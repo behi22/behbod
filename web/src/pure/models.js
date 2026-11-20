@@ -211,9 +211,11 @@ function dino() {
   const head = blend(0.6, box([1.9, 1.15, 1.2], [4.3, 9.7, 0], 0.8), box([1.6, 0.4, 0.95], [4.6, 8.5, 0], 0.3));
   const legs = mirrorZ(blend(0.5, ellipsoid([1.4, 1.9, 0.9], [-0.6, 4.0, 1.3]), rod([-0.2, 3.0, 1.4], [0.3, 0.8, 1.4], 0.65, 0.5), ellipsoid([1.3, 0.4, 0.7], [0.8, 0.4, 1.4])));
   const arms = mirrorZ(rod([2.6, 6.8, 1.0], [3.5, 6.0, 1.3], 0.32, 0.25));
+  // Each spike stands where the back really is, so none is lost inside the body.
+  const backAt = x => { let y = 12; while (y > 0 && body(x, y, 0) > 0) y -= 0.05; return y; };
   const spikes = union(...Array.from({ length: 7 }, (_, i) => {
-    const t = i / 6, px = 2.6 - t * 7.4, py = 8.4 - t * 3.9 - 0.9 * sin(t * PI) + 0.4;
-    return rod([px, py - 0.6, 0], [px - 0.2, py + 0.55 - t * 0.3, 0], 0.5 - t * 0.2, 0.08);
+    const t = i / 6, px = 1.9 - t * 6.8, py = backAt(px);
+    return rod([px, py - 0.5, 0], [px - 0.3, py + 1.25 - t * 0.55, 0], 0.55 - t * 0.2, 0.08);
   }));
   let f = blend(0.6, body, head, legs, arms);
   f = blend(0.2, f, spikes);

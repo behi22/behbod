@@ -171,6 +171,19 @@ test('models seen side on have a leg, an arm and a wing on each side, not two on
   }
 });
 
+test("the dinosaur's spikes stand up along its back, not inside it", () => {
+  const { f } = MODEL.dino.make({ sides: 8, depth: 0 }), step = 0.05;
+  const top = x => { for (let y = 13; y > 0; y -= 0.02) if (f(x, y, 0) < 0) return y; return 0; };
+  const tops = [];
+  for (let x = -5.6; x <= 2.2; x += step) tops.push(top(x));
+  let peaks = 0;
+  for (let i = 6; i < tops.length - 6; i++) {
+    const near = tops.slice(i - 6, i + 7);
+    if (tops[i] === Math.max(...near) && tops[i] - Math.min(tops[i - 6], tops[i + 6]) > 0.25) peaks++;
+  }
+  assert.ok(peaks >= 5, `${peaks} spikes stand out of the back`);
+});
+
 test('the settings change the shape: taller, wider, twisted, spikier, bigger only as far as the bed allows', () => {
   const base = build({ model: 'duck' });
   assert.ok(build({ model: 'duck', height: 1.25 }).height > base.height * 1.2);
