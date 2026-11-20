@@ -1,52 +1,18 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { material, OUT } from './glsl.js';
-import { WATER_Y, EYE, landHeight, landKind, shoreS, inPark, rng, wx, wz } from '../pure/outside.js';
+import { WATER_Y, EYE, landHeight, shoreS, inPark, rng, wx, wz } from '../pure/outside.js';
+import { terrainData, SIL_N } from '../pure/terrain.js';
 
-const SIL_N = 1024;
-const RES = { low: [380, 100], medium: [720, 160], high: [960, 200] };
-
-// A polar grid around the eye, fine near and coarse far, so every ridge gets about the same pixels.
-export function makeTerrain(U, q) {
-  const [cols, rows] = RES[q] || RES.medium, a0 = -128 * Math.PI / 180, a1 = 128 * Math.PI / 180, r0 = 16, r1 = 28000;
-  const n = cols * rows, pos = new Float32Array(n * 3), kind = new Float32Array(n * 4);
-  const ratio = Math.pow(r1 / r0, 1 / (rows - 1));
-  const colEl = new Float32Array(cols).fill(-0.05), colDist = new Float32Array(cols).fill(30000);
-  const mirrorY = WATER_Y - (EYE[1] - WATER_Y);
-  for (let c = 0; c < cols; c++) {
-    const a = a0 + (a1 - a0) * c / (cols - 1), sa = Math.sin(a), ca = Math.cos(a);
-    for (let r = 0, rad = r0; r < rows; r++, rad *= ratio) {
-      const dx = sa * rad, dn = ca * rad, h = landHeight(dx, dn), i = c * rows + r;
-      const y = WATER_Y + (h < -2 ? -14 : h);
-      pos[i * 3] = wx(dx); pos[i * 3 + 1] = y; pos[i * 3 + 2] = wz(dn);
-      kind.set(landKind(dx, dn, h), i * 4);
-      if (rad > 90) {
-        const el = Math.atan2(y - mirrorY, rad);
-        if (el > colEl[c]) { colEl[c] = el; colDist[c] = rad; }
-      }
-    }
-  }
-  // Sample the columns per texel, so no texel is left empty where the two grids beat against each other.
-  const sil = { el: new Float32Array(SIL_N).fill(-0.05), dist: new Float32Array(SIL_N).fill(30000), tower: new Float32Array(SIL_N) };
-  for (let b = 0; b < SIL_N; b++) {
-    const fc = (((b + 0.5) / SIL_N - 0.5) * Math.PI * 2 - a0) / (a1 - a0) * (cols - 1);
-    if (fc < 0 || fc > cols - 1) continue;
-    const c0 = Math.floor(fc), c1 = Math.min(cols - 1, c0 + 1), c = colEl[c0] > colEl[c1] ? c0 : c1;
-    sil.el[b] = colEl[c]; sil.dist[b] = colDist[c];
-  }
-  const index = [];
-  for (let c = 0; c < cols - 1; c++) {
-    for (let r = 0; r < rows - 1; r++) {
-      const i = c * rows + r, j = i + rows;
-      index.push(i, j, i + 1, j, j + 1, i + 1);
-    }
-  }
+// The land's numbers come from pure/terrain.js, the same whether worked out here or in a worker (see terrainworker.js).
+export function makeTerrain(U, q, data = terrainData(q)) {
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('aKind', new THREE.BufferAttribute(kind, 4));
-  g.setIndex(index);
-  g.computeVertexNormals();
-  g.computeBoundingSphere();
+  g.setAttribute('position', new THREE.BufferAttribute(data.pos, 3));
+  g.setAttribute('aKind', new THREE.BufferAttribute(data.kind, 4));
+  g.setIndex(new THREE.BufferAttribute(data.index, 1));
+  g.setAttribute('normal', new THREE.BufferAttribute(data.normal, 3));
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(...data.sphere.center), data.sphere.radius);
+  const sil = data.sil;
   const mesh = new THREE.Mesh(g, material(U, {
     low: q === 'low',
     vertex: `attribute vec4 aKind; varying vec3 vWp, vN; varying vec4 vKind;

@@ -105,7 +105,7 @@ function findPath(from, to) {
 // The real 3D world outside the glass; if it cannot start, the painted backdrop stays.
 let out3d = null;
 try {
-  out3d = makeOutside3d({ now: () => new Date(), weather: () => outside.weather, holiday: () => screens.holiday, quality: () => ({ auto: 'medium', ultra: 'high' }[tierName] || tierName) });
+  out3d = makeOutside3d({ now: () => new Date(), weather: () => outside.weather, holiday: () => screens.holiday, quality: () => ({ auto: 'medium', ultra: 'high' }[tierName] || tierName), renderer });
   engine.setBackground(out3d);
   scene.traverse(o => { if (o.name === 'backdrop') o.visible = false; });
   screens.stopBackdrop();
