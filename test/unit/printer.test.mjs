@@ -91,6 +91,17 @@ test('twisty twists the print on the bed, as it did before the models', () => {
   assert.equal(parsePrint('rocket twisty').p.twist, 0.5);
 });
 
+test('a Persian half-space and an emoji joiner stay in the words; other hidden marks go', () => {
+  const half = 'می‌خواهم', family = '👨‍👩‍👧';
+  assert.equal(cleanText(half), half);
+  assert.equal(parsePrint(half).p.text, half);
+  assert.equal(parsePrint(`"${half}"`).p.text, half);
+  assert.equal(cleanText(family), family);
+  assert.equal(cleanText('‌ab‍'), 'ab');
+  assert.equal(cleanText('a‮b​'), 'ab');
+  for (const t of ['‌', ' ‍ ', '"‌"']) assert.equal(parsePrint(t), null, JSON.stringify(t));
+});
+
 test('everything stays inside what the printer can make, and old saves come back', () => {
   let p = parsePrint('rocket').p;
   for (let i = 0; i < 30; i++) p = parsePrint('taller wider bigger twist spikier more fins curvy', p).p;
