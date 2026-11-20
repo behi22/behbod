@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer, RenderPass, Pass, EffectPass, Effect, EffectAttribute, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
 import { TIERS, TIER_ORDER, effectsOf } from './pure/tier.js';
 import { makeRebuilder, STALE } from './pure/rebuild.js';
-import { inSlices } from './pure/slices.js';
+import { inSlices, breathe as breath } from './pure/slices.js';
 import { useAhead } from './useahead.js';
 
 export { TIERS };
@@ -115,7 +115,6 @@ export function makeEngine(canvas, coarse) {
   // Every shader of a chain built off the frame, a slice at a time, both ways it may draw (into a picture, and to the
   // screen for its last pass), and every picture it draws into or reads made on the graphics card, so its first frame
   // has nothing left to build.
-  const breath = () => new Promise(done => setTimeout(done, 30));
   async function readyChain(c, stale) {
     if (!c || !renderer.compileAsync) return;
     const mats = new Set(), targets = new Set(), pictures = new Set(), seen = new Set();

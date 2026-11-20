@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lit } from './lit.js';
-import { breathe } from './room.js';
+import { breathe } from '../pure/slices.js';
 import { makeHand, makeHandMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
 import { blend, qFrame, relaxed } from '../pure/hands.js';

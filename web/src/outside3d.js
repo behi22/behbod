@@ -11,7 +11,7 @@ import { makeVessels, makeGulls, vesselLights, vesselStreaks } from './outside/l
 import { makeRain, makeSnow, makeFireworks } from './outside/weather.js';
 import { terrainData } from './pure/terrain.js';
 import { makeRebuilder, STALE } from './pure/rebuild.js';
-import { inSlices } from './pure/slices.js';
+import { inSlices, breathe as breath } from './pure/slices.js';
 import { useAhead } from './useahead.js';
 
 const DEG = Math.PI / 180;
@@ -100,7 +100,6 @@ export function makeOutside3d(opts = {}) {
   // A change of quality builds the new world in the background while the old one stays up, then swaps it in whole:
   // built in one go it held a slowed phone for up to 0.6 s. The land comes from a worker, the other pieces one per
   // breath, and every shader is built before the swap, both ways the outside is drawn.
-  const breath = () => new Promise(done => setTimeout(done, 30));
   function landInWorker(q) {
     if (typeof Worker !== 'function') return Promise.resolve(null);
     return new Promise(resolve => {

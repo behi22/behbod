@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 // three draws a see-through, two-sided material in two passes, back faces then front, and marks it changed before
 // each, so the shader program is looked up again twice a frame for every pane (22 to 149 lookups a frame, the top cost
-// in every profile of the house). Each of these is one flat tint, which blends the same in either order: one pass.
+// in every profile of the house). Each of these is one flat tint, which looks the same either way round: one pass.
 const SOURCES = ['../../web/src/world.js', '../../web/src/knight.js'];
 test('every see-through, two-sided tint is drawn in one pass', () => {
   let found = 0;

@@ -43,11 +43,13 @@ let linear = null;
 // `into`: the scene a piece added later will be drawn in, whose lights its shaders are built for.
 export async function prepare(renderer, scene, camera, { screen = true, picture = true, into = null } = {}) {
   // Asked a piece at a time, in slices of a frame's time: asking for a whole room at once held a slow phone for up to
-  // a quarter of a second. One piece per material and kind of mesh (each kind needs its own program); the rest share.
+  // a quarter of a second. One piece per material, kind of mesh and set of shape data (each may need its own program:
+  // colours, tangents, extra UVs, morphs); the rest share its program.
   const pieces = [], seen = new Set(), lights = into || scene;
+  const shape = g => (g ? Object.entries(g.attributes).map(([k, a]) => k + a.itemSize).join() + '|' + Object.entries(g.morphAttributes).map(([k, v]) => k + v.length).join() : '');
   scene.traverse(o => {
     for (const m of [].concat(o.material || [])) {
-      const kind = `${m.uuid}|${!!o.isSkinnedMesh}|${!!o.isInstancedMesh}|${!!o.isBatchedMesh}|${!!o.morphTargetInfluences}|${!!o.isPoints}|${!!o.isLine}`;
+      const kind = `${m.uuid}|${!!o.isSkinnedMesh}|${!!o.isInstancedMesh}|${!!o.isBatchedMesh}|${!!o.instanceColor}|${!!o.isPoints}|${!!o.isLine}|${shape(o.geometry)}`;
       if (!seen.has(kind)) { seen.add(kind); pieces.push(o); }
     }
   });
