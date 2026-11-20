@@ -29,22 +29,33 @@ export function p90(times) {
 // page sets it at the first frame and after a mode change, a video, a game or a return to the tab, and a switch sets
 // it itself, since each of those spends its first seconds building shaders and pictures. The frame interval is capped
 // by the screen's refresh rate, so it can never prove there is room to step back up; instead, after a run of good
-// stretches it tries one step up, and each try waits three times longer than the last, so a machine on the edge
-// settles instead of flickering between two looks. It never goes above `top`, where it started.
-const FIRST = 4, LONGEST = 144, QUIET = 6000;
+// stretches it tries one step up, and each try of a tier waits three times longer than its last. It never goes above
+// `top`, where it started. A machine on the edge settles. Each tier keeps its record over the visit (`record`: stretches
+// judged on it, and how many were slow); it is shaky while at least one in four was slow, counting six good ones in
+// its favour. A shaky tier is left after two slow stretches in a row, a steady one only after five, so a rare slow
+// patch does not flip a tier that holds. Every stay on a tier, the first included, is a try of it, and a try fails when
+// the tier is left while shaky; after two failed tries a tier is not tried again in this visit (`top` comes down).
+const FIRST = 4, LONGEST = 144, QUIET = 6000, FAILS = 2, CREDIT = 6, RUN = 2, STEADY_RUN = 5;
 export function tierStep(current, times, now, state = {}) {
-  const { slowRuns = 0, goodRuns = 0, wait = FIRST, top = current, from = 0 } = state;
+  const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {} } = state;
   const i = TIER_ORDER.indexOf(current);
-  const next = o => ({ ...state, tier: current, slowRuns: 0, goodRuns: 0, wait, top, from, ...o });
+  const next = o => ({ ...state, tier: current, slowRuns: 0, goodRuns: 0, waits, top, from, record, fails, ...o });
   if (now - from <= QUIET) return next({ goodRuns });
-  if (p90(times) > 20) {
+  const slow = p90(times) > 20, [judged = 0, slowOnes = 0] = record[current] || [];
+  const mine = { ...record, [current]: [judged + 1, slowOnes + (slow ? 1 : 0)] };
+  const shaky = mine[current][1] * 4 >= mine[current][0] + CREDIT;
+  if (slow) {
     const runs = slowRuns + 1;
-    if (runs >= 2 && i > 0) return next({ tier: TIER_ORDER[i - 1], from: now });
-    return next({ slowRuns: runs });
+    if (runs >= (shaky ? RUN : STEADY_RUN) && i > 0) {
+      const failsNow = shaky ? { ...fails, [current]: (fails[current] || 0) + 1 } : fails;
+      const capped = failsNow[current] >= FAILS && TIER_ORDER.indexOf(top) > i - 1 ? TIER_ORDER[i - 1] : top;
+      return next({ tier: TIER_ORDER[i - 1], from: now, record: mine, fails: failsNow, top: capped });
+    }
+    return next({ slowRuns: runs, record: mine });
   }
-  const good = goodRuns + 1;
-  if (i < TIER_ORDER.indexOf(top) && good >= wait) return next({ tier: TIER_ORDER[i + 1], wait: Math.min(LONGEST, wait * 3), from: now });
-  return next({ goodRuns: good });
+  const good = goodRuns + 1, up = TIER_ORDER[i + 1], wait = waits[up] ?? FIRST;
+  if (i < TIER_ORDER.indexOf(top) && good >= wait) return next({ tier: up, waits: { ...waits, [up]: Math.min(LONGEST, wait * 3) }, from: now, record: mine });
+  return next({ goodRuns: good, record: mine });
 }
 
 // The quality looks after itself and its only control is on the computer (Settings). The first time it steps down by

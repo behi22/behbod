@@ -84,18 +84,19 @@ test('it never climbs above where it started', () => {
   assert.ok(seen.every(t => t === 'medium'));
 });
 
-test('each try back up waits three times longer, so an edge machine settles', () => {
-  // Slow at ultra, fine at high: it tries ultra again after 4 good stretches, then 12, then 36.
-  let tier = 'ultra', state = { top: 'ultra' }, now = 7000;
-  const ups = [];
-  for (let k = 0; k < 120; k++) {
-    state = tierStep(tier, tier === 'ultra' ? slow : fast, now, state);
-    if (state.tier === 'ultra' && tier === 'high') ups.push(k);
+test('each try back up of a tier waits three times longer than its last', () => {
+  // Ultra holds but has a long slow patch every 40 stretches; after each, high waits 4 good stretches, then 12, then 36
+  // (plus its two quiet ones) before ultra is tried again.
+  let tier = 'ultra', state = { top: 'ultra' }, now = 7000, onUltra = 0, onHigh = 0;
+  const waited = [];
+  for (let k = 0; k < 260; k++) {
+    const times = tier === 'ultra' && onUltra % 45 >= 40 ? slow : fast;
+    state = tierStep(tier, times, now, state);
+    if (tier === 'ultra') onUltra++; else onHigh++;
+    if (state.tier === 'ultra' && tier === 'high') { waited.push(onHigh); onHigh = 0; }
     tier = state.tier; now += 2500;
   }
-  const gaps = ups.slice(1).map((u, i) => u - ups[i]);
-  assert.ok(ups.length >= 3, `tried ${ups.length} times`);
-  assert.ok(gaps.every((g, i) => i === 0 || g > gaps[i - 1] * 2), `gaps ${gaps}`);
+  assert.deepEqual(waited, [6, 14, 38]);
 });
 
 test('the ease curve starts at 0, ends at 1, is centred and only climbs', () => {
