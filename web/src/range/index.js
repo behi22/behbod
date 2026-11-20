@@ -54,9 +54,12 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   // For the checks: with a film on, time moves only by what `advance` hands out, so a shot can be looked at frame by frame.
   let film = null;
 
+  // While rooms or guns are being built behind the scenes, the page's automatic quality does not judge the frames.
+  let building = 0;
+  const busy = job => { building++; return job.finally(() => { building--; }); };
   function load() {
     if (!built) return Promise.reject(new Error('this world file has no range rooms'));
-    loading ||= (async () => {
+    loading ||= busy((async () => {
       const r = await loadRangeRoom(meta, engine.renderer, { small: coarse });
       await breathe();
       const g = await makeGun({ env: r.env, onCue: cue });
@@ -65,12 +68,17 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       const b0 = b2t(R.strafe[0] - 1, R.line[1] - 0.3, 0), b1 = b2t(R.strafe[1] + 1, R.line[1] + 0.3, 0);
       fx = makeFx(r.stage, { tops: [{ x0: Math.min(b0.x, b1.x), x1: Math.max(b0.x, b1.x), z0: Math.min(b0.z, b1.z), z1: Math.max(b0.z, b1.z), y: R.bench }], onCasing: (p, k) => sfx?.casing(p, k) });
       targets = makeTargets(r.stage, fx, meta, { sfx, low: coarse || !engine.tier.post });
+      // A breath after each heavy piece: built all at once they held a slowed phone for over half a second.
+      await breathe();
       flashRoom = new THREE.PointLight(0xffc27a, 0, 11, 2); flashStage = flashRoom.clone();
       r.scene.add(flashRoom); r.stage.add(flashStage);
       flash = makeFlashlight(r.scene, r.stage);
       bolts = makeBolts(r.stage, fx, toRoom, { sfx });
+      await breathe();
       hall = makeHall(r, meta, { coarse, fancy: () => engine.tier.post && !coarse });
+      await breathe();
       loadout = makeLoadout(r.stage, meta, { coarse, low: coarse || !engine.tier.post, sfx, hall });
+      await breathe();
       // The gun wall: the guns earned hang on its mounts, the rest wait as outlines.
       wall = makeWall(r.stage, meta, { renderer: engine.renderer, camera, player, best: () => progress.rangeBest(), held: () => held, all: allGuns, take, fetch: loadGun, sfx, seen: visible });
       wall.hang('pistol', g.model);
@@ -87,7 +95,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       drawBoard(); wall.sync();
       onReady?.(r);
       return r;
-    })();
+    })());
     // A fetch that failed can be tried again (the bookcase asks each time it is pulled).
     loading.catch(() => { loading = null; });
     return loading;
@@ -108,14 +116,14 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   }
   const layer = g => engine.addLayer({ scene: g.scene, camera: g.camera, clearDepth: true, on: () => active && gun === g && !bench?.open });
   function loadGun(id) {
-    fetching[id] ||= (async () => {
+    fetching[id] ||= busy((async () => {
       const g = await makeGun({ env: room.env, id, onCue: cue });
       await breathe();
       await prepare(engine.renderer, g.scene, g.camera);
       layer(guns[id] = g);
       wall.hang(id, g.model);
       return g;
-    })();
+    })());
     fetching[id].catch(e => { delete fetching[id]; console.warn('[range] gun not loaded', id, e); });
     return fetching[id];
   }
@@ -434,6 +442,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   const api = {
     load, U,
     get ready() { return !!gun; },
+    get building() { return building > 0; },
     // The world file has the range's rooms; three's lighting shaders are worded as the range's patches expect.
     get built() { return built; },
     get patched() { return patched; },

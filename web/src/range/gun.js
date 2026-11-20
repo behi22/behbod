@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lit } from './lit.js';
+import { breathe } from './room.js';
 import { makeHand, makeHandMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
 import { blend, qFrame, relaxed } from '../pure/hands.js';
@@ -121,7 +122,10 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
   // The hands: built here, posed from the gun's description, in the gun's own space.
   const hm = makeHandMaterials(m => lit(m));
   for (const m of Object.values(hm)) (mats[m.name] ||= new Set()).add(m);
-  const hands = { right: makeHand('right', hm), left: makeHand('left', hm) };
+  // A breath between the hands, each a few dozen bones built in code, so a slowed phone never holds a frame for both.
+  const right = makeHand('right', hm);
+  await breathe();
+  const hands = { right, left: makeHand('left', hm) };
   turn.add(hands.right.root, hands.left.root);
   // The hands' poses on this gun, solved ahead of time (blender/holds.js).
   const holds = HOLDS[id];

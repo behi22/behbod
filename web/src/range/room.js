@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from '../engine.js';
 import { U, lit, makeDetail } from './lit.js';
 import { MOODS } from '../pure/moods.js';
+import { inSlices } from '../pure/slices.js';
 
 // The range's rooms. Unlike the house, whose zones are baked pictures, these are real materials: each surface's own
 // colour and finish, lit by a lightmap that holds the light alone, with the room reflected in the floor and the
@@ -40,22 +41,54 @@ export const breathe = () => new Promise(done => setTimeout(done, 30));
 let linear = null;
 // `into`: the scene a piece added later will be drawn in, whose lights its shaders are built for.
 export async function prepare(renderer, scene, camera, { screen = true, picture = true, into = null } = {}) {
-  // One kind at a time, each waited for: three only watches the programs it was last asked for.
+  // Asked a piece at a time, in slices of a frame's time: asking for a whole room at once held a slow phone for up to
+  // a quarter of a second. One piece per material and kind of mesh (each kind needs its own program); the rest share.
+  const pieces = [], seen = new Set(), lights = into || scene;
+  scene.traverse(o => {
+    for (const m of [].concat(o.material || [])) {
+      const kind = `${m.uuid}|${!!o.isSkinnedMesh}|${!!o.isInstancedMesh}|${!!o.isBatchedMesh}|${!!o.morphTargetInfluences}|${!!o.isPoints}|${!!o.isLine}`;
+      if (!seen.has(kind)) { seen.add(kind); pieces.push(o); }
+    }
+  });
+  // One kind of target at a time, each waited for: three only watches the programs it was last asked for.
   for (const target of [picture ? (linear ||= new THREE.WebGLRenderTarget(1, 1)) : undefined, screen ? null : undefined]) {
     if (target === undefined) continue;
-    const was = renderer.getRenderTarget();
-    let job = null;
-    // The target is in place only while three decides what to build, and is put back whatever happens.
-    try { renderer.setRenderTarget(target); if (renderer.compileAsync) job = renderer.compileAsync(scene, camera, into); else renderer.compile(scene, camera, into); }
-    finally { renderer.setRenderTarget(was); }
-    await job;
+    const jobs = [];
+    await inSlices(pieces, o => {
+      const was = renderer.getRenderTarget();
+      // The target is in place only while three decides what to build, and is put back whatever happens.
+      try { renderer.setRenderTarget(target); if (renderer.compileAsync) jobs.push(renderer.compileAsync(o, camera, lights)); else renderer.compile(o, camera, lights); }
+      finally { renderer.setRenderTarget(was); }
+    }, { rest: breathe });
+    await Promise.all(jobs);
   }
+}
+
+// three builds a reflection's two blur shaders the moment it first draws with them, which held a frame for up to a
+// quarter of a second; here they are asked for first and left to build between frames. These are three's own inner
+// names (three 0.170, pinned in index.html); if they ever change, this does nothing and the build happens as before.
+async function readyBlur(renderer, pmrem, size) {
+  if (typeof pmrem._setSize !== 'function' || typeof pmrem._allocateTargets !== 'function' || !renderer.compileAsync) return;
+  pmrem._setSize(size);
+  pmrem._allocateTargets().dispose();
+  const group = new THREE.Group(), was = renderer.getRenderTarget();
+  let job = null;
+  // Built for drawing into a picture, as the blur does.
+  try {
+    renderer.setRenderTarget(linear ||= new THREE.WebGLRenderTarget(1, 1));
+    pmrem.compileCubemapShader();
+    for (const m of [pmrem._cubemapMaterial, pmrem._blurMaterial]) if (m && pmrem._lodPlanes?.[0]) group.add(new THREE.Mesh(pmrem._lodPlanes[0], m));
+    job = renderer.compileAsync(group, new THREE.OrthographicCamera());
+  } finally { renderer.setRenderTarget(was); }
+  await job;
 }
 
 async function picture(url, small) {
   // Decoded off the main thread where the browser can, so a big lightmap never stalls a frame. `small` halves it
-  // each way: a quarter of the memory, for phones.
+  // each way: a quarter of the memory, for phones. A browser resizes on the page's own thread, so that is done in a
+  // worker; if the worker cannot, it is done here as before.
   if (typeof createImageBitmap === 'function') {
+    if (small) { const shrunk = await shrinkInWorker(url, 2048).catch(() => null); if (shrunk) return new THREE.Texture(shrunk); }
     const res = await fetch(url);
     if (!res.ok) throw new Error(`could not load ${url} (${res.status})`);
     const blob = await res.blob();
@@ -64,6 +97,15 @@ async function picture(url, small) {
     return new THREE.Texture(await createImageBitmap(blob));
   }
   return new THREE.TextureLoader().loadAsync(url);
+}
+function shrinkInWorker(url, size) {
+  if (typeof Worker !== 'function') return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const w = new Worker(new URL('./pictureworker.js', import.meta.url), { type: 'module' });
+    w.onmessage = ({ data }) => { w.terminate(); if (data.bitmap) resolve(data.bitmap); else reject(new Error(data.error)); };
+    w.onerror = e => { w.terminate(); reject(e); };
+    w.postMessage({ url: new URL(url, location.href).href, width: size, height: size });
+  });
 }
 
 export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
@@ -134,11 +176,18 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
     U.boxMin.value.copy(a).min(b); U.boxMax.value.copy(a).max(b); U.probe.value.copy(eye);
   }
   const float = renderer.capabilities.isWebGL2 && (renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'));
-  function reflect() {
-    const target = new THREE.WebGLCubeRenderTarget(128, { type: float ? THREE.HalfFloatType : THREE.UnsignedByteType });
+  const REFLECT_SIZE = 128;
+  async function reflect() {
+    const target = new THREE.WebGLCubeRenderTarget(REFLECT_SIZE, { type: float ? THREE.HalfFloatType : THREE.UnsignedByteType });
     const look = new THREE.CubeCamera(0.1, 120, target);
     look.position.copy(eye);
-    const pmrem = new THREE.PMREMGenerator(renderer), was = scene.environment;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    await readyBlur(renderer, pmrem, REFLECT_SIZE);
+    // Every picture the look draws goes to the graphics card first, one per breath, not all inside the look.
+    const pictures = new Set();
+    scene.traverse(o => { for (const m of [].concat(o.material || [])) for (const v of Object.values(m)) if (v?.isTexture && !v.isRenderTargetTexture) pictures.add(v); });
+    await inSlices([...pictures], t => renderer.initTexture(t), { rest: breathe });
+    const was = scene.environment;
     scene.environment = null;
     U.tone.value = 0;
     look.update(renderer, scene);
@@ -158,7 +207,7 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
   // That look is drawn before the rooms have a reflection, with shaders of its own: built here, between frames, so
   // the look itself has nothing left to build.
   await prepare(renderer, scene, new THREE.PerspectiveCamera(90, 1, 0.1, 120), { screen: false });
-  reflect();
+  await reflect();
   await breathe();
 
   let lightsK = 1, mood = MOODS.warmup, dip = 1;

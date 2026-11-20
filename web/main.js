@@ -808,7 +808,8 @@ const FOG_NIGHT = new THREE.Color(0x0a0f1c), FOG_DAY = new THREE.Color(0x6f8197)
 const clock = new THREE.Clock();
 let frameTimes = [], tierChecked = 0, tierState = {}, lastFrame = performance.now();
 // The judge looks away for its quiet seconds from the first frame and after anything that spends a burst of work
-// (a new mode, a video or a game opening or closing, the film, a return to the tab), so the burst is not judged.
+// (a new mode, a video or a game opening or closing, the film, a return to the tab, the range being built behind the
+// scenes), so the burst is not judged.
 let judgeRest = true, judgedMode = null;
 const restJudge = () => { judgeRest = true; };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) restJudge(); });
@@ -893,7 +894,7 @@ function step() {
   doorsReady = true;
   engine.render(dt);
 
-  if (judgeRest || mode !== judgedMode) { judgeRest = false; judgedMode = mode; tierState = { ...tierState, from: now }; frameTimes = []; tierChecked = now; }
+  if (judgeRest || mode !== judgedMode || range.building) { judgeRest = false; judgedMode = mode; tierState = { ...tierState, from: now }; frameTimes = []; tierChecked = now; }
   frameTimes.push(now - lastFrame); lastFrame = now;
   if (autoTier && frameTimes.length > 40 && now - tierChecked > 2500) {
     tierChecked = now;
