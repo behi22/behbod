@@ -154,7 +154,7 @@ test('every model is whole, inside its bounds, and fits on the bed standing up',
     assert.ok(Math.abs(lo) < 0.002, `${m.id} stands on the bed (${lo})`);
     assert.ok(b.height > 0.06 && b.height <= TALLEST / 100 + 1e-6 && b.radius <= REACH / 100 + 1e-6, `${m.id} ${b.height} ${b.radius}`);
     assert.ok(b.index.length > 3000 && Math.max(...b.index) < b.pos.length / 3, m.id);
-    assert.ok(b.shade.every(v => v > 0.02 && v < 1.3), m.id);
+    assert.ok(b.colour.every((v, i) => i % 3 || (v > 0.02 && v < 1.3)), m.id);
     assert.equal(b.path.length, b.layers * PATH * 2);
   }
 });
@@ -222,17 +222,63 @@ test('each layer the nozzle traces lies on the print at that height', () => {
 });
 
 test("a keychain from the page's letters: raised letters joined on a bar with a ring", () => {
-  const field = letterField(blocks());
+  const field = finish(letterField(blocks()));
   assert.deepEqual(field.box, [10, 10, 150, 50]);
   assert.ok(field.sd[30 * 160 + 30] < -10 && field.sd[30 * 160 + 75] > 10);
   const k = keychain(field);
   assert.ok(k.f(-1.5, 1.6, 0.6) < 0, 'a letter is solid');
   assert.ok(k.f(0, 0.5, 0) < 0, 'the bar joins them');
   assert.ok(k.f(0, 1.6, 0.6) > 0, 'the gap between them is open in front');
-  assert.equal(letterField({ w: 4, h: 4, data: new Uint8Array(16) }), null);
+  assert.equal(finish(letterField({ w: 4, h: 4, data: new Uint8Array(16) })), null);
   const blank = finish(buildPrint(cleanPrint({ model: 'word', text: 'x' }), { points: 20000, field: null }));
   assert.ok(blank.index.length > 300, 'letters that drew nothing still give a tag');
   const word = build({ model: 'word', text: 'ab' }, 30000, field);
   assert.ok(word.radius <= REACH / 100 + 1e-6 && word.height > 0.03);
-  assert.ok(build({ model: 'word', text: 'ab', depth: 0.3 }, 30000, letterField(blocks())).height > word.height * 1.05, 'a spiky keychain');
+  assert.ok(build({ model: 'word', text: 'ab', depth: 0.3 }, 30000, finish(letterField(blocks()))).height > word.height * 1.05, 'a spiky keychain');
+});
+
+// Run to the end with the clock always up, so it stops at every place it looks at the clock.
+function everyStop(gen, count = () => 0) {
+  let stops = 0, most = 0;
+  for (;;) { const r = gen.next(); most = Math.max(most, count()); if (r.done) return { stops, most, value: r.value }; stops++; }
+}
+const same = (a, b) => assert.ok(Buffer.from(a.buffer, a.byteOffset, a.byteLength).equals(Buffer.from(b.buffer, b.byteOffset, b.byteLength)));
+
+test('a build on the page without a worker looks at the clock between any two samples of the shape, and makes the same model', () => {
+  let calls = 0;
+  const ball = (x, y, z) => { calls++; return Math.hypot(x, y - 6, z) - 5; };
+  const run = everyStop(meshSdf(ball, [-6, 0, -6, 6, 12, 6], { points: 30000, lip: 1, due: () => true }), () => { const c = calls; calls = 0; return c; });
+  // One sample at a time while sampling; a surface point's slope and shading take seven.
+  assert.ok(run.most <= 7, `${run.most} samples between two looks at the clock`);
+  const plain = finish(meshSdf(ball, [-6, 0, -6, 6, 12, 6], { points: 30000, lip: 1 }));
+  same(run.value.pos, plain.pos); same(run.value.index, plain.index); same(run.value.open, plain.open);
+  for (const p of [{ model: 'star' }, { model: 'pishi', depth: 0.3 }, { model: 'word', text: 'ab' }]) {
+    const q = cleanPrint(p), field = p.model === 'word' ? finish(letterField(blocks())) : null;
+    const a = finish(buildPrint(q, { points: 30000, field })), b = everyStop(buildPrint(q, { points: 30000, field, due: () => true }));
+    assert.ok(b.stops > 2000, `${p.model}: ${b.stops} stops`);
+    for (const k of ['pos', 'colour', 'uv', 'index', 'path']) same(a[k], b.value[k]);
+    assert.deepEqual(a.sphere, b.value.sphere);
+  }
+  // Working out the letters' distances stops at least once for every column and every row of their picture.
+  const f = everyStop(letterField(blocks(), () => true));
+  assert.ok(f.stops >= 160 + 60, `${f.stops} stops`);
+  assert.deepEqual(f.value.box, finish(letterField(blocks())).box);
+  same(f.value.sd, finish(letterField(blocks())).sd);
+});
+
+test('the page only hands on what the build made: its colours and bounding sphere are worked out with it', () => {
+  const b = build({ model: 'duck' }), n = b.pos.length / 3;
+  assert.equal(b.colour.length, n * 3);
+  for (let i = 0; i < n; i++) {
+    const s = b.colour[i * 3];
+    assert.equal(b.colour[i * 3 + 1], Math.fround(s * 0.99));
+    assert.equal(b.colour[i * 3 + 2], Math.fround(s * 0.97));
+  }
+  // As three works it out: the middle of the box round every point, out to the farthest point.
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], b.pos[i * 3 + k]); hi[k] = Math.max(hi[k], b.pos[i * 3 + k]); }
+  const c = lo.map((v, k) => (v + hi[k]) * 0.5);
+  let r2 = 0;
+  for (let i = 0; i < n; i++) r2 = Math.max(r2, (c[0] - b.pos[i * 3]) ** 2 + (c[1] - b.pos[i * 3 + 1]) ** 2 + (c[2] - b.pos[i * 3 + 2]) ** 2);
+  assert.deepEqual(b.sphere, [...c, Math.sqrt(r2)]);
 });

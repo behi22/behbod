@@ -1,5 +1,9 @@
 // Surface nets. `lip` is how far the function may understate distance, so far blocks are skipped safely.
-export function* meshSdf(f, bounds, { points = 260000, lip = 1.6, maxCells = 160, cell = 0 } = {}) {
+// `due` says a build on the page has used up its share of the frame: it stops there and carries on next frame.
+export const never = () => false;
+const grow = (a, need) => { if (need <= a.length) return a; const b = new a.constructor(Math.max(need, a.length * 2)); b.set(a); return b; };
+
+export function* meshSdf(f, bounds, { points = 260000, lip = 1.6, maxCells = 160, cell = 0, due = never } = {}) {
   const [bx0, by0, bz0, bx1, by1, bz1] = bounds;
   const vol = (bx1 - bx0) * (by1 - by0) * (bz1 - bz0);
   let h = cell || Math.cbrt(vol / points);
@@ -14,6 +18,7 @@ export function* meshSdf(f, bounds, { points = 260000, lip = 1.6, maxCells = 160
       for (let bi = 0; bi < nx; bi += B) {
         const d = f(x0 + (bi + (B - 1) / 2) * h, y0 + (bj + (B - 1) / 2) * h, z0 + (bk + (B - 1) / 2) * h);
         evals++;
+        if (due()) yield evals;
         const far = Math.abs(d) > skip, ke = Math.min(nz, bk + B), je = Math.min(ny, bj + B), ie = Math.min(nx, bi + B);
         for (let k = bk; k < ke; k++) {
           const z = z0 + k * h;
@@ -23,19 +28,26 @@ export function* meshSdf(f, bounds, { points = 260000, lip = 1.6, maxCells = 160
               if (far) { v[row + i] = d; continue; }
               v[row + i] = f(x0 + i * h, y, z);
               evals++;
+              if (due()) yield evals;
             }
           }
         }
       }
-      yield evals;
     }
   }
   // The outer layer of points is always outside, so the mesh closes.
-  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    if (i === 0 || j === 0 || k === 0 || i === nx - 1 || j === ny - 1 || k === nz - 1) v[k * sxy + j * nx + i] = Math.max(v[k * sxy + j * nx + i], h);
+  for (let k = 0; k < nz; k++) {
+    for (let j = 0; j < ny; j++) {
+      const row = k * sxy + j * nx;
+      if (k === 0 || j === 0 || k === nz - 1 || j === ny - 1) { for (let i = 0; i < nx; i++) if (v[row + i] < h) v[row + i] = h; }
+      else { if (v[row] < h) v[row] = h; if (v[row + nx - 1] < h) v[row + nx - 1] = h; }
+      if (due()) yield evals;
+    }
   }
 
-  const cellVert = new Int32Array(sxy * nz).fill(-1), pos = [];
+  // Each cell's vertex number plus one, so a fresh (zeroed) array means none yet.
+  const cellVert = new Int32Array(sxy * nz);
+  let pos = new Float64Array(1 << 15), n = 0;
   const EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
   const OX = [0, 1, 0, 1, 0, 1, 0, 1], OY = [0, 0, 1, 1, 0, 0, 1, 1], OZ = [0, 0, 0, 0, 1, 1, 1, 1];
   const c = new Float64Array(8);
@@ -52,32 +64,38 @@ export function* meshSdf(f, bounds, { points = 260000, lip = 1.6, maxCells = 160
           const t = c[a] / (c[a] - c[b]);
           sx += OX[a] + (OX[b] - OX[a]) * t; sy += OY[a] + (OY[b] - OY[a]) * t; sz += OZ[a] + (OZ[b] - OZ[a]) * t; m++;
         }
-        cellVert[o] = pos.length / 3;
-        pos.push(x0 + (i + sx / m) * h, y0 + (j + sy / m) * h, z0 + (k + sz / m) * h);
+        pos = grow(pos, n * 3 + 3);
+        pos[n * 3] = x0 + (i + sx / m) * h; pos[n * 3 + 1] = y0 + (j + sy / m) * h; pos[n * 3 + 2] = z0 + (k + sz / m) * h;
+        cellVert[o] = ++n;
       }
+      if (due()) yield evals;
     }
-    yield evals;
   }
-  const index = [];
+  let index = new Uint32Array(1 << 16), ni = 0;
   const quad = (a, b, cc, d, flip) => {
     if (a < 0 || b < 0 || cc < 0 || d < 0) return;
     if (flip) { const t = b; b = d; d = t; }
     const P = pos, d1 = (P[a * 3] - P[cc * 3]) ** 2 + (P[a * 3 + 1] - P[cc * 3 + 1]) ** 2 + (P[a * 3 + 2] - P[cc * 3 + 2]) ** 2;
     const d2 = (P[b * 3] - P[d * 3]) ** 2 + (P[b * 3 + 1] - P[d * 3 + 1]) ** 2 + (P[b * 3 + 2] - P[d * 3 + 2]) ** 2;
-    if (d1 <= d2) index.push(a, b, cc, a, cc, d); else index.push(a, b, d, b, cc, d);
+    index = grow(index, ni + 6);
+    if (d1 <= d2) { index[ni] = a; index[ni + 1] = b; index[ni + 2] = cc; index[ni + 3] = a; index[ni + 4] = cc; index[ni + 5] = d; }
+    else { index[ni] = a; index[ni + 1] = b; index[ni + 2] = d; index[ni + 3] = b; index[ni + 4] = cc; index[ni + 5] = d; }
+    ni += 6;
   };
+  const cv = o => cellVert[o] - 1;
   for (let k = 1; k < nz - 1; k++) {
     for (let j = 1; j < ny - 1; j++) {
       for (let i = 1; i < nx - 1; i++) {
         const o = k * sxy + j * nx + i, inside = v[o] < 0;
-        if (inside !== (v[o + 1] < 0)) quad(cellVert[o - nx - sxy], cellVert[o - sxy], cellVert[o], cellVert[o - nx], !inside);
-        if (inside !== (v[o + nx] < 0)) quad(cellVert[o - sxy - 1], cellVert[o - 1], cellVert[o], cellVert[o - sxy], !inside);
-        if (inside !== (v[o + sxy] < 0)) quad(cellVert[o - 1 - nx], cellVert[o - nx], cellVert[o], cellVert[o - 1], !inside);
+        if (inside !== (v[o + 1] < 0)) quad(cv(o - nx - sxy), cv(o - sxy), cv(o), cv(o - nx), !inside);
+        if (inside !== (v[o + nx] < 0)) quad(cv(o - sxy - 1), cv(o - 1), cv(o), cv(o - sxy), !inside);
+        if (inside !== (v[o + sxy] < 0)) quad(cv(o - 1 - nx), cv(o - nx), cv(o), cv(o - 1), !inside);
       }
+      if (due()) yield evals;
     }
-    if ((k & 3) === 3) yield evals;
   }
-  const n = pos.length / 3, P = new Float32Array(pos), N = new Float32Array(n * 3), open = new Float32Array(n), e = h * 0.35;
+  const P = new Float32Array(n * 3), N = new Float32Array(n * 3), open = new Float32Array(n), e = h * 0.35;
+  for (let a = 0; a < n * 3; a += 1 << 16) { P.set(pos.subarray(a, Math.min(n * 3, a + (1 << 16))), a); if (due()) yield evals; }
   for (let p = 0; p < n; p++) {
     let x = P[p * 3], y = P[p * 3 + 1], z = P[p * 3 + 2];
     const d = f(x, y, z);
@@ -93,9 +111,9 @@ export function* meshSdf(f, bounds, { points = 260000, lip = 1.6, maxCells = 160
       occ += w * Math.max(0, Math.min(1, (t - dd) / t));
     }
     open[p] = 1 - occ;
-    if ((p & 511) === 511) yield evals + p * 7;
+    if (due()) yield evals + p * 7;
   }
-  return { pos: P, normal: N, open, index: new Uint32Array(index), h, evals: evals + n * 7 };
+  return { pos: P, normal: N, open, index: index.slice(0, ni), h, evals: evals + n * 7 };
 }
 
 export function finish(gen) {

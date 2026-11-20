@@ -1,5 +1,6 @@
 // The letters come in as a picture drawn in whatever font the browser has, so any script prints.
 import { box, torus, extrude, blend, union, cut } from './sdf.js';
+import { never } from './mesher.js';
 
 const { sqrt, min, max, floor, hypot } = Math;
 const INF = 1e20;
@@ -16,23 +17,26 @@ function edt1(f, n, d, v, z) {
   k = 0;
   for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) ** 2 + f[v[k]]; }
 }
-function edt(grid, w, h) {
+function* edt(grid, w, h, due) {
   const n = max(w, h), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
   for (let x = 0; x < w; x++) {
     for (let y = 0; y < h; y++) f[y] = grid[y * w + x];
     edt1(f, h, d, v, z);
     for (let y = 0; y < h; y++) grid[y * w + x] = d[y];
+    if (due()) yield 0;
   }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) f[x] = grid[y * w + x];
     edt1(f, w, d, v, z);
     for (let x = 0; x < w; x++) grid[y * w + x] = d[x];
+    if (due()) yield 0;
   }
 }
 
 export const FONT_PX = 96;
 const FONT = `900 ${FONT_PX}px system-ui, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Arabic", Tahoma, Arial, sans-serif`;
-export function drawLetters(text, make) {
+// Generators, like the build, so a page without a worker can spread them over frames (`due`, as in mesher.js).
+export function* drawLetters(text, make, due = never) {
   const s = String(text), words = s.split(' ');
   let lines = [s];
   if (Array.from(s).length > 12 && words.length > 1) {
@@ -47,22 +51,31 @@ export function drawLetters(text, make) {
   g = make(w, h);
   g.font = FONT; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = '#fff';
   lines.forEach((l, i) => g.fillText(l, w / 2, Math.round(FONT_PX * 1.1) + i * step));
-  const rgba = g.getImageData(0, 0, w, h).data, data = new Uint8Array(w * h);
-  for (let i = 0, j = 3; i < data.length; i++, j += 4) data[i] = rgba[j];
+  // Read back a strip at a time, keeping only how covered each pixel is.
+  const data = new Uint8Array(w * h);
+  for (let y = 0; y < h; y += 4) {
+    const rows = Math.min(4, h - y), rgba = g.getImageData(0, y, w, rows).data;
+    for (let i = 0, j = 3, o = y * w; i < rows * w; i++, j += 4) data[o + i] = rgba[j];
+    if (due()) yield 0;
+  }
   return { w, h, data };
 }
 
-export function letterField({ w, h, data }) {
+export function* letterField({ w, h, data }, due = never) {
   const out = new Float64Array(w * h), inn = new Float64Array(w * h);
   let any = false;
-  for (let i = 0; i < w * h; i++) { const on = data[i] >= 128; any ||= on; out[i] = on ? 0 : INF; inn[i] = on ? INF : 0; }
+  for (let i = 0; i < w * h; i++) {
+    const on = data[i] >= 128; any ||= on; out[i] = on ? 0 : INF; inn[i] = on ? INF : 0;
+    if ((i & 2047) === 2047 && due()) yield 0;
+  }
   if (!any) return null;
-  edt(out, w, h); edt(inn, w, h);
+  yield* edt(out, w, h, due); yield* edt(inn, w, h, due);
   const sd = new Float32Array(w * h);
   let x0 = w, x1 = 0, y0 = h, y1 = 0;
   for (let i = 0; i < w * h; i++) {
     sd[i] = sqrt(out[i]) - sqrt(inn[i]);
     if (data[i] >= 128) { const x = i % w, y = floor(i / w); x0 = min(x0, x); x1 = max(x1, x); y0 = min(y0, y); y1 = max(y1, y); }
+    if ((i & 2047) === 2047 && due()) yield 0;
   }
   return { w, h, sd, box: [x0, y0, x1 + 1, y1 + 1] };
 }

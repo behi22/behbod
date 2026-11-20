@@ -38,7 +38,7 @@ function draw(b, colour, S, eye, at, fov = 28, SS = 3) {
       const z = w0 * sz[a] + w1 * sz[bb] + w2 * sz[cc], o = y * W + x;
       if (z >= zb[o]) continue;
       zb[o] = z; cov[o] = 1;
-      let s = w0 * b.shade[a] + w1 * b.shade[bb] + w2 * b.shade[cc];
+      let s = w0 * b.colour[a * 3] + w1 * b.colour[bb * 3] + w2 * b.colour[cc * 3];
       if (Math.floor((w0 * b.uv[a * 2 + 1] + w1 * b.uv[bb * 2 + 1] + w2 * b.uv[cc * 2 + 1]) * 2) % 2) s *= 0.93;
       col[o * 3] = c[0] * s; col[o * 3 + 1] = c[1] * s; col[o * 3 + 2] = c[2] * s;
     }

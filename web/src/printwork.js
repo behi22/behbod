@@ -10,11 +10,11 @@ self.onmessage = ({ data }) => {
     let bitmap = data.bitmap;
     if (!bitmap && data.print.model === 'word') {
       if (!canDraw) { self.postMessage({ id: data.id, letters: true }); return; }
-      bitmap = drawLetters(data.print.text, (w, h) => new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true }));
+      bitmap = finish(drawLetters(data.print.text, (w, h) => new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true })));
     }
-    const field = bitmap ? letterField(bitmap) : null;
+    const field = bitmap ? finish(letterField(bitmap)) : null;
     const b = finish(buildPrint(data.print, { field, points: data.points }));
-    self.postMessage({ id: data.id, b }, [b.pos.buffer, b.shade.buffer, b.uv.buffer, b.index.buffer, b.path.buffer]);
+    self.postMessage({ id: data.id, b }, [b.pos.buffer, b.colour.buffer, b.uv.buffer, b.index.buffer, b.path.buffer]);
   } catch (e) {
     self.postMessage({ id: data.id, error: String(e?.message || e) });
   }

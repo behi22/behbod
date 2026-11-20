@@ -1,5 +1,5 @@
 // The 3D printer in a real Chrome: its screen, its prints, its sound, typing to it, at a computer and on phones.
-//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth,fail,keys]
+//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth,fail,keys,fallback]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -49,10 +49,11 @@ function failOnce() {
     }
   };
 }
-async function open(b, opts, { auto = true, save, ear = false, init = null } = {}) {
+async function open(b, opts, { auto = true, save, ear = false, init = null, route = null } = {}) {
   const ctx = await b.newContext(opts);
   if (ear) await ctx.addInitScript(tap);
   if (init) await ctx.addInitScript(init);
+  if (route) await ctx.route(...route);
   if (save !== undefined) await ctx.addInitScript(s => { try { if (s === null) localStorage.removeItem('home.print'); else localStorage.setItem('home.print', s); } catch { /* none */ } }, save);
   const p = await ctx.newPage(), errs = [];
   watch(p, errs);
@@ -85,6 +86,12 @@ const level = p => p.evaluate(async () => {
   for (let k = 0; k < 12; k++) { an.getFloatTimeDomainData(buf); for (const v of buf) s += v * v; n += buf.length; await new Promise(r => setTimeout(r, 90)); }
   return +(10 * Math.log10(s / n + 1e-12)).toFixed(1);
 });
+// The gaps between frames while run() runs: how many, the median and the worst, in ms.
+async function frameGaps(p, run) {
+  await p.evaluate(() => { const gaps = window.__gaps = []; let last = performance.now(); const f = t => { if (window.__gaps !== gaps) return; gaps.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); });
+  await run();
+  return p.evaluate(() => { const a = __gaps.slice(2); window.__gaps = null; a.sort((x, y) => x - y); return { n: a.length, median: +a[a.length >> 1].toFixed(1), worst: +a[a.length - 1].toFixed(1) }; });
+}
 const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice());
 const sit = async p => { await p.evaluate(() => __loft.useDesk()); await p.waitForFunction(() => document.querySelector('.dt.on'), null, { timeout: 15000 }); await p.waitForTimeout(700); };
 const type = async (p, text) => { await p.keyboard.type(text); await p.keyboard.press('Enter'); await p.waitForTimeout(150); };
@@ -358,6 +365,37 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       check('Esc closes it and focus goes back to where it was', shut.mode === 'walk' && !shut.panel && shut.focus === 'snd', JSON.stringify(shut));
       check('the keys: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
+    }
+    // ---------- no worker, or one that will not start: the page builds it, a few milliseconds a frame ----------
+    if (want('fallback')) {
+      const { buildPrint } = await import('../web/src/pure/printbuild.js'), { finish } = await import('../web/src/pure/mesher.js');
+      // The same print built here, as a worker would on a phone, to hold the page's build to.
+      const knight = finish(buildPrint(P.cleanPrint({ model: 'knight' }), { points: 150000 }));
+      const ways = [
+        ['without workers', { init: () => { delete window.Worker; } }],
+        ['with a worker that will not start', { route: ['**/printwork.js', r => r.fulfill({ status: 404, body: '' })] }],
+      ];
+      for (const [way, how] of ways) {
+        const { ctx, p, errs } = await open(b, UPRIGHT, { save: null, ...how });
+        await standAt(p, SPOT); await facePrinter(p);
+        await p.waitForFunction(() => __loft.printer.built, null, { timeout: 90000 }).catch(() => {});
+        // Timed as the worker's builds are: the screen open, the house timed still that way first.
+        await p.evaluate(() => __loft.act('printer')); await p.waitForTimeout(2500);
+        const cdp = await ctx.newCDPSession(p);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        const base = await frameGaps(p, () => p.waitForTimeout(5000));
+        const model = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('chess knight')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 120000, polling: 100 }).catch(() => {}); await p.waitForTimeout(300); });
+        const madeModel = await state(p);
+        const word = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('a long keychain to build here')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 120000, polling: 100 }).catch(() => {}); await p.waitForTimeout(300); });
+        const madeWord = await state(p);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        console.log(`  ${way}, frame gaps with the processor 4x slower (ms):`, JSON.stringify({ base, model, word }));
+        check(`${way}: the page builds the model, the same one a worker makes`, !madeModel.failed && madeModel.built?.tris === knight.index.length / 3 && madeModel.built.layers === knight.layers && Math.abs(madeModel.built.height - knight.height) < 1e-6, JSON.stringify(madeModel.built));
+        check(`${way}: and a keychain`, !madeWord.failed && madeWord.print.model === 'word' && madeWord.built?.tris > 500, JSON.stringify(madeWord.built));
+        check(`${way}: a 4x slower phone keeps its frames coming while the page builds`, model.worst < base.worst + 25 && word.worst < base.worst + 25 && model.n > 30 && word.n > 30, `model worst ${model.worst} ms, keychain worst ${word.worst} ms, idle worst ${base.worst} ms`);
+        check(`${way}: no error`, errs.filter(e => !/printwork\.js/.test(e)).length === 0, errs.slice(0, 3).join(' | '));
+        await ctx.close();
+      }
     }
     // ---------- smooth on a slow phone: no long frames when the screen opens or a model is built ----------
     if (want('smooth')) {

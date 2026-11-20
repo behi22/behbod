@@ -8,13 +8,20 @@ const KEY = 'home.print', HEAT = 1.8, PRINT = 15, SLOW = 300, NEAR = 12;
 // The models' fronts face the room (-x), where a visitor stands.
 const FACE = -Math.PI / 2, UP = new THREE.Vector3(0, 1, 0);
 
-// The keychain's words drawn on the page, for a browser whose workers cannot draw.
+// Work done on the page (a browser without a worker, or a worker without a canvas) takes SLICE ms of a frame at most.
+const SLICE = 5;
+let deadline = 0;
+const due = () => performance.now() > deadline;
 let cv = null;
 const letters = text => drawLetters(text, (w, h) => {
   cv ||= document.createElement('canvas');
   cv.width = w; cv.height = h;
   return cv.getContext('2d', { willReadFrequently: true });
-});
+}, due);
+function* onPage(print, points) {
+  const field = print.model === 'word' ? yield* letterField(yield* letters(print.text), due) : null;
+  return yield* buildPrint(print, { field, points, due });
+}
 
 export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = null, coarse = false }) {
   if (!meta.points.print_bed || !meta.points.printer) return null;
@@ -47,13 +54,12 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
 
   function take(id, b) {
     if (id !== job) return;
-    const g = new THREE.BufferGeometry(), c = new Float32Array(b.shade.length * 3);
-    for (let i = 0; i < b.shade.length; i++) { const s = b.shade[i]; c[i * 3] = s; c[i * 3 + 1] = s * 0.99; c[i * 3 + 2] = s * 0.97; }
+    const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(b.pos, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(b.colour, 3));
     g.setAttribute('uv', new THREE.BufferAttribute(b.uv, 2));
     g.setIndex(new THREE.BufferAttribute(b.index, 1));
-    g.computeBoundingSphere();
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(b.sphere[0], b.sphere[1], b.sphere[2]), b.sphere[3]);
     clear();
     mesh.geometry = cap.geometry = g;
     mesh.frustumCulled = cap.frustumCulled = true;
@@ -84,8 +90,8 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
           worker.onmessage = ({ data }) => {
             busy = data.letters;
             if (data.error) fail(data.id, data.error);
-            // A worker without a canvas of its own gets the letters drawn here.
-            else if (data.letters) { if (data.id === job) { const bitmap = letters(p.text); worker.postMessage({ id: data.id, print: { ...p }, bitmap, points }, [bitmap.data.buffer]); } }
+            // A worker without a canvas of its own gets the letters drawn here, a slice a frame.
+            else if (data.letters) { if (data.id === job) lettersFor(data.id, { ...p }); }
             else take(data.id, data.b);
           };
           // Where the worker cannot run, the latest print is built here instead, a little each frame.
@@ -98,19 +104,17 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     }
     slowly(id, print);
   }
-  function slowly(id, print) {
-    try {
-      slow = { id, gen: buildPrint(print, { field: print.model === 'word' ? letterField(letters(print.text)) : null, points }) };
-    } catch (e) { fail(id, e.message); }
+  function slowly(id, print) { slow = { id, gen: onPage(print, points), then: b => take(id, b) }; }
+  function lettersFor(id, print) {
+    slow = { id, gen: letters(print.text), then: bitmap => { if (id === job && worker) worker.postMessage({ id, print, bitmap, points }, [bitmap.data.buffer]); } };
   }
   function stepSlow() {
-    const t0 = performance.now(), s = slow;
+    const s = slow;
+    deadline = performance.now() + SLICE;
     try {
-      while (performance.now() - t0 < 5) {
-        const r = s.gen.next();
-        if (r.done) { slow = null; take(s.id, r.value); return; }
-      }
-    } catch (e) { fail(s.id, e.message); }
+      const r = s.gen.next();
+      if (r.done) { slow = null; s.then(r.value); }
+    } catch (e) { slow = null; fail(s.id, e.message); }
   }
 
   const heating = () => mine && !done && !failed && (!built || clock - start < HEAT);
