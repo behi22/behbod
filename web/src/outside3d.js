@@ -118,12 +118,14 @@ export function makeOutside3d(opts = {}) {
     try {
       for (const target of [null, picture]) {
         const jobs = [];
-        await inSlices(roots(p), root => {
-          if (gone()) throw STALE;
-          const was = r.getRenderTarget();
-          try { r.setRenderTarget(target); jobs.push(r.compileAsync(root, camera, scene)); } finally { r.setRenderTarget(was); }
-        }, { rest: breath });
-        await Promise.all(jobs);
+        // A build stopped part way still waits for the shaders it asked for: three's wait throws once their materials go.
+        try {
+          await inSlices(roots(p), root => {
+            if (gone()) throw STALE;
+            const was = r.getRenderTarget();
+            try { r.setRenderTarget(target); jobs.push(r.compileAsync(root, camera, scene)); } finally { r.setRenderTarget(was); }
+          }, { rest: breath });
+        } finally { await Promise.all(jobs); }
       }
     } finally { picture.dispose(); }
     const mats = new Set();

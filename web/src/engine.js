@@ -139,12 +139,14 @@ export function makeEngine(canvas, coarse) {
     try {
       for (const [target, list] of [[picture, mats], [null, toScreen]]) {
         const jobs = [];
-        await inSlices([...list], m => {
-          if (stale()) throw STALE;
-          const was = renderer.getRenderTarget();
-          try { renderer.setRenderTarget(target); jobs.push(renderer.compileAsync(new THREE.Mesh(tri, m), flat)); } finally { renderer.setRenderTarget(was); }
-        }, { rest: breath });
-        await Promise.all(jobs);
+        // A build stopped part way still waits for the shaders it asked for: three's wait throws once their materials go.
+        try {
+          await inSlices([...list], m => {
+            if (stale()) throw STALE;
+            const was = renderer.getRenderTarget();
+            try { renderer.setRenderTarget(target); jobs.push(renderer.compileAsync(new THREE.Mesh(tri, m), flat)); } finally { renderer.setRenderTarget(was); }
+          }, { rest: breath });
+        } finally { await Promise.all(jobs); }
       }
     } finally { tri.dispose(); picture.dispose(); }
     await useAhead(renderer, mats, { rest: breath, stale });

@@ -50,6 +50,41 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
       check(`${from} and ${steps[0]}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
+    // A change of mind while a background build is still asking for its shaders: the build stops and throws away what
+    // it made. Regression: it did so while three was still waiting on those shaders, and three's wait then threw on the
+    // thrown-away materials (page errors, and graphics errors for each). The outside is built as on a slow phone: each
+    // piece's shaders take a slice of their own to ask for and stay unready for a moment.
+    for (const [part, to, slowly] of [['the effects', 'medium', false], ['the outside', 'low', true]]) {
+      const { p, errs } = await open(b, 'ultra');
+      const warns = [];
+      p.on('console', m => { if (m.type() === 'warning' && /GL_INVALID|WebGL/.test(m.text())) warns.push(m.text()); });
+      const caught = await p.evaluate(([to, part, slowly]) => new Promise(done => {
+        const r = __loft.renderer, out = __loft.out3d.camera, ask = r.compileAsync.bind(r);
+        let armed = true;
+        r.compileAsync = function (obj, cam, into) {
+          const job = ask(obj, cam, into);
+          if (slowly && cam === out) { const t = performance.now(); while (performance.now() < t + 9); }
+          if (armed && (part === 'the outside') === (cam === out)) {
+            const waiting = [];
+            obj.traverse(o => { for (const m of [].concat(o.material || [])) { const pr = r.properties.get(m).currentProgram; if (pr && !pr.isReady()) waiting.push(pr); } });
+            if (waiting.length) {
+              armed = false;
+              if (slowly) for (const pr of waiting) { const until = performance.now() + 400, ready = pr.isReady; pr.isReady = () => performance.now() > until && ready.call(pr); }
+              queueMicrotask(() => __loft.autoTierTo('ultra'));
+            }
+          }
+          return job;
+        };
+        __loft.autoTierTo(to);
+        setTimeout(() => { r.compileAsync = ask; done(!armed); }, 5000);
+      }), [to, part, slowly]);
+      await p.waitForTimeout(1000);
+      const now = await p.evaluate(() => ({ tier: __loft.tier, outside: __loft.out3d.quality }));
+      check(`${part}: a switch back while its new shaders are still being built is caught mid-way`, caught);
+      check(`${part}: the build stops cleanly, no error`, errs.length === 0 && warns.length === 0, [...errs, ...warns].slice(0, 2).join(' | '));
+      check(`${part}: and what was on screen stays`, now.tier === 'ultra' && now.outside === 'high', JSON.stringify(now));
+      await p.close();
+    }
   } finally {
     await b.close();
   }
