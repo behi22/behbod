@@ -128,5 +128,4 @@ export function around(f, n, offset = 0) {
     return f(r * sin(a), y, r * cos(a));
   };
 }
-export const above = y0 => (x, y) => y0 - y;
 export const onBed = f => (x, y, z) => max(f(x, y, z), -y);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DEFAULT, COLOURS, parsePrint, cleanPrint, describe } from './pure/printer.js';
 import { buildPrint, PATH } from './pure/printbuild.js';
-import { drawLetters } from './pure/keychain.js';
+import { drawLetters, letterField } from './pure/keychain.js';
 
 // Models are built off the page's thread the first time they are needed, never when the page starts.
 const KEY = 'home.print', HEAT = 1.8, PRINT = 15, SLOW = 300, NEAR = 12;
@@ -10,7 +10,7 @@ const FACE = -Math.PI / 2, UP = new THREE.Vector3(0, 1, 0);
 
 // The keychain's words drawn on the page, for a browser whose workers cannot draw.
 let cv = null;
-export const letters = text => drawLetters(text, (w, h) => {
+const letters = text => drawLetters(text, (w, h) => {
   cv ||= document.createElement('canvas');
   cv.width = w; cv.height = h;
   return cv.getContext('2d', { willReadFrequently: true });
@@ -98,10 +98,9 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     }
     slowly(id, print);
   }
-  async function slowly(id, print) {
+  function slowly(id, print) {
     try {
-      const { letterField } = await import('./pure/keychain.js');
-      if (id === job) slow = { id, gen: buildPrint(print, { field: print.model === 'word' ? letterField(letters(print.text)) : null, points }) };
+      slow = { id, gen: buildPrint(print, { field: print.model === 'word' ? letterField(letters(print.text)) : null, points }) };
     } catch (e) { fail(id, e.message); }
   }
   function stepSlow() {
