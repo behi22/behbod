@@ -1,5 +1,5 @@
-// The automatic quality in a real browser: shaders ready before anything is first seen, on every tier, and a switch
-// between ultra and high that does not freeze a frame.
+// The automatic quality in a real browser: shaders ready before anything is first seen, on every tier, and switches
+// between tiers that do not freeze a frame.
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
@@ -36,17 +36,18 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
       check(`${q}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
-    {
-      // At 1440x900 on a 2x screen, as on his laptop, where ultra and high differ in sharpness.
-      const { p, errs } = await open(b, 'ultra', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+    // At 1440x900 on a 2x screen, as on his laptop: ultra and high differ only in sharpness, high and medium in effects
+    // (whose chain is built in the background and swapped in, so the switch lands a moment later).
+    for (const [from, steps] of [['ultra', ['high', 'ultra', 'high', 'ultra']], ['high', ['medium', 'high', 'medium', 'high']]]) {
+      const { p, errs } = await open(b, from, { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
       const worst = [];
-      for (const to of ['high', 'ultra', 'high', 'ultra']) {
+      for (const to of steps) {
         const t = await p.evaluate(next => { const t = performance.now(); __loft.autoTierTo(next); return t; }, to);
-        await p.waitForTimeout(1500);
-        worst.push(await p.evaluate(t => Math.max(0, ...__lt.filter(([s, d]) => s + d > t && s < t + 1000).map(l => l[1])), t));
+        await p.waitForTimeout(3500);
+        worst.push(await p.evaluate(t => Math.max(0, ...__lt.filter(([s, d]) => s + d > t && s < t + 3000).map(l => l[1])), t));
       }
-      check('ultra and high: a switch between them holds no frame for long (longest task in the second after each, ms)', worst.every(w => w < 50), worst.map(w => w.toFixed(0)).join(' '));
-      check('ultra and high: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      check(`${from} and ${steps[0]}: a switch between them holds no frame for long (longest task in the 3 s after each, ms)`, worst.every(w => w < 50), worst.map(w => w.toFixed(0)).join(' '));
+      check(`${from} and ${steps[0]}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
   } finally {

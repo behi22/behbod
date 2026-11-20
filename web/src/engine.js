@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { EffectComposer, RenderPass, Pass, EffectPass, Effect, EffectAttribute, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
-import { TIERS, switchWork } from './pure/tier.js';
+import { TIERS, TIER_ORDER, effectsOf } from './pure/tier.js';
+import { makeRebuilder, STALE } from './pure/rebuild.js';
+import { inSlices } from './pure/slices.js';
 
 export { TIERS };
 
@@ -48,7 +50,7 @@ export function makeEngine(canvas, coarse) {
   const mosaicU = { centre: new THREE.Uniform(new THREE.Vector2()), centre2: new THREE.Uniform(new THREE.Vector2()), drift: new THREE.Uniform(new THREE.Vector2()),
     radius: new THREE.Uniform(0), radius2: new THREE.Uniform(0), cells: new THREE.Uniform(3.4), aspect: new THREE.Uniform(1) };
   const onTier = [], layers = [];
-  let composer = null, tier = TIERS.medium, tierName = null, bg = null, bgOn = true;
+  let composer = null, tier = TIERS.medium, wanted = null, chains = null, bg = null, bgOn = true;
 
   // The world outside the glass is its own scene with its own far-reaching camera, drawn first; the loft goes on top.
   // Layers are scenes of their own drawn with it. One marked `under` (the range's rooms) goes in before the loft and
@@ -89,21 +91,93 @@ export function makeEngine(canvas, coarse) {
     }
   }
 
+  // The effects chain for a tier: its passes made and their shaders written, nothing drawn yet.
+  function makeChain(t) {
+    if (!t.post) return null;
+    const c = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
+    if (bg) c.addPass(new BackgroundPass());
+    else { c.addPass(new RenderPass(scene, camera)); c.addPass(new LayersPass()); }
+    c.addPass(new EffectPass(camera, new Effect('Mosaic', MOSAIC_FS, { attributes: EffectAttribute.CONVOLUTION, uniforms: new Map(Object.entries(mosaicU)) })));
+    const fx = [];
+    if (t.bloom) fx.push(new BloomEffect({ luminanceThreshold: 0.82, luminanceSmoothing: 0.25, intensity: 1.15, mipmapBlur: true, radius: 0.72 }));
+    fx.push(new VignetteEffect({ offset: 0.32, darkness: 0.55 }));
+    if (t.grain) { const n = new NoiseEffect({ blendFunction: BlendFunction.SOFT_LIGHT, premultiply: true }); n.blendMode.opacity.value = 0.35; fx.push(n); }
+    if (t.smaa) fx.push(new SMAAEffect());
+    c.addPass(new EffectPass(camera, ...fx));
+    return c;
+  }
   function buildPost() {
     composer?.dispose();
-    composer = null;
-    if (!tier.post) return;
-    composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
-    if (bg) composer.addPass(new BackgroundPass());
-    else { composer.addPass(new RenderPass(scene, camera)); composer.addPass(new LayersPass()); }
-    composer.addPass(new EffectPass(camera, new Effect('Mosaic', MOSAIC_FS, { attributes: EffectAttribute.CONVOLUTION, uniforms: new Map(Object.entries(mosaicU)) })));
-    const fx = [];
-    if (tier.bloom) fx.push(new BloomEffect({ luminanceThreshold: 0.82, luminanceSmoothing: 0.25, intensity: 1.15, mipmapBlur: true, radius: 0.72 }));
-    fx.push(new VignetteEffect({ offset: 0.32, darkness: 0.55 }));
-    if (tier.grain) { const n = new NoiseEffect({ blendFunction: BlendFunction.SOFT_LIGHT, premultiply: true }); n.blendMode.opacity.value = 0.35; fx.push(n); }
-    if (tier.smaa) fx.push(new SMAAEffect());
-    composer.addPass(new EffectPass(camera, ...fx));
+    composer = makeChain(tier);
     resize();
+  }
+  // Every shader of a chain built off the frame, a slice at a time, both ways it may draw (into a picture, and to the
+  // screen for its last pass), and every picture it draws into or reads made on the graphics card, so its first frame
+  // has nothing left to build.
+  const breath = () => new Promise(done => setTimeout(done, 30));
+  async function readyChain(c, stale) {
+    if (!c || !renderer.compileAsync) return;
+    const mats = new Set(), targets = new Set(), pictures = new Set(), seen = new Set();
+    const look = (o, depth) => {
+      if (!o || typeof o !== 'object' || seen.has(o) || depth > 5) return;
+      seen.add(o);
+      if (o.isMaterial) { mats.add(o); for (const u of Object.values(o.uniforms || {})) if (u?.value?.isTexture && !u.value.isRenderTargetTexture && u.value.image) pictures.add(u.value); return; }
+      if (o.isMesh) { for (const m of [].concat(o.material || [])) look(m, depth + 1); return; }
+      if (o.isRenderTarget || o.isWebGLRenderTarget) { targets.add(o); return; }
+      if (o.isTexture) { if (!o.isRenderTargetTexture && o.image) pictures.add(o); return; }
+      if (o.isWebGLRenderer || o.isObject3D || o.isBufferGeometry) return;
+      for (const v of Object.values(o)) look(v, depth + 1);
+    };
+    for (const p of c.passes) look(p, 0);
+    // Only a pass that draws to the screen needs its shader built that way too; all draw into pictures.
+    const toScreen = new Set(c.passes.filter(p => p.renderToScreen && p.fullscreenMaterial).map(p => p.fullscreenMaterial));
+    await inSlices([...targets], t => { if (stale()) throw STALE; renderer.initRenderTarget(t); }, { rest: breath });
+    await inSlices([...pictures], t => { if (stale()) throw STALE; renderer.initTexture(t); }, { rest: breath });
+    const tri = new THREE.BufferGeometry(), flat = new THREE.OrthographicCamera(), picture = new THREE.WebGLRenderTarget(1, 1);
+    tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+    tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2));
+    try {
+      for (const [target, list] of [[picture, mats], [null, toScreen]]) {
+        const jobs = [];
+        await inSlices([...list], m => {
+          if (stale()) throw STALE;
+          const was = renderer.getRenderTarget();
+          try { renderer.setRenderTarget(target); jobs.push(renderer.compileAsync(new THREE.Mesh(tri, m), flat)); } finally { renderer.setRenderTarget(was); }
+        }, { rest: breath });
+        await Promise.all(jobs);
+      }
+    } finally { tri.dispose(); picture.dispose(); }
+    // A program's first use reads its compile logs back from the graphics card, which waits for all the card has queued:
+    // most of a frame at 2x, held inside the swap's first frame. Each program that linked is first used here instead,
+    // with that read left out; one that failed to link keeps its logs.
+    const gl = renderer.getContext(), checks = renderer.debug.checkShaderErrors, used = new Set();
+    for (const m of mats) for (const prog of renderer.properties.get(m).programs?.values() || []) used.add(prog);
+    await inSlices([...used], prog => {
+      if (stale()) throw STALE;
+      if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) return;
+      renderer.debug.checkShaderErrors = false;
+      try { prog.getUniforms(); } finally { renderer.debug.checkShaderErrors = checks; }
+    }, { rest: breath });
+  }
+  // The chain for a set of effects, built in the background; the tier last asked for has that set.
+  async function buildChain(effects, { made, stale }) {
+    await breath();
+    if (stale()) throw STALE;
+    const c = makeChain(TIERS[effectsOf(wanted) === effects ? wanted : TIER_ORDER.find(t => effectsOf(t) === effects)]);
+    made.push(c);
+    await readyChain(c, stale);
+    if (stale()) throw STALE;
+    return c;
+  }
+  function apply(name) {
+    tier = TIERS[name];
+    renderer.setPixelRatio(Math.min(devicePixelRatio, tier.ratio));
+  }
+  function swapChain(c) {
+    const old = composer;
+    composer = c;
+    resize();
+    old?.dispose();
   }
   function resize() {
     const w = innerWidth, h = innerHeight;
@@ -112,12 +186,20 @@ export function makeEngine(canvas, coarse) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
+  // A change of tier: the sharpness changes at once (the old chain keeps drawing at the new size); a new set of effects
+  // is built in the background, at that size, and swapped in when it is ready. The first tier, while the house loads,
+  // is built at once. Resizing the picture while a new chain was being swapped in held the frame twice as long.
   function setTier(name) {
-    const keep = composer && !switchWork(tierName, name).post;
-    tier = TIERS[name]; tierName = name;
     for (const f of onTier) f(name);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, tier.ratio));
-    if (keep) resize(); else buildPost();
+    wanted = name;
+    apply(name);
+    if (!chains) {
+      buildPost();
+      chains = makeRebuilder({ current: effectsOf(name), build: buildChain, swap: swapChain, discard: made => made.forEach(c => c?.dispose()), onError: e => console.warn('[engine] the effects could not be built', e) });
+      return;
+    }
+    resize();
+    chains.want(effectsOf(name));
   }
   function render(dt) {
     if (composer) composer.render(dt);

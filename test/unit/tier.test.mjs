@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TIERS, switchWork, tierStep, refreshFrom } from '../../web/src/pure/tier.js';
+import { TIERS, switchWork, tierStep, refreshFrom, effectsOf } from '../../web/src/pure/tier.js';
 
 // Regression: ultra and high share every effect, yet each switch between them rebuilt and recompiled the whole effects
 // chain, a 75 to 165 ms freeze at 1440x900 on a 2x screen, the switch this automatic quality makes most.
@@ -183,4 +183,16 @@ test('with the line at 50 fps, a battery cap that starts mid visit (the screen r
   for (let k = 0; k < 120; k++) { state = tierStep(tier, k < 20 ? Array(100).fill(8.33) : Array(100).fill(33.3), now, state); tier = state.tier; seen.push(tier); now += 2500; }
   assert.ok(seen.slice(60).every(t => t === 'ultra'), seen.join(' '));
   assert.equal(state.floor, 'ultra');
+});
+
+// Regression: a switch that adds or drops an effect built the new effects chain and compiled its shaders inside one
+// frame: 150 to 310 ms on his laptop at 2x, 80 to 230 ms on a slowed phone. Now it is built in the background, one
+// chain per set of effects, and ultra and high share theirs.
+test('each tier names its set of effects; ultra and high share one, every other pair differs', () => {
+  assert.equal(effectsOf('ultra'), effectsOf('high'));
+  const sets = ['low', 'medium', 'high'].map(effectsOf);
+  assert.equal(new Set(sets).size, 3);
+  assert.equal(effectsOf('low'), 'none');
+  assert.equal(effectsOf('nope'), null);
+  for (const a of Object.keys(TIERS)) for (const b of Object.keys(TIERS)) assert.equal(effectsOf(a) !== effectsOf(b), switchWork(a, b).post, `${a} ${b}`);
 });

@@ -15,6 +15,11 @@ export function switchWork(from, to) {
   if (!a || !b) return { post: true, ratio: true };
   return { post: EFFECTS.some(k => !!a[k] !== !!b[k]), ratio: a.ratio !== b.ratio };
 }
+// A tier's set of effects by name: one effects chain serves every tier with the same set.
+export function effectsOf(name) {
+  const t = TIERS[name];
+  return t ? EFFECTS.filter(k => t[k]).join('+') || 'none' : null;
+}
 
 // The frame time that one frame in ten is slower than, and the one that one frame in ten is quicker than.
 export function p90(times) {
