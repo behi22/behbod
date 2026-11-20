@@ -237,6 +237,14 @@ function enterScope() {
   me.root.visible = false; $('prompt').classList.remove('on');
   scope.enter();
 }
+// The printer's screen: the camera leans in to the printer and the screen docks beside it.
+function enterPrinter() {
+  if (mode !== 'walk' || !printer) return;
+  wardrobe.hide();
+  mode = 'printer'; route = null; keys.clear();
+  me.root.visible = false; $('prompt').classList.remove('on');
+  panels.printer(printer, { onClose: () => { if (mode === 'printer') { mode = 'walk'; me.root.visible = true; } } });
+}
 // The crate plays my four records in turn, then switches off.
 let recAt = -1;
 function playRecord() {
@@ -479,7 +487,7 @@ function act(it) {
   if (it.id === 'tea') { earn('tea'); audio.sfx.pour(at); }
   if (it.id === 'book') { earn('book'); return panels.book(); }
   if (it.id === 'about' || it.id === 'guestbook' || it.id === 'mailbox') return panels[it.id]();
-  if (it.id === 'printer' && printer) return panels.printer(printer);
+  if (it.id === 'printer' && printer) return enterPrinter();
   if (it.id === 'secret_room' && progress.unlocked().includes('vault')) { earn('vault'); return toast('The secret room is yours. It opens in the next build.'); }
   // The TV shows the live match: join it as striker or keeper, switch to my videos (it flips through them in turn), or play my film.
   if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
@@ -675,6 +683,7 @@ function tapMove(e) {
   { const it = hello.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   { const it = lights.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
+  { const it = printer?.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   // Clicking a resident walks me over to them and says hello on arrival.
   const who = creatures.hit(ray);
   if (who) {
@@ -844,6 +853,10 @@ function step() {
       const k = dt * 0.5;
       scope.nudge((keys.has('ArrowRight') || keys.has('KeyD') ? k : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? k : 0), (keys.has('ArrowUp') || keys.has('KeyW') ? k : 0) - (keys.has('ArrowDown') || keys.has('KeyS') ? k : 0));
       scope.view(camera.position, camLook);
+    } else if (mode === 'printer') {
+      printer.view(tmpP, tmpL, camera, panels.cover());
+      camera.position.lerp(tmpP, Math.min(1, 4 * dt));
+      camLook.lerp(tmpL, Math.min(1, 5 * dt));
     }
   }
   // At the firing line the range holds the camera (my eye, the aim, the kick of each shot).

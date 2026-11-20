@@ -129,9 +129,10 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     return said;
   }
 
-  const tmp = new THREE.Vector3(), nz = new THREE.Vector3();
+  const tmp = new THREE.Vector3(), nz = new THREE.Vector3(), mid = new THREE.Vector3(), right = new THREE.Vector3(), upv = new THREE.Vector3();
   const target = { head: new THREE.Vector3(), gantry: new THREE.Vector3(), bed: new THREE.Vector3() };
   const lastHead = new THREE.Vector3(), lastBed = new THREE.Vector3(), soundAt = new THREE.Vector3();
+  const box = new THREE.Box3().setFromCenterAndSize(bedTop.clone().add(new THREE.Vector3(0, 0.13, 0)), new THREE.Vector3(0.5, 0.42, 0.5));
 
   return {
     group, mesh, cap,
@@ -146,6 +147,29 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     ask(text) {
       const r = parsePrint(text, p);
       return r ? begin(r.p, r.said) : null;
+    },
+    start(pick) {
+      const q = cleanPrint({ ...DEFAULT, model: pick.model, text: pick.text, colour: pick.colour, size: pick.size });
+      if (q.model !== pick.model) return null;
+      return begin(q, `Printing ${describe(q)}.`);
+    },
+    hit(ray, blockers) {
+      const h = ray.ray.intersectBox(box, tmp);
+      if (!h) return null;
+      const d = ray.ray.origin.distanceTo(h);
+      if (blockers && ray.intersectObjects(blockers, true)[0]?.distance < d - 0.05) return null;
+      return meta.interact.find(i => i.id === 'printer') || null;
+    },
+    view(eye, look, camera, cover = { right: 0, bottom: 0 }) {
+      const h = built ? built.height : 0.15;
+      mid.copy(bedTop).add(nz.set(0, Math.max(0.08, h * 0.52), 0));
+      const vf = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), hf = vf * camera.aspect, half = Math.max(0.17, h * 0.5 + 0.08);
+      const dist = Math.min(1.7, Math.max(0.62, half / Math.max(0.2, (1 - cover.bottom) * vf), half / Math.max(0.2, (1 - cover.right) * hf)));
+      const yaw = Math.PI - 0.3, rise = 0.4;
+      eye.set(Math.cos(yaw) * Math.cos(rise), Math.sin(rise), Math.sin(yaw) * Math.cos(rise)).multiplyScalar(dist).add(mid);
+      const fwd = nz.copy(mid).sub(eye).normalize();
+      right.crossVectors(fwd, UP).normalize(); upv.crossVectors(right, fwd);
+      look.copy(mid).addScaledVector(right, cover.right * hf * dist).addScaledVector(upv, -cover.bottom * vf * dist);
     },
     tick(dt, cam) {
       clock += dt;

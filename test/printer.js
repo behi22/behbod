@@ -1,5 +1,5 @@
 // The 3D printer in a real Chrome: its screen, its prints, its sound, typing to it, at a computer and on phones.
-//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: hum,keep,terminal,words]
+//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -12,6 +12,8 @@ const b2t = (x, y, z) => ({ x, y: z, z: -y });
 let fails = 0;
 const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name}${detail ? ': ' + detail : ''} ${ok ? 'PASS' : 'FAIL'}`); };
 const DESK = { viewport: { width: 1280, height: 800 } };
+const UPRIGHT = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
+const SIDEWAYS = { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true };
 const OUTSIDE = /youtube|google|gstatic|ytimg|ggpht|doubleclick|open-meteo/;
 const SPOT = [20.72, 3.58, 0.45], DESK_AT = [19.6, 1.2, 0.45], FAR = [6.0, 9.0, 0.45];
 
@@ -56,6 +58,13 @@ const state = p => p.evaluate(() => { const r = __loft.printer; return { print: 
 const untilBuilt = p => p.waitForFunction(() => __loft.printer.built, null, { timeout: 40000 }).catch(() => {});
 const untilDone = p => p.waitForFunction(() => __loft.printer.progress === 1 && __loft.printer.built, null, { timeout: 60000 }).catch(() => {});
 // The print's middle on the screen, and what of the page is on top of it there.
+const printOnScreen = p => p.evaluate(() => {
+  const L = __loft, b = L.printer.built, c = L.printer.group.getWorldPosition(L.camera.position.clone());
+  c.y += b ? b.height / 2 : 0.07;
+  c.project(L.camera);
+  const x = (c.x + 1) / 2 * innerWidth, y = (1 - c.y) / 2 * innerHeight, top = document.elementFromPoint(x, y);
+  return { x: Math.round(x), y: Math.round(y), z: +c.z.toFixed(3), top: top ? top.tagName : null };
+});
 // The house's sound level over about a second, in dB.
 const level = p => p.evaluate(async () => {
   const an = window.__ear, buf = new Float32Array(an.fftSize);
@@ -72,6 +81,65 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
   const P = await import('../web/src/pure/printer.js');
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
   try {
+    // ---------- E opens the screen; a model, a colour and a size picked, then Print ----------
+    if (want('screen')) {
+      const { ctx, p, errs } = await open(b, DESK, { save: null });
+      const pics = [];
+      p.on('response', r => { if (/assets\/printer\//.test(r.url())) pics.push(`${r.status()} ${r.url().split('/').pop()}`); });
+      check('nothing of the printer is built or fetched at the start', !(await p.evaluate(() => __loft.printer.built)) && pics.length === 0, JSON.stringify(pics));
+      await standAt(p, SPOT); await facePrinter(p);
+      const near = await p.evaluate(() => [__loft.near, document.getElementById('prompt').textContent]);
+      check('at the printer, E is offered', near[0] === 'printer' && /Print something/.test(near[1]), near.join(' | '));
+      await untilBuilt(p);
+      const idle = await state(p);
+      check('with nothing printed yet, the default rocket is part way through and silent', !idle.mine && idle.print.model === 'rocket' && idle.k > 0 && idle.k < 1 && !idle.sounding && idle.built?.tris > 1000, JSON.stringify({ k: idle.k, s: idle.sounding, b: idle.built }));
+      await p.keyboard.press('KeyE');
+      await p.waitForSelector('.pn-printer .ps-grid', { timeout: 5000 }).catch(() => {});
+      await p.waitForTimeout(1500);
+      const scr = await p.evaluate(() => ({
+        mode: __loft.mode, tiles: document.querySelectorAll('.ps-tile').length, swatches: document.querySelectorAll('.ps-sw').length, prompt: document.getElementById('prompt').classList.contains('on'),
+        cam: __loft.camera.position.distanceTo(__loft.printer.group.position), me: __loft.headVisible, focus: document.activeElement?.closest('.ps-type') ? 'type' : document.activeElement?.tagName,
+      }));
+      check('E opens the touch screen: every model, a keychain, every colour, the camera at the printer', scr.mode === 'printer' && scr.tiles === P.SHOWN.length + 1 && scr.swatches === P.SWATCHES.length && !scr.prompt && scr.cam < 1.2 && scr.focus === 'type', JSON.stringify(scr));
+      const sheet = await p.evaluate(async () => { const i = new Image(); i.src = 'assets/printer/models.webp'; await i.decode(); return [i.naturalWidth, i.naturalHeight]; });
+      check('the model pictures arrive when the screen opens, one sheet', pics.length === 1 && /^200 models\.webp/.test(pics[0]) && sheet[0] === 6 * 128, `${pics.join()} ${sheet}`);
+      const seen = await printOnScreen(p);
+      check('the print is in view beside the screen, nothing over it', seen.z < 1 && seen.x > 0 && seen.x < 1280 * 0.68 && seen.y > 0 && seen.y < 800 && seen.top === 'CANVAS', JSON.stringify(seen));
+      await p.screenshot({ path: path.join(OUT, 'screen-open.png') });
+      await p.click('.ps-tile >> text=little Pishi');
+      await p.click('.ps-sw[aria-label="purple"]');
+      await p.$eval('.ps-size input', el => { el.value = '130'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+      const label = await p.textContent('.ps-print');
+      check('the Print button says what it will print', label === 'Print a purple little Pishi', label);
+      await p.click('.ps-print');
+      await p.waitForTimeout(200);
+      const warm = await state(p);
+      check('Print starts it: the bed clears and the nozzle warms up', warm.mine && warm.heating && warm.k === 0 && warm.print.model === 'pishi' && warm.print.colour === 'purple' && Math.abs(warm.print.size - 1.3) < 1e-9, JSON.stringify({ ...warm, built: !!warm.built }));
+      const headRest = await p.evaluate(() => __loft.world.printParts.head.position.toArray());
+      await p.waitForFunction(() => __loft.printer.progress > 0.4, null, { timeout: 30000 }).catch(() => {});
+      const mid = await p.evaluate(() => ({ k: __loft.printer.progress, head: __loft.world.printParts.head.position.toArray(), cut: __loft.printer.mesh.material.clippingPlanes[0].constant - __loft.printer.group.position.y, h: __loft.printer.built.height, status: document.querySelector('.ps-status').textContent }));
+      const moved = Math.hypot(...mid.head.map((v, i) => v - headRest[i]));
+      check('it prints a layer at a time, the head moving, the screen counting', mid.k > 0.4 && mid.k < 0.9 && mid.cut > 0.25 * mid.h && mid.cut < 0.95 * mid.h && moved > 0.02 && /Printing a purple little Pishi: \d+%/.test(mid.status), JSON.stringify({ ...mid, moved }));
+      await p.screenshot({ path: path.join(OUT, 'screen-mid.png') });
+      await untilDone(p);
+      await p.waitForTimeout(400);
+      const done = await p.evaluate(() => ({ k: __loft.printer.progress, cut: __loft.printer.mesh.material.clippingPlanes[0].constant - __loft.printer.group.position.y, status: document.querySelector('.ps-status').textContent, saved: JSON.parse(localStorage.getItem('home.print') || 'null') }));
+      check('then it is done, whole, and kept', done.k === 1 && done.cut > 1 && /^Done: a purple little Pishi/.test(done.status) && done.saved?.model === 'pishi' && done.saved?.colour === 'purple', JSON.stringify(done));
+      await p.screenshot({ path: path.join(OUT, 'screen-done.png') });
+      // Typing at the screen works as at the terminal.
+      await p.click('.ps-type input');
+      await p.keyboard.type('taller red twist'); await p.keyboard.press('Enter');
+      await p.waitForTimeout(200);
+      const typed = await p.evaluate(() => ({ print: __loft.printer.print, said: document.querySelector('.pn-said').textContent, swatch: document.querySelector('.ps-sw[aria-pressed="true"]')?.ariaLabel }));
+      check('typing to the screen adjusts the print', typed.print.model === 'pishi' && typed.print.colour === 'red' && typed.print.height > 1.2 && typed.print.twist > 0 && /^Reprinting the little Pishi, taller, twist in red\.$/.test(typed.said) && typed.swatch === 'red', JSON.stringify(typed));
+      await untilDone(p);
+      await p.keyboard.press('Escape');
+      await p.waitForTimeout(1200);
+      const back = await p.evaluate(() => ({ mode: __loft.mode, panel: !!document.querySelector('.pn'), me: __loft.headVisible, prompt: document.getElementById('prompt').classList.contains('on') }));
+      check('Esc closes it and I am back on my feet at the printer', back.mode === 'walk' && !back.panel && back.me && back.prompt, JSON.stringify(back));
+      check('the screen: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
     // ---------- the hum: only while a print runs ----------
     if (want('hum')) {
       const { ctx, p, errs } = await open(b, DESK, { auto: false, ear: true, save: null });
@@ -167,6 +235,74 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       check('the keychain takes the same adjustments', /^Reprinting the keychain, taller, wider, twist, spikier in blue\.$/.test(adj) && s.print.text === 'sam' && s.print.depth > 0 && s.print.twist > 0 && s.built?.tris > 500, `${adj} ${JSON.stringify(s.print)}`);
       for (const t of ['', '   ', '"   "']) check(`"${t}" prints nothing and breaks nothing`, (await p.evaluate(x => __loft.printer.ask(x), t)) === null);
       check('the words: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- phones: tap the printer, the screen beside the print ----------
+    for (const [part, opts] of [['phone', UPRIGHT], ['side', SIDEWAYS]]) {
+      if (!want(part)) continue;
+      const { ctx, p, errs } = await open(b, opts, { save: null });
+      await standAt(p, [19.9, 2.9, 0.45]); await facePrinter(p);
+      await p.waitForTimeout(900);
+      const at = await printOnScreen(p);
+      await p.touchscreen.tap(at.x, at.y);
+      await p.waitForFunction(() => __loft.mode === 'printer', null, { timeout: 20000 }).catch(() => {});
+      await p.waitForTimeout(1500);
+      const opened = await p.evaluate(() => ({ mode: __loft.mode, panel: !!document.querySelector('.pn-printer') }));
+      check(`${part}: a tap on the printer walks me there and opens its screen`, opened.mode === 'printer' && opened.panel, `${JSON.stringify(at)} ${JSON.stringify(opened)}`);
+      await p.tap('.ps-tile >> text=chess knight');
+      await p.tap('.ps-sw[aria-label="gold"]');
+      const btn = await p.$eval('.ps-print', el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, text: el.textContent }; });
+      check(`${part}: the Print button is on the screen without scrolling`, btn.top > 0 && btn.bottom <= opts.viewport.height && btn.text === 'Print a gold chess knight', JSON.stringify(btn));
+      await p.tap('.ps-print');
+      await p.waitForFunction(() => __loft.printer.progress > 0.5, null, { timeout: 40000 }).catch(() => {});
+      await p.waitForTimeout(600);
+      const seen = await printOnScreen(p), box = await p.$eval('.pn-printer .pn-box', el => el.getBoundingClientRect().toJSON());
+      const clear = part === 'phone' ? seen.y < box.top - 10 : seen.x < box.left - 10;
+      check(`${part}: the print shows beside the screen, not under it`, clear && seen.top === 'CANVAS' && seen.z < 1, `${JSON.stringify(seen)} screen ${Math.round(box.left)},${Math.round(box.top)}`);
+      await p.screenshot({ path: path.join(OUT, `${part}-mid.png`) });
+      await untilDone(p); await p.waitForTimeout(400);
+      await p.screenshot({ path: path.join(OUT, `${part}-done.png`) });
+      await p.tap('.pn-printer h2 button');
+      await p.waitForTimeout(800);
+      check(`${part}: Close puts me back on my feet`, (await p.evaluate(() => __loft.mode)) === 'walk');
+      check(`${part}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- a click on the printer from across the room ----------
+    if (want('click')) {
+      const { ctx, p, errs } = await open(b, DESK, { save: null });
+      await standAt(p, [18.6, 4.4, 0.45]); await facePrinter(p);
+      await p.waitForTimeout(900);
+      const at = await printOnScreen(p);
+      await p.mouse.click(at.x, at.y);
+      await p.waitForFunction(() => __loft.mode === 'printer', null, { timeout: 20000 }).catch(() => {});
+      const m = await p.evaluate(() => __loft.mode);
+      check('a click on the printer walks me there and opens its screen', m === 'printer', `${JSON.stringify(at)} ${m}`);
+      check('the click: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- smooth on a slow phone: no long frames when the screen opens or a model is built ----------
+    if (want('smooth')) {
+      const { ctx, p, errs } = await open(b, UPRIGHT, { save: null });
+      await standAt(p, SPOT); await untilBuilt(p);
+      const cdp = await ctx.newCDPSession(p);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      const gaps = async run => {
+        await p.evaluate(() => { const gaps = window.__gaps = []; let last = performance.now(); const f = t => { if (window.__gaps !== gaps) return; gaps.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); });
+        await run();
+        const g = await p.evaluate(() => { const a = __gaps.slice(2); window.__gaps = null; a.sort((x, y) => x - y); return { n: a.length, median: +a[a.length >> 1].toFixed(1), worst: +a[a.length - 1].toFixed(1) }; });
+        return g;
+      };
+      const base = await gaps(() => p.waitForTimeout(2500));
+      const opening = await gaps(async () => { await p.evaluate(() => __loft.act('printer')); await p.waitForTimeout(2500); });
+      const building = await gaps(async () => { await p.tap('.ps-tile >> text=chess knight'); await p.tap('.ps-print'); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000 }).catch(() => {}); await p.waitForTimeout(500); });
+      const keyring = await gaps(async () => { await p.evaluate(() => __loft.printer.ask('a long keychain to build here')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000 }).catch(() => {}); await p.waitForTimeout(500); });
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      console.log('frame gaps with the processor 4x slower, phone size (ms):', JSON.stringify({ base, opening, building, keyring }));
+      // A plain turn of the camera costs the house about 110 ms on such a phone, so opening (which moves it) is held to that.
+      check('4x slower phone: opening the screen costs no more than turning the camera', opening.worst < 140, `worst ${opening.worst} ms, idle worst ${base.worst} ms`);
+      check('4x slower phone: building a model or a keychain keeps frames coming', building.worst < base.worst + 25 && keyring.worst < base.worst + 25, `model worst ${building.worst} ms, keychain worst ${keyring.worst} ms, idle worst ${base.worst} ms`);
+      check('smooth: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
   } finally {

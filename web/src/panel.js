@@ -1,5 +1,7 @@
-// A reading panel over the room: the story book, the about board, the 3D printer, and the guestbook and mailbox, which keep what you
-// write on this device only until their server is set up. Everything typed is shown with textContent, never as HTML.
+import { printScreen, CSS as PRINTER_CSS } from './printscreen.js';
+
+// A reading panel over the room: the story book, the about board, the 3D printer's screen, and the guestbook and mailbox, which keep
+// what you write on this device only until their server is set up. Everything typed is shown with textContent, never as HTML.
 const CSS = `
 .pn { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(5, 7, 11, .55); padding: 16px; }
 .pn-box { width: min(520px, 100%); max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box; padding: 18px 20px; border-radius: 14px;
@@ -15,19 +17,16 @@ const CSS = `
 .pn-list { list-style: none; padding: 0; margin: 10px 0 0; }
 .pn-list li { padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); overflow-wrap: anywhere; }
 .pn-list b { color: #fff; font-weight: 600; }
-.pn.pn-low { place-items: end center; background: transparent; pointer-events: none; }
-.pn.pn-low .pn-box { pointer-events: auto; width: min(460px, 100%); }
-.pn-input { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-.pn-box .pn-input input { margin: 0; flex: 1; min-width: 0; }
-.pn-chips { justify-content: flex-start; margin-top: 0; }
 .pn-box .pn-said { color: #3ee6c4; margin-bottom: 0; }
 `;
 const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; };
 
 export function makePanels(store) {
-  if (!document.getElementById('pn-css')) { const s = document.createElement('style'); s.id = 'pn-css'; s.textContent = CSS; document.head.append(s); }
-  let open = null;
-  function show(title, build, variant = '') {
+  if (!document.getElementById('pn-css')) { const s = document.createElement('style'); s.id = 'pn-css'; s.textContent = CSS + PRINTER_CSS; document.head.append(s); }
+  let open = null, sized = 0;
+  const NONE = Object.freeze({ right: 0, bottom: 0 });
+  addEventListener('resize', () => { sized++; });
+  function show(title, build, variant = '', onClose = null) {
     close();
     const box = el('div', { className: 'pn-box' });
     const shut = el('button', { type: 'button', textContent: 'Close' });
@@ -41,13 +40,15 @@ export function makePanels(store) {
     const onKey = e => { e.stopPropagation(); if (e.key === 'Escape') close(); };
     addEventListener('keydown', onKey, true);
     document.body.append(root);
-    open = { root, onKey };
+    open = { root, box, onKey, onClose, variant };
   }
   function close() {
     if (!open) return;
-    removeEventListener('keydown', open.onKey, true);
-    open.root.remove();
+    const was = open;
+    removeEventListener('keydown', was.onKey, true);
+    was.root.remove();
     open = null;
+    was.onClose?.();
   }
   const load = key => { try { const v = JSON.parse(store.get(key) || '[]'); return Array.isArray(v) ? v.filter(x => x && typeof x.text === 'string').slice(-30) : []; } catch (e) { return []; } };
   const save = (key, list) => store.set(key, JSON.stringify(list.slice(-30)));
@@ -99,25 +100,17 @@ export function makePanels(store) {
         ];
       });
     },
-    // The 3D printer: what you type becomes the print and more words change it. The panel sits low so the print shows.
-    printer(pr) {
-      let said = '';
-      const touch = matchMedia('(pointer: coarse)').matches;
-      show('3D PRINTER', render => {
-        const box = el('input', { maxLength: 60, placeholder: 'Type something to print', ariaLabel: 'What to print', enterKeyHint: 'go', autocomplete: 'off' });
-        const go = text => { said = pr.ask(text) || 'Nothing to print there. Try a model, or any word at all.'; render(); };
-        const form = el('form', { className: 'pn-input' }, box, el('button', { type: 'submit', textContent: 'Print' }));
-        form.addEventListener('submit', e => { e.preventDefault(); go(box.value); });
-        const chip = w => { const b = el('button', { type: 'button', textContent: w }); b.addEventListener('click', () => go(w)); return b; };
-        // A moment's wait, so the E that opened the panel is not typed into it.
-        if (!touch) setTimeout(() => box.isConnected && box.focus(), 80);
-        return [
-          el('p', { className: 'dim', textContent: 'Ask for a model (rocket, pishi, bh22, knight, duck, car, skull, dino and more) or type any word for a keychain. Then change it: taller, wider, twist, more points, spikier, or a colour.' }),
-          form,
-          el('div', { className: 'pn-row pn-chips' }, ...['rocket', 'pishi', 'duck', 'taller', 'twist', 'teal'].map(chip)),
-          el('p', { className: 'pn-said', textContent: said || `On the bed: ${pr.describe()}${pr.progress < 1 ? ', part way through' : ''}.` }),
-        ];
-      }, 'low');
+    printer(pr, { onClose } = {}) {
+      const screen = printScreen(pr, { touch: matchMedia('(pointer: coarse)').matches });
+      show('3D PRINTER', () => screen.nodes, 'printer', () => { screen.stop(); onClose?.(); });
+    },
+    // Measured once and again only on a resize: it is asked every frame, and measuring forces the page's layout.
+    cover() {
+      if (!open || open.variant !== 'printer') return NONE;
+      if (open.cover && open.coverAt === sized) return open.cover;
+      const r = open.box.getBoundingClientRect(), W = innerWidth || 1, H = innerHeight || 1;
+      open.coverAt = sized;
+      return (open.cover = r.top > H * 0.3 ? { right: 0, bottom: Math.min(0.8, (H - r.top) / H) } : { right: Math.min(0.8, (W - r.left) / W), bottom: 0 });
     },
     // The mailbox cannot send yet, and says so; a note written here waits on this device.
     mailbox() {
