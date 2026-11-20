@@ -17,9 +17,11 @@ export const DEFAULT = Object.freeze({ model: 'rocket', text: '', colour: 'red',
 const RANGES = [['size', 0.5, 1.5], ['height', 0.4, 2.2], ['width', 0.5, 2], ['twist', -2, 2], ['bulge', -0.3, 0.8], ['taper', -0.4, 0.5], ['depth', 0, 0.6]];
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
+// The joiners stay: Persian needs its half-space between letters, and an emoji family is held together by them.
+const ends = s => s.replace(/^[\s\u200c\u200d]+|[\s\u200c\u200d]+$/g, '');
 export function cleanText(t) {
-  const s = String(t ?? '').normalize('NFC').replace(/\s+/g, ' ').replace(/[\p{C}]/gu, '').trim();
-  return Array.from(s).slice(0, MAX_TEXT).join('').trim();
+  const s = ends(String(t ?? '').normalize('NFC').replace(/\s+/g, ' ').replace(/(?![\u200c\u200d])\p{C}/gu, ''));
+  return ends(Array.from(s).slice(0, MAX_TEXT).join(''));
 }
 
 // The shapes the printer made before its models, so a print saved then comes back as the nearest one now.

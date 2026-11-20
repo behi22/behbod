@@ -82,7 +82,7 @@ test('any other word prints on a keychain, the words kept as typed', () => {
 });
 
 test('nothing to act on gives nothing', () => {
-  for (const t of ['', '   ', 'the a please', null, undefined, '""', '"   "', '​']) assert.equal(parsePrint(t), null, JSON.stringify(t));
+  for (const t of ['', '   ', 'the a please', null, undefined, '""', '"   "', '\u200b']) assert.equal(parsePrint(t), null, JSON.stringify(t));
 });
 
 test('twisty twists the print on the bed, as it did before the models', () => {
@@ -92,14 +92,14 @@ test('twisty twists the print on the bed, as it did before the models', () => {
 });
 
 test('a Persian half-space and an emoji joiner stay in the words; other hidden marks go', () => {
-  const half = 'می‌خواهم', family = '👨‍👩‍👧';
+  const half = 'می\u200cخواهم', family = '👨\u200d👩\u200d👧';
   assert.equal(cleanText(half), half);
   assert.equal(parsePrint(half).p.text, half);
   assert.equal(parsePrint(`"${half}"`).p.text, half);
   assert.equal(cleanText(family), family);
-  assert.equal(cleanText('‌ab‍'), 'ab');
-  assert.equal(cleanText('a‮b​'), 'ab');
-  for (const t of ['‌', ' ‍ ', '"‌"']) assert.equal(parsePrint(t), null, JSON.stringify(t));
+  assert.equal(cleanText('\u200cab\u200d'), 'ab');
+  assert.equal(cleanText('a\u202eb\u200b'), 'ab');
+  for (const t of ['\u200c', ' \u200d ', '"\u200c"']) assert.equal(parsePrint(t), null, JSON.stringify(t));
 });
 
 test('everything stays inside what the printer can make, and old saves come back', () => {
