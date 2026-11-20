@@ -3,6 +3,7 @@ import { EffectComposer, RenderPass, Pass, EffectPass, Effect, EffectAttribute, 
 import { TIERS, TIER_ORDER, effectsOf } from './pure/tier.js';
 import { makeRebuilder, STALE } from './pure/rebuild.js';
 import { inSlices } from './pure/slices.js';
+import { useAhead } from './useahead.js';
 
 export { TIERS };
 
@@ -147,17 +148,7 @@ export function makeEngine(canvas, coarse) {
         await Promise.all(jobs);
       }
     } finally { tri.dispose(); picture.dispose(); }
-    // A program's first use reads its compile logs back from the graphics card, which waits for all the card has queued:
-    // most of a frame at 2x, held inside the swap's first frame. Each program that linked is first used here instead,
-    // with that read left out; one that failed to link keeps its logs.
-    const gl = renderer.getContext(), checks = renderer.debug.checkShaderErrors, used = new Set();
-    for (const m of mats) for (const prog of renderer.properties.get(m).programs?.values() || []) used.add(prog);
-    await inSlices([...used], prog => {
-      if (stale()) throw STALE;
-      if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) return;
-      renderer.debug.checkShaderErrors = false;
-      try { prog.getUniforms(); } finally { renderer.debug.checkShaderErrors = checks; }
-    }, { rest: breath });
+    await useAhead(renderer, mats, { rest: breath, stale });
   }
   // The chain for a set of effects, built in the background; the tier last asked for has that set.
   async function buildChain(effects, { made, stale }) {
@@ -230,6 +221,10 @@ export function makeEngine(canvas, coarse) {
         }
       }
       picture.dispose();
+      // And each first used now, its logs read while nobody is waiting (see useahead.js).
+      const used = new Set();
+      for (const [s] of [[scene], bg && [bg.scene]].filter(Boolean)) s.traverse(o => { for (const m of [].concat(o.material || [])) used.add(m); });
+      await useAhead(renderer, used, { logs: true });
       // Pictures go to the graphics card the first time they are drawn: a 4096 px lightmap is a long stall, so send
       // every one now instead of when its zone first comes into view.
       const textures = new Set();

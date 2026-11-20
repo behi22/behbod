@@ -5,6 +5,7 @@ import { b2t } from '../engine.js';
 import { U, lit, makeDetail } from './lit.js';
 import { MOODS } from '../pure/moods.js';
 import { inSlices } from '../pure/slices.js';
+import { useAhead } from '../useahead.js';
 
 // The range's rooms. Unlike the house, whose zones are baked pictures, these are real materials: each surface's own
 // colour and finish, lit by a lightmap that holds the light alone, with the room reflected in the floor and the
@@ -62,6 +63,9 @@ export async function prepare(renderer, scene, camera, { screen = true, picture 
     }, { rest: breathe });
     await Promise.all(jobs);
   }
+  const mats = new Set();
+  for (const o of pieces) for (const m of [].concat(o.material || [])) mats.add(m);
+  await useAhead(renderer, mats, { rest: breathe });
 }
 
 // three builds a reflection's two blur shaders the moment it first draws with them, which held a frame for up to a
@@ -81,6 +85,7 @@ async function readyBlur(renderer, pmrem, size) {
     job = renderer.compileAsync(group, new THREE.OrthographicCamera());
   } finally { renderer.setRenderTarget(was); }
   await job;
+  await useAhead(renderer, [pmrem._cubemapMaterial, pmrem._blurMaterial].filter(Boolean), { rest: breathe });
 }
 
 async function picture(url, small) {

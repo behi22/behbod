@@ -12,6 +12,7 @@ import { makeRain, makeSnow, makeFireworks } from './outside/weather.js';
 import { terrainData } from './pure/terrain.js';
 import { makeRebuilder, STALE } from './pure/rebuild.js';
 import { inSlices } from './pure/slices.js';
+import { useAhead } from './useahead.js';
 
 const DEG = Math.PI / 180;
 const PALETTE = ['#ffcf6b', '#ff4d4d', '#5dff7a', '#5b8cff', '#cf6bff', '#fff4e6', '#5ef2ff', '#ff79c6'];
@@ -126,6 +127,9 @@ export function makeOutside3d(opts = {}) {
         await Promise.all(jobs);
       }
     } finally { picture.dispose(); }
+    const mats = new Set();
+    for (const root of roots(p)) root.traverse(o => { for (const m of [].concat(o.material || [])) mats.add(m); });
+    await useAhead(r, mats, { rest: breath, stale: gone });
   }
   async function buildInBackground(q, { made, stale }) {
     const gone = () => stale() || disposed;
