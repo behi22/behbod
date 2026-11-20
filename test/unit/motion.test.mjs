@@ -61,8 +61,12 @@ test('one slow stretch is not enough, two in a row drop one step', () => {
 
 test('the first step down only lowers the pixel count, the effects stay', () => {
   assert.equal(TIER_ORDER.indexOf('ultra') - TIER_ORDER.indexOf('high'), 1);
-  // Each step down is followed by two quiet stretches.
-  assert.deepEqual(run('ultra', Array(10).fill(slow)).seen, ['ultra', 'high', 'high', 'high', 'high', 'medium', 'medium', 'medium', 'medium', 'low']);
+  // Slow on every tier but low: each step down is followed by two quiet stretches and two looks at whether it helped.
+  let tier = 'ultra', state = { top: 'ultra' };
+  const seen = [];
+  for (let k = 0, now = 7000; k < 60; k++, now += 2500) { state = tierStep(tier, tier === 'low' ? fast : slow, now, state); tier = state.tier; seen.push(tier); }
+  assert.deepEqual([...new Set(seen)], ['ultra', 'high', 'medium', 'low']);
+  assert.equal(seen.at(-1), 'low');
 });
 
 test('a fast stretch in between resets the count', () => {

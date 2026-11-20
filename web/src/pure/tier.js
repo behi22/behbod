@@ -35,21 +35,37 @@ export function p90(times) {
 // its favour. A shaky tier is left after two slow stretches in a row, a steady one only after five, so a rare slow
 // patch does not flip a tier that holds. Every stay on a tier, the first included, is a try of it, and a try fails when
 // the tier is left while shaky; after two failed tries a tier is not tried again in this visit (`top` comes down).
-const FIRST = 4, LONGEST = 144, QUIET = 6000, FAILS = 2, CREDIT = 6, RUN = 2, STEADY_RUN = 5;
+// A step down must buy something: a frame cap or a slow screen looks slow on every tier. After a step down (`drop`),
+// one of the first two stretches judged must be clearly faster on average than the one that caused it, or the next
+// step down is tried (on a 60 Hz screen frames come in whole refreshes, so a card too slow for one frame per refresh
+// may show no gain until a lower tier); if none down to the floor is faster, the tier goes back to where it was and
+// never steps below it again in this visit (`floor`). While a step down is being checked, nothing else is judged.
+const FIRST = 4, LONGEST = 144, QUIET = 6000, FAILS = 2, CREDIT = 6, RUN = 2, STEADY_RUN = 5, GAIN = 0.9, LOOKS = 2;
+const mean = t => t.reduce((a, v) => a + v, 0) / (t.length || 1);
 export function tierStep(current, times, now, state = {}) {
-  const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {} } = state;
-  const i = TIER_ORDER.indexOf(current);
-  const next = o => ({ ...state, tier: current, slowRuns: 0, goodRuns: 0, waits, top, from, record, fails, ...o });
+  const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {}, floor = 'low', drop = null } = state;
+  const i = TIER_ORDER.indexOf(current), lowest = TIER_ORDER.indexOf(floor);
+  const base = { ...state, tier: current, slowRuns: 0, goodRuns: 0, waits, top, from, record, fails, floor, drop };
+  const next = o => ({ ...base, ...o });
   if (now - from <= QUIET) return next({ goodRuns });
+  if (drop) {
+    if (mean(times) > drop.mean * GAIN) {
+      if (drop.looks + 1 < LOOKS) return next({ drop: { ...drop, looks: drop.looks + 1 } });
+      if (i - 1 >= lowest) return next({ tier: TIER_ORDER[i - 1], from: now, drop: { ...drop, looks: 0 } });
+      const back = TIER_ORDER.indexOf(drop.from);
+      return next({ tier: drop.from, from: now, drop: null, floor: drop.from, top: TIER_ORDER.indexOf(top) < back ? drop.from : top });
+    }
+    base.drop = null;
+  }
   const slow = p90(times) > 20, [judged = 0, slowOnes = 0] = record[current] || [];
   const mine = { ...record, [current]: [judged + 1, slowOnes + (slow ? 1 : 0)] };
   const shaky = mine[current][1] * 4 >= mine[current][0] + CREDIT;
   if (slow) {
     const runs = slowRuns + 1;
-    if (runs >= (shaky ? RUN : STEADY_RUN) && i > 0) {
+    if (runs >= (shaky ? RUN : STEADY_RUN) && i > lowest) {
       const failsNow = shaky ? { ...fails, [current]: (fails[current] || 0) + 1 } : fails;
       const capped = failsNow[current] >= FAILS && TIER_ORDER.indexOf(top) > i - 1 ? TIER_ORDER[i - 1] : top;
-      return next({ tier: TIER_ORDER[i - 1], from: now, record: mine, fails: failsNow, top: capped });
+      return next({ tier: TIER_ORDER[i - 1], from: now, record: mine, fails: failsNow, top: capped, drop: { from: current, mean: mean(times), looks: 0 } });
     }
     return next({ slowRuns: runs, record: mine });
   }

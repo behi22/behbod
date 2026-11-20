@@ -37,8 +37,8 @@ test('the quiet seconds run from when the judge starts, not from page load', () 
 });
 
 test('a switch starts the quiet seconds again, so its own freeze and new shaders are not judged', () => {
-  const { seen } = run('ultra', [slow, slow, slow, slow, slow, slow], 7000);
-  assert.deepEqual(seen, ['ultra', 'high', 'high', 'high', 'high', 'medium']);
+  const { seen } = run('ultra', [slow, slow, slow, slow, fast, fast], 7000);
+  assert.deepEqual(seen, ['ultra', 'high', 'high', 'high', 'high', 'high']);
 });
 
 test('the quiet seconds forget a slow stretch from before them, and keep the good ones', () => {
@@ -91,4 +91,46 @@ test('a capable machine with a long slow patch steps down but is not held lower:
   assert.equal(seen.at(-1), 'ultra');
   assert.equal(seen.filter((t, k) => k > 0 && t !== seen[k - 1]).length, 6, 'down and back up after each patch');
   assert.equal(state.top, 'ultra');
+});
+
+// Frames on every tier as the screen or the browser hands them out, whatever the quality.
+const capped = ms => () => Array(60).fill(ms);
+// Runs a machine whose frame intervals depend on the tier it is on, and returns the tiers seen and the state.
+function machine(frames, stretches, tier = 'ultra') {
+  let state = { top: tier }, now = 7000;
+  const seen = [];
+  for (let k = 0; k < stretches; k++) { state = tierStep(tier, frames(tier), now, state); tier = state.tier; seen.push(tier); now += 2500; }
+  return { seen, state, switches: seen.filter((t, k) => t !== (k ? seen[k - 1] : 'ultra')).length };
+}
+
+// Regression: with frames held to 30 a second (a battery saver) or to a 50 Hz screen, an idle machine walked from ultra
+// down to low within seconds and stayed there, though no tier was any faster.
+test('frames held to 30 a second: the drops buy nothing, so it goes back to ultra and stays', () => {
+  const { seen, state, switches } = machine(capped(33.3), 200);
+  assert.equal(seen.at(-1), 'ultra');
+  assert.equal(state.floor, 'ultra');
+  assert.ok(seen.slice(40).every(t => t === 'ultra'));
+  assert.equal(switches, 4, 'down to low, then back');
+});
+
+test('a 50 Hz screen: the same, it goes back to ultra and stays', () => {
+  const { seen, switches } = machine(capped(20.4), 200);
+  assert.ok(seen.slice(40).every(t => t === 'ultra'));
+  assert.equal(switches, 4, 'down to low, then back');
+});
+
+test('a machine held to 30 fps on ultra by its graphics card and faster on high still steps down, and stays down', () => {
+  const { seen, state } = machine(t => Array(60).fill(t === 'ultra' ? 33.3 : 16.7), 200);
+  assert.ok(seen.slice(30).every(t => t === 'high'), seen.slice(0, 30).join(' '));
+  assert.equal(state.floor, 'low');
+});
+
+test('on a 60 Hz screen, a graphics card too slow for one frame per refresh on ultra and high, but not on medium, gets to medium', () => {
+  const { seen } = machine(t => Array(60).fill(t === 'ultra' || t === 'high' ? 33.3 : 16.7), 200);
+  assert.ok(seen.slice(60).every(t => t === 'medium'), seen.slice(0, 60).join(' '));
+});
+
+test('a graphics card that only gets faster with no effects at all is followed down to low', () => {
+  const { seen } = machine(t => Array(60).fill(t === 'low' ? 16.7 : 33.3), 200);
+  assert.ok(seen.slice(40).every(t => t === 'low'), seen.slice(0, 40).join(' '));
 });
