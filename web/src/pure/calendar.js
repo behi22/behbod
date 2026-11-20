@@ -3,9 +3,12 @@
 export const DAY = 864e5;
 const D = (y, m, d) => Date.UTC(y, m - 1, d);
 
+// One formatter for every reading: making one is far dearer than using one (on a slowed phone a run of readings,
+// each with its own, held a frame for 120 ms).
+let vanFormat = null;
 export function vanTime(date) {
   const parts = {};
-  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Vancouver', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+  (vanFormat ||= new Intl.DateTimeFormat('en-US', { timeZone: 'America/Vancouver', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }))
     .formatToParts(date).forEach(p => { parts[p.type] = p.value; });
   return { y: +parts.year, m: +parts.month, d: +parts.day, h: +parts.hour % 24, min: +parts.minute };
 }
