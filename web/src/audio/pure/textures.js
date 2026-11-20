@@ -165,21 +165,14 @@ export function purr(sr, seed = 'purr') {
   return [normalize(seamLoop(s, L, F), 0.8)];
 }
 
-export function printer(sr, seed = 'printer') {
-  const r = makeRng(seed), { L, F, N } = frame(sr, 8, 0.1), s = new Float32Array(N);
-  for (let i = 0; i < N;) {
-    const len = Math.floor(sr * r.range(0.12, 0.9)), axes = r.chance(0.35) ? 2 : 1;
-    for (let a = 0; a < axes; a++) {
-      const f = r.range(180, 1100), amp = r.range(0.08, 0.14) / axes, ramp = sr * 0.02;
-      for (let k = 0; k < len && i + k < N; k++) {
-        const p = 2 * Math.PI * f * k / sr, e = Math.min(1, k / ramp, (len - k) / ramp);
-        s[i + k] += amp * e * (Math.sin(p) + 0.5 * Math.sin(2 * p) + 0.3 * Math.sin(3 * p));
-      }
-    }
-    i += len + Math.floor(sr * r.range(0, 0.08));
+// The printer's fan: soft air, a little brighter than the room's own hum, with the blades' faint low note.
+export function printerFan(sr, seed = 'printer-fan') {
+  const r = makeRng(seed), { L, F, N } = frame(sr, 4, 0.1), s = new Float32Array(N);
+  const lp = biquad('lp', sr).set(1100, 0.6), hp = biquad('hp', sr).set(160, 0.7), bp = biquad('bp', sr).set(420, 1.2);
+  for (let i = 0; i < N; i++) {
+    const x = r.next() * 2 - 1, blade = Math.sin((2 * Math.PI * 182 * i) / sr) * (0.5 + 0.5 * Math.sin((2 * Math.PI * 0.75 * i) / sr));
+    s[i] = hp.run(lp.run(x)) * 0.8 + bp.run(x) * 0.25 + blade * 0.025;
   }
-  const lp = biquad('lp', sr).set(900, 0.7);
-  for (let i = 0; i < N; i++) s[i] += lp.run(r.next() * 2 - 1) * 0.05 + 0.02 * Math.sin(2 * Math.PI * 140 * i / sr);
   return [normalize(seamLoop(s, L, F), 0.6)];
 }
 
@@ -199,4 +192,4 @@ export function reverbIR(sr, secs = 2.2, seed = 'room') {
   return chans;
 }
 
-export const TEXTURES = { crackle, rain, fire, city, waves, wind, purr, printer };
+export const TEXTURES = { crackle, rain, fire, city, waves, wind, purr, printerFan };

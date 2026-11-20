@@ -3,10 +3,11 @@ import { DEFAULT, COLOURS, parsePrint, cleanPrint, buildPrint, nozzleAt } from '
 
 // The 3D printer on the rack. Type to it and it prints what you asked for a layer at a time: the gantry rises, the head
 // runs along it and the bed slides under the nozzle, so the nozzle traces each layer. Your last print stays on the bed
-// for next time; with none, it is always part way through a slow vase.
+// for next time; with none, it is always part way through a slow vase. Only a print you start is heard: the fan, and the
+// steppers singing with the head and the bed.
 const KEY = 'home.print', LAYERS = 40, QUICK = 14, SLOW = 300;
 
-export function makePrinter({ scene, meta, parts, store, b2t }) {
+export function makePrinter({ scene, meta, parts, store, b2t, sfx = null }) {
   if (!meta.points.print_bed || !meta.points.printer) return null;
   const bedTop = b2t(...meta.points.print_bed), headRest = b2t(...meta.points.printer);
   const home = Object.fromEntries(Object.entries(parts).filter(([, o]) => o).map(([k, o]) => [k, o.position.clone()]));
@@ -36,11 +37,15 @@ export function makePrinter({ scene, meta, parts, store, b2t }) {
   // How far along the print is, 0 to 1. A visitor's print takes a few seconds; the default one never quite ends.
   const progress = () => (done ? 1 : mine ? Math.min(1, (clock - start) / QUICK) : (0.45 + clock / SLOW) % 1);
   const at = new THREE.Vector3(), target = { head: new THREE.Vector3(), gantry: new THREE.Vector3(), bed: new THREE.Vector3() };
+  const lastHead = new THREE.Vector3(), lastBed = new THREE.Vector3(), soundAt = bedTop.clone().setY(bedTop.y + 0.12);
+  let sounding = false;
 
   return {
     mesh,
     get print() { return { ...p }; },
     get progress() { return progress(); },
+    get mine() { return mine; },
+    get sounding() { return sounding; },
     // Takes what was typed; returns what the printer says, or null when there was nothing to print.
     ask(text) {
       const r = parsePrint(text, p);
@@ -54,9 +59,9 @@ export function makePrinter({ scene, meta, parts, store, b2t }) {
       clock += dt;
       const k = progress();
       if (mine && k >= 1) done = true;
-      const printing = k < 1, layer = Math.min(LAYERS, Math.floor(k * LAYERS));
+      const printing = k < 1, layer = Math.min(LAYERS, Math.floor(k * LAYERS)), run = mine && printing;
       mesh.geometry.setDrawRange(0, printing ? build.bottom + build.perLayer * layer : Infinity);
-      if (cam.distanceToSquared(bedTop) > 144) return;
+      if (cam.distanceToSquared(bedTop) > 144 && !run) { if (sounding) { sounding = false; sfx?.printer(false); } return; }
       // The nozzle follows this layer's outline; when nothing is printing the head parks and the bed comes home.
       if (printing) {
         const n = nozzleAt(build, p, Math.min(LAYERS, layer + 1), k * LAYERS - layer);
@@ -73,6 +78,13 @@ export function makePrinter({ scene, meta, parts, store, b2t }) {
         o.position.lerp(at.copy(home[name]).add(target[name]), f);
       }
       mesh.position.set(bedTop.x + (parts.bed ? parts.bed.position.x - home.bed.x : 0), bedTop.y, bedTop.z);
+      if (run && sfx) {
+        const step = Math.max(dt, 1e-3), hv = parts.head ? parts.head.position.distanceTo(lastHead) / step : 0, bv = parts.bed ? parts.bed.position.distanceTo(lastBed) / step : 0;
+        sounding = true;
+        sfx.printer(true, soundAt, { a: Math.min(1, hv / 1.2), b: Math.min(1, bv / 1.2) });
+      } else if (sounding) { sounding = false; sfx?.printer(false); }
+      if (parts.head) lastHead.copy(parts.head.position);
+      if (parts.bed) lastBed.copy(parts.bed.position);
     },
   };
 }

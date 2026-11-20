@@ -6,6 +6,8 @@ import { foeSounds } from './foes.js';
 
 const V = { a: [750, 1200], e: [550, 1850], i: [300, 2300], o: [480, 880], u: [350, 750], ae: [650, 1700] };
 const pt = (x, v) => [x, ...v];
+// The printer's levels: its fan, each stepper at full speed, and the stepper's note from still to fast, in Hz.
+const PRINTER = { fan: 0.24, motor: 0.05, low: 150, span: 330 };
 
 // Each syllable: consonant onset, length, a pitch path and a vowel path, both over 0..1 of the syllable.
 const WORDS = {
@@ -173,6 +175,50 @@ export function makeSfx(env) {
         cur.g.gain.setTargetAtTime(0, now, 0.12);
         cur.src.stop(now + 0.7);
         cur = null;
+      }
+    };
+  };
+
+  // The printer at work: its fan, and two stepper motors (the head's and the bed's) whose note rises with their speed.
+  // `motion` is { a, b }, each 0 (still) to 1 (fast). Nothing plays unless a print is running.
+  const printerVoice = () => {
+    let cur = null;
+    return (on, pos, motion) => {
+      const e = env.eng();
+      if (!e) return;
+      const ctx = e.ctx, now = ctx.currentTime;
+      if (on && !cur) {
+        const out = ctx.createGain(), pan = pos ? makePanner(ctx, pos) : null, lp = ctx.createBiquadFilter(), fan = ctx.createBufferSource(), fg = ctx.createGain();
+        out.gain.value = 0; out.gain.setTargetAtTime(1, now, 0.3);
+        if (pan) out.connect(pan).connect(e.sfxIn); else out.connect(e.sfxIn);
+        fan.buffer = e.texture('printerFan'); fan.loop = true; fg.gain.value = PRINTER.fan;
+        fan.connect(fg).connect(out);
+        lp.type = 'lowpass'; lp.frequency.value = 1300; lp.Q.value = 0.5; lp.connect(out);
+        const motors = [0, 1].map(() => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'triangle'; o.frequency.value = PRINTER.low; g.gain.value = 0;
+          o.connect(g).connect(lp); o.start(now);
+          return { o, g };
+        });
+        fan.start(now, Math.random() * fan.buffer.duration);
+        stats.loops++;
+        const nodes = [out, pan, lp, fan, fg, ...motors.flatMap(m => [m.o, m.g])].filter(Boolean);
+        fan.onended = () => { for (const n of nodes) n.disconnect(); stats.loops--; };
+        cur = { out, pan, fan, motors };
+      }
+      if (on) {
+        if (pos && cur.pan) setPos(cur.pan, pos);
+        cur.motors.forEach((m, k) => {
+          const s = Math.max(0, Math.min(1, (k ? motion?.b : motion?.a) || 0));
+          m.o.frequency.setTargetAtTime(PRINTER.low + PRINTER.span * s, now, 0.05);
+          m.g.gain.setTargetAtTime(PRINTER.motor * Math.sqrt(s), now, 0.06);
+        });
+      } else if (cur) {
+        const c = cur, end = now + 0.9;
+        cur = null;
+        c.out.gain.setTargetAtTime(0, now, 0.15);
+        c.fan.stop(end);
+        for (const m of c.motors) m.o.stop(end);
       }
     };
   };
@@ -359,7 +405,7 @@ export function makeSfx(env) {
       }
       S.play(t, t + 0.25);
     },
-    printer: loop('printer', 0.35),
+    printer: printerVoice(),
     pour(pos) {
       const S = go(pos);
       if (!S) return;

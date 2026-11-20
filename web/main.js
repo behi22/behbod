@@ -179,7 +179,7 @@ const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
 const persia = makePersia(scene, { feast: persiaAt.feast, day: () => out3d?.light.dayK ?? 0 }); window.__persia = persia;
-const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
+const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t, sfx: audio.sfx });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
 const shah = makeShahnameh(scene, meta);
@@ -778,9 +778,8 @@ function walk(dt, now) {
   return hs;
 }
 
-// ---------- sound of the room: the city through the glass, the sea and wind outside, rain, the fire, the printer ----------
-let ambT = 0, printing = false;
-const printerAt = meta.points.printer ? b2t(...meta.points.printer) : null;
+// ---------- sound of the room: the city through the glass, the sea and wind outside, rain, the fire ----------
+let ambT = 0;
 let pianoPlaced = false, musicDucked = false;
 function ambience(dt) {
   if ((ambT -= dt) > 0) return;
@@ -796,8 +795,6 @@ function ambience(dt) {
   audio.ambience.set('wind', out ? 0.5 : 0);
   audio.ambience.set('rain', rainy ? (out ? 1 : 0.45) : 0);
   audio.ambience.set('fire', Math.max(0, 1 - Math.hypot(pos.x - 4.35, north - 10.6) / 5));
-  const nearPrinter = !!printerAt && pos.distanceTo(printerAt) < 3.5;
-  if (nearPrinter !== printing) { printing = nearPrinter; audio.sfx.printer(printing, printerAt); }
 }
 
 // ---------- frame loop ----------
