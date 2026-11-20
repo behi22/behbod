@@ -133,6 +133,14 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       const typed = await p.evaluate(() => ({ print: __loft.printer.print, said: document.querySelector('.pn-said').textContent, swatch: document.querySelector('.ps-sw[aria-pressed="true"]')?.ariaLabel }));
       check('typing to the screen adjusts the print', typed.print.model === 'pishi' && typed.print.colour === 'red' && typed.print.height > 1.2 && typed.print.twist > 0 && /^Reprinting the little Pishi, taller, twist in red\.$/.test(typed.said) && typed.swatch === 'red', JSON.stringify(typed));
       await untilDone(p);
+      // A model picked on the screen comes out as its picture and as typed, with its own number of teeth or points.
+      const picked = [];
+      for (const id of ['gear', 'star', 'crown']) {
+        await p.click(`.ps-tile >> text=${P.nameOf({ model: id })}`); await p.click('.ps-print');
+        picked.push([id, (await state(p)).print.sides, P.parsePrint(id).p.sides]);
+      }
+      check('a gear, a star and a crown picked on the screen have their own teeth and points', picked.every(([, s, typedSides]) => s === typedSides), JSON.stringify(picked));
+      await untilDone(p);
       await p.keyboard.press('Escape');
       await p.waitForTimeout(1200);
       const back = await p.evaluate(() => ({ mode: __loft.mode, panel: !!document.querySelector('.pn'), me: __loft.headVisible, prompt: document.getElementById('prompt').classList.contains('on') }));

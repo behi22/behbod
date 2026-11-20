@@ -149,7 +149,7 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
       return r ? begin(r.p, r.said) : null;
     },
     start(pick) {
-      const q = cleanPrint({ ...DEFAULT, model: pick.model, text: pick.text, colour: pick.colour, size: pick.size });
+      const q = cleanPrint({ model: pick.model, text: pick.text, colour: pick.colour, size: pick.size });
       if (q.model !== pick.model) return null;
       return begin(q, `Printing ${describe(q)}.`);
     },
