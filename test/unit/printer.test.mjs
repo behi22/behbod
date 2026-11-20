@@ -184,6 +184,15 @@ test("the dinosaur's spikes stand up along its back, not inside it", () => {
   assert.ok(peaks >= 5, `${peaks} spikes stand out of the back`);
 });
 
+test("the flower's leaves stand apart from its head, with bare stem between", () => {
+  const { f } = MODEL.flower.make({ sides: 7, depth: 0 });
+  const width = y => { let w = 0; for (let x = -5.2; x <= 5.2; x += 0.1) for (let z = -1.5; z <= 2.5; z += 0.2) if (f(x, y, z) < 0) w = Math.max(w, Math.abs(x)); return w; };
+  // Up from the pot: bare stem, the leaves, bare stem again, then the head.
+  let runs = 0, wide = false;
+  for (let y = 4.6; y <= 15; y += 0.1) { const now = width(y) > 0.8; if (now && !wide) runs++; wide = now; }
+  assert.equal(runs, 2);
+});
+
 test('the settings change the shape: taller, wider, twisted, spikier, bigger only as far as the bed allows', () => {
   const base = build({ model: 'duck' });
   assert.ok(build({ model: 'duck', height: 1.25 }).height > base.height * 1.2);
