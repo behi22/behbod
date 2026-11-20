@@ -105,18 +105,17 @@ export function makePanels(store) {
       const touch = matchMedia('(pointer: coarse)').matches;
       show('3D PRINTER', render => {
         const box = el('input', { maxLength: 60, placeholder: 'Type something to print', ariaLabel: 'What to print', enterKeyHint: 'go', autocomplete: 'off' });
-        const go = text => { said = pr.ask(text) || 'Nothing to print there. Try a shape, or any word at all.'; render(); };
+        const go = text => { said = pr.ask(text) || 'Nothing to print there. Try a model, or any word at all.'; render(); };
         const form = el('form', { className: 'pn-input' }, box, el('button', { type: 'submit', textContent: 'Print' }));
         form.addEventListener('submit', e => { e.preventDefault(); go(box.value); });
         const chip = w => { const b = el('button', { type: 'button', textContent: w }); b.addEventListener('click', () => go(w)); return b; };
         // A moment's wait, so the E that opened the panel is not typed into it.
         if (!touch) setTimeout(() => box.isConnected && box.focus(), 80);
-        const now = pr.print;
         return [
-          el('p', { className: 'dim', textContent: 'Ask for a shape (vase, star, heart, gear, spiral, tower, flower, cup) or type any word. Then change it: taller, wider, twist, more points, spikier, or a colour.' }),
+          el('p', { className: 'dim', textContent: 'Ask for a model (rocket, pishi, bh22, knight, duck, car, skull, dino and more) or type any word for a keychain. Then change it: taller, wider, twist, more points, spikier, or a colour.' }),
           form,
-          el('div', { className: 'pn-row pn-chips' }, ...['star', 'heart', 'spiral', 'taller', 'twist', 'teal'].map(chip)),
-          el('p', { className: 'pn-said', textContent: said || `On the bed: ${now.colour} ${now.name}${pr.progress < 1 ? ', part way through' : ''}.` }),
+          el('div', { className: 'pn-row pn-chips' }, ...['rocket', 'pishi', 'duck', 'taller', 'twist', 'teal'].map(chip)),
+          el('p', { className: 'pn-said', textContent: said || `On the bed: ${pr.describe()}${pr.progress < 1 ? ', part way through' : ''}.` }),
         ];
       }, 'low');
     },

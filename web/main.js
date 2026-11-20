@@ -179,7 +179,7 @@ const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
 const persia = makePersia(scene, { feast: persiaAt.feast, day: () => out3d?.light.dayK ?? 0 }); window.__persia = persia;
-const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t, sfx: audio.sfx });
+const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t, renderer, sfx: audio.sfx, coarse });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
 const shah = makeShahnameh(scene, meta);
@@ -265,7 +265,7 @@ screens.command('coolant', (say, arg) => say(world.coolant(arg) ? `coolant: ${ar
 screens.command('fan', say => say(world.fan() ? 'fan on.' : 'fan off.'));
 screens.command('print', (say, arg) => {
   const r = printer?.ask(arg);
-  say(...(r ? [r.toLowerCase()] : ['print <shape or any word>: vase  star  heart  gear  spiral  tower  flower  cup', '  then: taller  wider  twist  more points  spikier  or a colour']));
+  say(...(r ? [r.toLowerCase()] : ['print <model>: rocket  pishi  bh22  knight  car  duck  skull  dino', '  any other word prints on a keychain, and the printer has more', '  then: taller  wider  twist  spikier  more points  or a colour']));
 });
 screens.command('music', (say, arg) => {
   const recs = audio.music.records;
