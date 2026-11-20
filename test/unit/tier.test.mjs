@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TIERS, switchWork, tierStep } from '../../web/src/pure/tier.js';
+import { TIERS, switchWork, tierStep, refreshFrom } from '../../web/src/pure/tier.js';
 
 // Regression: ultra and high share every effect, yet each switch between them rebuilt and recompiled the whole effects
 // chain, a 75 to 165 ms freeze at 1440x900 on a 2x screen, the switch this automatic quality makes most.
@@ -113,10 +113,10 @@ test('frames held to 30 a second: the drops buy nothing, so it goes back to ultr
   assert.equal(switches, 4, 'down to low, then back');
 });
 
-test('a 50 Hz screen: the same, it goes back to ultra and stays', () => {
+test('a 50 Hz screen: never a step down, the line follows the screen', () => {
   const { seen, switches } = machine(capped(20.4), 200);
-  assert.ok(seen.slice(40).every(t => t === 'ultra'));
-  assert.equal(switches, 4, 'down to low, then back');
+  assert.ok(seen.every(t => t === 'ultra'));
+  assert.equal(switches, 0);
 });
 
 test('a machine held to 30 fps on ultra by its graphics card and faster on high still steps down, and stays down', () => {
@@ -133,4 +133,54 @@ test('on a 60 Hz screen, a graphics card too slow for one frame per refresh on u
 test('a graphics card that only gets faster with no effects at all is followed down to low', () => {
   const { seen } = machine(t => Array(60).fill(t === 'low' ? 16.7 : 33.3), 200);
   assert.ok(seen.slice(40).every(t => t === 'low'), seen.slice(0, 40).join(' '));
+});
+
+// One stretch of frames from a screen refreshing every `r` ms, nine in ten taking `fast` refreshes and one in ten `slow`,
+// each measured a little late, as a page measures them.
+const stretch = (r, fast, slow) => [...Array(90).fill(r * fast + 0.4), ...Array(10).fill(r * slow + 0.4)];
+// Whether the judge calls a stretch slow: on a shaky tier with one slow stretch already, a second steps it down.
+const judged = (times, state = {}) => tierStep('ultra', times, 30000, { top: 'ultra', slowRuns: 1, record: { ultra: [10, 10] }, ...state }).tier !== 'ultra';
+
+// Regression: the line was a fixed 20 ms. On a 50 Hz screen every frame is 20 ms, so an idle machine stepped down to
+// low; on 144 Hz a frame of three refreshes (20.8 ms, 48 fps) counted as slow while 60 Hz forgave anything under 33 ms.
+// Now the line is about 50 fps on every screen: 20 ms plus half the screen's refresh.
+for (const [hz, ok, bad] of [[60, 1, 2], [120, 2, 3], [144, 3, 4], [165, 3, 4], [50, 1, 2], [30, 1, 2]]) {
+  test(`on a ${hz} Hz screen, frames of ${ok} refresh(es) are fine and frames of ${bad} are slow`, () => {
+    const r = 1000 / hz;
+    assert.equal(judged(stretch(r, 1, ok), { refresh: r }), false);
+    assert.equal(judged(stretch(r, 1, bad), { refresh: r }), true);
+  });
+}
+
+test('the screen is also learned from the frames themselves: the quickest stretch seen sets the refresh', () => {
+  // No estimate from loading: a 144 Hz screen shows itself in its quick frames and three-refresh frames are forgiven.
+  const r = 1000 / 144;
+  assert.equal(judged(stretch(r, 1, 3)), false);
+  // A screen read as slower while loading than the frames now show is corrected by the frames.
+  assert.equal(judged(stretch(r, 1, 3), { refresh: 1000 / 60 }), false);
+});
+
+test('a slow machine is not taken for a slow screen: frames held to 30 a second by the card still step down on a 60 Hz screen', () => {
+  const steady = Array(100).fill(33.3);
+  assert.equal(judged(steady, { refresh: 1000 / 60 }), true, 'the screen read while loading');
+  assert.equal(judged(steady), true, 'no reading at all: a 60 Hz screen is assumed, never a slow one');
+});
+
+test('the refresh read while loading: the quick frames between the busy ones, or nothing if there were too few', () => {
+  const busy = [...Array(80).fill(0).map((_, i) => 40 + (i % 7) * 30), ...Array(20).fill(8.33)];
+  assert.ok(Math.abs(refreshFrom(busy) - 8.33) < 0.01);
+  assert.ok(Math.abs(refreshFrom([...Array(60).fill(20), ...Array(20).fill(140)]) - 20) < 0.01, 'a 50 Hz screen');
+  assert.equal(refreshFrom(Array(10).fill(16.7)), null);
+  assert.equal(refreshFrom([]), null);
+  assert.ok(Math.abs(refreshFrom([0, 0, 0.1, ...Array(40).fill(16.67)]) - 16.67) < 0.01, 'gaps too short to be frames are left out');
+  assert.equal(refreshFrom(Array(50).fill(0.2)), null);
+  assert.equal(refreshFrom(Array(50).fill(3.2)), 4, 'never quicker than a 240 Hz screen');
+});
+
+test('with the line at 50 fps, a battery cap that starts mid visit (the screen read at 120 Hz) still meets the backstop: no gain, back up, and no more steps down', () => {
+  let tier = 'ultra', state = { top: 'ultra', refresh: 1000 / 120 }, now = 7000;
+  const seen = [];
+  for (let k = 0; k < 120; k++) { state = tierStep(tier, k < 20 ? Array(100).fill(8.33) : Array(100).fill(33.3), now, state); tier = state.tier; seen.push(tier); now += 2500; }
+  assert.ok(seen.slice(60).every(t => t === 'ultra'), seen.join(' '));
+  assert.equal(state.floor, 'ultra');
 });

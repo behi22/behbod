@@ -16,11 +16,25 @@ export function switchWork(from, to) {
   return { post: EFFECTS.some(k => !!a[k] !== !!b[k]), ratio: a.ratio !== b.ratio };
 }
 
-// The frame time that one frame in ten is slower than.
+// The frame time that one frame in ten is slower than, and the one that one frame in ten is quicker than.
 export function p90(times) {
   if (!times.length) return 0;
   const s = [...times].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.floor(s.length * 0.9))];
+}
+export function p10(times) {
+  if (!times.length) return Infinity;
+  const s = [...times].sort((a, b) => a - b);
+  return s[Math.floor(s.length * 0.1)];
+}
+
+// The screen's refresh, read from frame intervals taken while the house loads and the page draws next to nothing: the
+// busy ones are long, the quick ones are the screen's own. Gaps under 3 ms are no frame of any screen and are left
+// out; too few to tell, nothing; never quicker than 240 Hz.
+const QUICKEST = 4;
+export function refreshFrom(intervals) {
+  const frames = (intervals || []).filter(x => x >= 3);
+  return frames.length < 20 ? null : Math.max(QUICKEST, p10(frames));
 }
 
 // Judged every few seconds on the last stretch of frames. Start at the best look and step down when frames stay slow:
@@ -40,10 +54,15 @@ export function p90(times) {
 // step down is tried (on a 60 Hz screen frames come in whole refreshes, so a card too slow for one frame per refresh
 // may show no gain until a lower tier); if none down to the floor is faster, the tier goes back to where it was and
 // never steps below it again in this visit (`floor`). While a step down is being checked, nothing else is judged.
+// The line between smooth and slow is about 50 fps on every screen: frames come in whole refreshes, so a stretch is
+// slow when its 90th-percentile frame is over 20 ms plus half a refresh (on 60 Hz over 28 ms, two refreshes; on 144 Hz
+// over 23 ms, four). The refresh is the one read while loading (`refresh`), or the quickest stretch seen since
+// (`quick`, its 10th percentile) if quicker; with no reading a 60 Hz screen is assumed, never a slower one, so a slow
+// machine is never taken for a slow screen.
 const FIRST = 4, LONGEST = 144, QUIET = 6000, FAILS = 2, CREDIT = 6, RUN = 2, STEADY_RUN = 5, GAIN = 0.9, LOOKS = 2;
-const mean = t => t.reduce((a, v) => a + v, 0) / (t.length || 1);
+const mean = t => t.reduce((a, v) => a + v, 0) / (t.length || 1), ASSUMED = 1000 / 60;
 export function tierStep(current, times, now, state = {}) {
-  const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {}, floor = 'low', drop = null } = state;
+  const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {}, floor = 'low', drop = null, refresh = null, quick = Infinity } = state;
   const i = TIER_ORDER.indexOf(current), lowest = TIER_ORDER.indexOf(floor);
   const base = { ...state, tier: current, slowRuns: 0, goodRuns: 0, waits, top, from, record, fails, floor, drop };
   const next = o => ({ ...base, ...o });
@@ -57,7 +76,9 @@ export function tierStep(current, times, now, state = {}) {
     }
     base.drop = null;
   }
-  const slow = p90(times) > 20, [judged = 0, slowOnes = 0] = record[current] || [];
+  base.quick = Math.min(quick, p10(times));
+  const screen = Math.max(QUICKEST, Math.min(refresh ?? ASSUMED, base.quick));
+  const slow = p90(times) > 20 + screen / 2, [judged = 0, slowOnes = 0] = record[current] || [];
   const mine = { ...record, [current]: [judged + 1, slowOnes + (slow ? 1 : 0)] };
   const shaky = mine[current][1] * 4 >= mine[current][0] + CREDIT;
   if (slow) {

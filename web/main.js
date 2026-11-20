@@ -36,7 +36,7 @@ import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
 import { hoodUp, wornColours } from './src/pure/look.js';
-import { tierStep, ease, makeQualityNotice } from './src/pure/tier.js';
+import { tierStep, ease, makeQualityNotice, refreshFrom } from './src/pure/tier.js';
 import { makeCanvases } from './screens.js';
 import { Sound } from './sound.js';
 
@@ -44,6 +44,10 @@ const $ = id => document.getElementById(id);
 const canvas = $('view');
 const coarse = matchMedia('(pointer: coarse)').matches;
 const params = new URLSearchParams(location.search);
+// The screen's refresh, read from the frames while the house loads and the page draws next to nothing (see tier.js).
+const loadFrames = [];
+let houseLoading = true;
+{ let last = null; const probe = t => { if (last !== null) loadFrames.push(t - last); last = t; if (houseLoading) requestAnimationFrame(probe); }; requestAnimationFrame(probe); }
 // The visitor's own storage holds their look and progress; private windows and blocked storage just forget them.
 const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* forgotten */ } } };
 
@@ -894,6 +898,7 @@ function step() {
   doorsReady = true;
   engine.render(dt);
 
+  if (houseLoading) { houseLoading = false; tierState = { ...tierState, refresh: refreshFrom(loadFrames) }; }
   if (judgeRest || mode !== judgedMode || range.building) { judgeRest = false; judgedMode = mode; tierState = { ...tierState, from: now }; frameTimes = []; tierChecked = now; }
   frameTimes.push(now - lastFrame); lastFrame = now;
   if (autoTier && frameTimes.length > 40 && now - tierChecked > 2500) {
@@ -910,7 +915,7 @@ function setQuality(next) {
   if (next !== 'auto' && !Object.hasOwn(TIERS, next)) return;
   autoTier = next === 'auto';
   tierName = autoTier ? startTier() : next;
-  tierState = { top: tierName };
+  tierState = { top: tierName, refresh: tierState.refresh };
   restJudge();
   engine.setTier(tierName);
 }

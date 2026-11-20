@@ -24,11 +24,12 @@ const LABEL = (slow ? 'SLOW (cpu 4x, q=low)' : tiers ? 'TIERS' : hidpi && !phone
 function fixedRate(hz) {
   if (window.top !== window) return;
   const period = 1000 / hz, waiting = new Map();
-  let id = 0, timer = 0;
-  const later = () => { const t = performance.now(); timer = setTimeout(fire, Math.ceil((t + 0.1) / period) * period - t); };
+  let id = 0, timer = 0, slot = 0;
+  const later = () => { const t = performance.now(); slot = Math.ceil((t + 0.1) / period) * period; timer = setTimeout(fire, slot - t); };
   function fire() {
     timer = 0;
-    const due = [...waiting.values()], t = performance.now();
+    // Stamped like a real frame: the refresh it started on, however late the page got to it.
+    const due = [...waiting.values()], t = Math.max(slot, Math.floor(performance.now() / period) * period);
     waiting.clear();
     for (const cb of due) try { cb(t); } catch (e) { setTimeout(() => { throw e; }); }
     if (waiting.size && !timer) later();
