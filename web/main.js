@@ -439,8 +439,10 @@ const GAME_WIN = { striker: 'striker', holochess: 'chess', backgammon: 'backgamm
 function playGame(name, actions) {
   wardrobe.hide();
   keys.clear(); route = null;
+  restJudge();
   openGame(name, {
     actions,
+    onClose: restJudge,
     onEvent: (type, d) => {
       if (type === 'win' && GAME_WIN[d.game]) earn(GAME_WIN[d.game]);
       if (type === 'goal' && d.by === 'you') { earn('goal'); world.goal(performance.now() / 1000); audio.sfx.goalHorn(); }
@@ -507,10 +509,10 @@ function playVideo(i) {
   frame.title = v.title || 'Video';
   const close = document.createElement('button');
   close.className = 'chip'; close.textContent = 'Close';
-  liveVideo.pause();
+  liveVideo.pause(); restJudge();
   box.tabIndex = -1; box.style.outline = 'none';
   let tabbed = false;
-  const shut = () => { box.remove(); removeEventListener('keydown', onKey, true); removeEventListener('blur', onBlur); liveVideo.resume(); };
+  const shut = () => { box.remove(); removeEventListener('keydown', onKey, true); removeEventListener('blur', onBlur); liveVideo.resume(); restJudge(); };
   // While it plays, keys stay with the player (no walking about behind it); Esc closes it.
   const onKey = e => { if (!box.isConnected) { removeEventListener('keydown', onKey, true); return; } e.stopPropagation(); tabbed = e.key === 'Tab'; if (e.key === 'Escape') shut(); };
   // YouTube's player can take the keyboard on its own, and keys inside it never reach Esc above; only a Tab may keep it there.
@@ -805,6 +807,11 @@ const tmpP = new THREE.Vector3(), tmpL = new THREE.Vector3();
 const FOG_NIGHT = new THREE.Color(0x0a0f1c), FOG_DAY = new THREE.Color(0x6f8197);
 const clock = new THREE.Clock();
 let frameTimes = [], tierChecked = 0, tierState = {}, lastFrame = performance.now();
+// The judge looks away for its quiet seconds from the first frame and after anything that spends a burst of work
+// (a new mode, a video or a game opening or closing, the film, a return to the tab), so the burst is not judged.
+let judgeRest = true, judgedMode = null;
+const restJudge = () => { judgeRest = true; };
+document.addEventListener('visibilitychange', () => { if (!document.hidden) restJudge(); });
 // The quality note has a line of its own under the toast, so no other message (the welcome achievement comes up a
 // moment after the page opens) can replace it before it is read.
 function notice(text) {
@@ -818,7 +825,7 @@ function autoTierTo(next) { qualityNotice.stepped(tierName, next); tierName = ne
 function step() {
   // While my film plays over the room, the room stops drawing so a weak phone spends itself on the film; the pause
   // must not count as slow frames, or the automatic quality would step down.
-  if (film.playing) { clock.getDelta(); lastFrame = performance.now(); frameTimes = []; requestAnimationFrame(step); return; }
+  if (film.playing) { clock.getDelta(); lastFrame = performance.now(); frameTimes = []; restJudge(); requestAnimationFrame(step); return; }
   const dt = Math.min(clock.getDelta(), 1 / 20), now = performance.now(), t = now / 1000;
   renderer.info.reset();
   const hs = mode === 'walk' ? walk(dt, now) : 0;
@@ -886,6 +893,7 @@ function step() {
   doorsReady = true;
   engine.render(dt);
 
+  if (judgeRest || mode !== judgedMode) { judgeRest = false; judgedMode = mode; tierState = { ...tierState, from: now }; frameTimes = []; tierChecked = now; }
   frameTimes.push(now - lastFrame); lastFrame = now;
   if (autoTier && frameTimes.length > 40 && now - tierChecked > 2500) {
     tierChecked = now;
@@ -902,6 +910,7 @@ function setQuality(next) {
   autoTier = next === 'auto';
   tierName = autoTier ? startTier() : next;
   tierState = { top: tierName };
+  restJudge();
   engine.setTier(tierName);
 }
 $('who').addEventListener('click', () => { if (mode === 'walk') me.nextHead(); });

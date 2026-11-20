@@ -165,7 +165,7 @@ async function tierReport(p, b, profile, mark) {
   const end = frames.at(-1)[0], s = v => (v / 1000).toFixed(1) + ' s';
   const before = (log, t) => { let k = log[0][1]; for (const [at, v] of log) if (at < t) k = v; else break; return k; };
   console.log(`browser ${browser.product}${/Headless/.test(browser.userAgent) ? ' headless' : ' in a window'}, graphics ${env.gpu}, pixel ratio ${env.dpr}, coarse pointer ${env.coarse}, ${env.cores} cores, memory ${env.memory ?? '?'} GB`);
-  console.log(`house opened at ${s(tl[0][0])} page time (the rule ignores the first 6 s of page time); start tier ${tl[0][1]}`);
+  console.log(`house opened at ${s(tl[0][0])} page time; start tier ${tl[0][1]}`);
   console.log(`switches: ${tl.length - 1}`);
   for (let i = 1; i < tl.length; i++) {
     const [t, name] = tl[i], next = frames.filter(([at]) => at > t && at <= t + 2500).map(f => f[1]);

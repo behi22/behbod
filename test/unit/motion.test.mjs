@@ -61,7 +61,8 @@ test('one slow stretch is not enough, two in a row drop one step', () => {
 
 test('the first step down only lowers the pixel count, the effects stay', () => {
   assert.equal(TIER_ORDER.indexOf('ultra') - TIER_ORDER.indexOf('high'), 1);
-  assert.deepEqual(run('ultra', [slow, slow, slow, slow, slow, slow]).seen, ['ultra', 'high', 'high', 'medium', 'medium', 'low']);
+  // Each step down is followed by two quiet stretches.
+  assert.deepEqual(run('ultra', Array(10).fill(slow)).seen, ['ultra', 'high', 'high', 'high', 'high', 'medium', 'medium', 'medium', 'medium', 'low']);
 });
 
 test('a fast stretch in between resets the count', () => {
@@ -74,8 +75,8 @@ test('low is the floor', () => {
 
 // Regression: one slow patch (a busy moment, another program) used to lower the quality for the rest of the visit.
 test('after a slow patch, steady frames bring the quality back', () => {
-  const { seen } = run('ultra', [slow, slow, fast, fast, fast, fast]);
-  assert.deepEqual(seen, ['ultra', 'high', 'high', 'high', 'high', 'ultra']);
+  const { seen } = run('ultra', [slow, slow, fast, fast, fast, fast, fast, fast]);
+  assert.deepEqual(seen, ['ultra', 'high', 'high', 'high', 'high', 'high', 'high', 'ultra']);
 });
 
 test('it never climbs above where it started', () => {
