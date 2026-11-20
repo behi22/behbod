@@ -1,5 +1,21 @@
 export const TIER_ORDER = ['low', 'medium', 'high', 'ultra'];
 
+export const TIERS = {
+  low: { ratio: 1, post: false, bloom: false },
+  medium: { ratio: 1.25, post: true, bloom: true },
+  high: { ratio: 1.5, post: true, bloom: true, smaa: true, grain: true },
+  // The screen's full sharpness, up to 2x. The first step down when frames stutter is to `high`, which keeps every effect.
+  ultra: { ratio: 2, post: true, bloom: true, smaa: true, grain: true },
+};
+
+// A rebuilt effects chain recompiles every effect's shader, a long freeze, so it is only rebuilt when an effect comes or goes.
+const EFFECTS = ['post', 'bloom', 'smaa', 'grain'];
+export function switchWork(from, to) {
+  const a = TIERS[from], b = TIERS[to];
+  if (!a || !b) return { post: true, ratio: true };
+  return { post: EFFECTS.some(k => !!a[k] !== !!b[k]), ratio: a.ratio !== b.ratio };
+}
+
 // The frame time that one frame in ten is slower than.
 export function p90(times) {
   if (!times.length) return 0;

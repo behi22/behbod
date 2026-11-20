@@ -1,16 +1,11 @@
 import * as THREE from 'three';
 import { EffectComposer, RenderPass, Pass, EffectPass, Effect, EffectAttribute, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
+import { TIERS, switchWork } from './pure/tier.js';
+
+export { TIERS };
 
 // Blender is Z-up with the room's north at +Y; glTF/three is Y-up, so Blender (x, y, z) lands at (x, z, -y).
 export const b2t = (x, y, z) => new THREE.Vector3(x, z, -y);
-
-export const TIERS = {
-  low: { ratio: 1, post: false, bloom: false },
-  medium: { ratio: 1.25, post: true, bloom: true },
-  high: { ratio: 1.5, post: true, bloom: true, smaa: true, grain: true },
-  // The screen's full sharpness, up to 2x. The first step down when frames stutter is to `high`, which keeps every effect.
-  ultra: { ratio: 2, post: true, bloom: true, smaa: true, grain: true },
-};
 
 // The mosaic over the toy head (and its mirror image) blurs what is round each pixel, so it has its own pass ahead of the others.
 const MOSAIC_FS = `uniform vec2 centre, centre2, drift; uniform float radius, radius2, cells, aspect;
@@ -53,7 +48,7 @@ export function makeEngine(canvas, coarse) {
   const mosaicU = { centre: new THREE.Uniform(new THREE.Vector2()), centre2: new THREE.Uniform(new THREE.Vector2()), drift: new THREE.Uniform(new THREE.Vector2()),
     radius: new THREE.Uniform(0), radius2: new THREE.Uniform(0), cells: new THREE.Uniform(3.4), aspect: new THREE.Uniform(1) };
   const onTier = [], layers = [];
-  let composer = null, tier = TIERS.medium, bg = null, bgOn = true;
+  let composer = null, tier = TIERS.medium, tierName = null, bg = null, bgOn = true;
 
   // The world outside the glass is its own scene with its own far-reaching camera, drawn first; the loft goes on top.
   // Layers are scenes of their own drawn with it. One marked `under` (the range's rooms) goes in before the loft and
@@ -118,10 +113,11 @@ export function makeEngine(canvas, coarse) {
     camera.updateProjectionMatrix();
   }
   function setTier(name) {
-    tier = TIERS[name];
+    const keep = composer && !switchWork(tierName, name).post;
+    tier = TIERS[name]; tierName = name;
     for (const f of onTier) f(name);
     renderer.setPixelRatio(Math.min(devicePixelRatio, tier.ratio));
-    buildPost();
+    if (keep) resize(); else buildPost();
   }
   function render(dt) {
     if (composer) composer.render(dt);
