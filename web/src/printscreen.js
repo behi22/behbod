@@ -1,5 +1,5 @@
 import { MODELS, MODEL } from './pure/models.js';
-import { COLOURS, SWATCHES, SHOWN, cleanText, describe, wordColour } from './pure/printer.js';
+import { COLOURS, SWATCHES, SHOWN, cleanText, describe, wordColour, parsePrint } from './pure/printer.js';
 
 // The pictures are one sheet, fetched the first time the screen opens.
 export const SHEET = { url: 'assets/printer/models.webp', cols: 6, tile: 128 };
@@ -138,8 +138,9 @@ export function printScreen(pr, { touch = false } = {}) {
     e.preventDefault();
     const t = box.value.trim();
     if (!t) return;
-    // Typed words work as at the terminal; with "Your word" picked they are the keychain's.
-    if (pick.model === 'word') { print(); return; }
+    // Typed words work as at the terminal; with "Your word" picked they are the keychain's, unless they only adjust the one on the bed.
+    const now = pr.print, r = parsePrint(t, now);
+    if (pick.model === 'word' && !(now.model === 'word' && r?.p.model === 'word' && r.p.text === now.text)) { print(); return; }
     said = pr.ask(t) || 'Nothing to print there. Try a model, or any word at all.';
     box.value = '';
     const p = pr.print;

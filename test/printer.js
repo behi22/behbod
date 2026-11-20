@@ -242,6 +242,15 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       const s = await state(p);
       check('the keychain takes the same adjustments', /^Reprinting the keychain, taller, wider, twist, spikier in blue\.$/.test(adj) && s.print.text === 'sam' && s.print.depth > 0 && s.print.twist > 0 && s.built?.tris > 500, `${adj} ${JSON.stringify(s.print)}`);
       for (const t of ['', '   ', '"   "']) check(`"${t}" prints nothing and breaks nothing`, (await p.evaluate(x => __loft.printer.ask(x), t)) === null);
+      // The screen opened on that keychain: its typing line adjusts it, as its hint says, and new words make a new one.
+      await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+      await p.evaluate(() => __loft.act('printer')); await p.waitForTimeout(800);
+      await p.fill('.ps-type input', 'bigger'); await p.press('.ps-type input', 'Enter'); await p.waitForTimeout(200);
+      const grown = await state(p);
+      await p.fill('.ps-type input', 'Bob'); await p.press('.ps-type input', 'Enter'); await p.waitForTimeout(200);
+      const bob = await state(p);
+      check('at the screen, bigger grows the keychain on the bed and a new word makes a new one', grown.print.model === 'word' && grown.print.text === 'sam' && grown.print.size > 1.1 && bob.print.text === 'Bob', `${JSON.stringify(grown.print)} then ${bob.print.text}`);
+      await untilDone(p);
       check('the words: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
