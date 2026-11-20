@@ -1,5 +1,5 @@
 // The 3D printer in a real Chrome: its screen, its prints, its sound, typing to it, at a computer and on phones.
-//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth]
+//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth,fail]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -37,9 +37,22 @@ function watch(p, errs) {
     if (m.type() === 'warning' && /\[(loft|range)\]/.test(m.text())) errs.push(m.text().slice(0, 200));
   });
 }
-async function open(b, opts, { auto = true, save, ear = false } = {}) {
+// The printer's worker fails the next print it is sent while window.__failNext is set, then works as before.
+function failOnce() {
+  const Real = window.Worker;
+  if (!Real) return;
+  window.Worker = class extends Real {
+    postMessage(m, ...rest) {
+      if (!(window.__failNext && m && m.print)) return super.postMessage(m, ...rest);
+      window.__failNext = false;
+      setTimeout(() => this.onmessage?.({ data: { id: m.id, error: 'a failure forced by the test' } }), 50);
+    }
+  };
+}
+async function open(b, opts, { auto = true, save, ear = false, init = null } = {}) {
   const ctx = await b.newContext(opts);
   if (ear) await ctx.addInitScript(tap);
+  if (init) await ctx.addInitScript(init);
   if (save !== undefined) await ctx.addInitScript(s => { try { if (s === null) localStorage.removeItem('home.print'); else localStorage.setItem('home.print', s); } catch { /* none */ } }, save);
   const p = await ctx.newPage(), errs = [];
   watch(p, errs);
@@ -296,6 +309,32 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       const m = await p.evaluate(() => __loft.mode);
       check('a click on the printer walks me there and opens its screen', m === 'printer', `${JSON.stringify(at)} ${m}`);
       check('the click: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- a print that fails: the bar stops, the screen says so plainly, and Print works again ----------
+    if (want('fail')) {
+      const { ctx, p, errs } = await open(b, DESK, { save: null, init: failOnce });
+      await standAt(p, SPOT); await facePrinter(p); await untilBuilt(p);
+      await p.keyboard.press('KeyE');
+      await p.waitForSelector('.pn-printer .ps-grid .ps-tile >> text=rubber duck', { timeout: 5000 }).catch(() => {});
+      await p.evaluate(() => { window.__failNext = true; });
+      await p.click('.ps-tile >> text=rubber duck'); await p.click('.ps-print');
+      const seen = () => p.evaluate(() => {
+        const bar = document.querySelector('.ps-bar'), r = __loft.printer;
+        return { failed: r.failed, heating: r.heating, k: r.progress, sounding: r.sounding, warm: bar.classList.contains('ps-warm'), moving: getComputedStyle(bar.firstChild).animationName, width: bar.firstChild.style.width, status: document.querySelector('.ps-what').textContent, said: document.querySelector('.pn-said').textContent };
+      });
+      await p.waitForTimeout(800);
+      const first = await seen();
+      // Longer than the nozzle's warm-up, so a bar that only waited for it would have moved on by now.
+      await p.waitForTimeout(2500);
+      const later = await seen();
+      const stopped = s => s.failed && !s.heating && s.k === 0 && !s.sounding && !s.warm && s.moving === 'none' && s.width === '0%' && /could not be printed/.test(s.status) && s.said === '';
+      check('a print that fails: the bar stops, nothing hums, and the screen says it could not print', stopped(first) && stopped(later), JSON.stringify({ first, later }));
+      await p.click('.ps-print');
+      await untilDone(p); await p.waitForTimeout(400);
+      const again = await seen();
+      check('then Print works again', !again.failed && again.k === 1 && /^Done: a yellow rubber duck/.test(again.status) && (await state(p)).built?.tris > 1000, JSON.stringify(again));
+      check('the failure: no error but the forced one', errs.filter(e => !/forced by the test/.test(e)).length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
     // ---------- smooth on a slow phone: no long frames when the screen opens or a model is built ----------

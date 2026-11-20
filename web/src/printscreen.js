@@ -162,13 +162,15 @@ export function printScreen(pr, { touch = false } = {}) {
     go.textContent = pick.model === 'word' && !pick.text ? 'Print a keychain' : `Print ${describe(q).replace(/ that says .*/, '')}`;
     line.textContent = said;
   }
-  let shown = null;
+  let shown = null, failed = false;
   function tick() {
     const p = pr.print, k = pr.progress, d = describe(p);
     if (p.model !== shown) { shown = p.model; picture(p.model, pic); }
+    // The line under the button said it was printing; once it could not, only the status says so.
+    if (pr.failed !== failed) { failed = pr.failed; if (failed) { said = ''; show(); } }
     bar.classList.toggle('ps-warm', pr.mine && pr.heating);
     bar.firstChild.style.width = pr.mine && pr.heating ? '' : `${Math.round(k * 100)}%`;
-    const text = pr.failed ? 'That one would not print. Try another.'
+    const text = pr.failed ? 'That one could not be printed. Press Print to try again, or pick another.'
       : !pr.mine ? `On the bed: ${d}, part way through. Pick one to print your own.`
         : pr.heating ? `Warming up the nozzle for ${d}.`
           : k < 1 ? `Printing ${d}: ${Math.round(k * 100)}%` : `Done: ${d}.`;

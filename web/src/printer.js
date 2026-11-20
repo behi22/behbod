@@ -113,11 +113,11 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     } catch (e) { fail(s.id, e.message); }
   }
 
-  const heating = () => mine && !done && (!built || clock - start < HEAT);
+  const heating = () => mine && !done && !failed && (!built || clock - start < HEAT);
   function progress() {
     if (done) return 1;
     if (!mine) return (0.45 + clock / SLOW) % 1;
-    if (heating()) return 0;
+    if (failed || heating()) return 0;
     printFrom ||= clock;
     return Math.min(1, (clock - printFrom) / PRINT);
   }
