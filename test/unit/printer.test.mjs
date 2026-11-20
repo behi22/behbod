@@ -159,6 +159,18 @@ test('every model is whole, inside its bounds, and fits on the bed standing up',
   }
 });
 
+test('models seen side on have a leg, an arm and a wing on each side, not two on one', () => {
+  for (const id of ['dino', 'duck', 'knight', 'car', 'teapot']) {
+    const { f, bounds: [x0, y0, z0, x1, y1, z1] } = MODEL[id].make({ sides: 8, depth: 0 }), N = 20;
+    let odd = null;
+    for (let i = 0; i <= N && !odd; i++) for (let j = 0; j <= N && !odd; j++) for (let k = 0; k <= N && !odd; k++) {
+      const x = x0 + ((x1 - x0) * i) / N, y = y0 + ((y1 - y0) * j) / N, z = z0 + ((z1 - z0) * k) / N;
+      if ((f(x, y, z) < 0) !== (f(x, y, -z) < 0)) odd = [x, y, z].map(v => +v.toFixed(2));
+    }
+    assert.equal(odd, null, `${id} is solid on one side only at ${odd}`);
+  }
+});
+
 test('the settings change the shape: taller, wider, twisted, spikier, bigger only as far as the bed allows', () => {
   const base = build({ model: 'duck' });
   assert.ok(build({ model: 'duck', height: 1.25 }).height > base.height * 1.2);

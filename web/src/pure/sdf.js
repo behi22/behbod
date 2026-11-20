@@ -110,6 +110,8 @@ export const inflate = (f, r) => (x, y, z) => f(x, y, z) - r;
 export const move = (f, [a = 0, b = 0, c = 0]) => (x, y, z) => f(x - a, y - b, z - c);
 export const scale = (f, s) => (x, y, z) => f(x / s, y / s, z / s) * s;
 export const mirrorX = f => (x, y, z) => f(abs(x), y, z);
+// For a model seen side on (facing +x), whose left and right are along z.
+export const mirrorZ = f => (x, y, z) => f(x, y, abs(z));
 export function turn(f, axis, ang, [a = 0, b = 0, c = 0] = []) {
   const cs = cos(ang), sn = sin(ang);
   if (axis === 'y') return (x, y, z) => { const px = x - a, pz = z - c; return f(a + cs * px - sn * pz, y, c + sn * px + cs * pz); };

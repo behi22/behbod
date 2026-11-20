@@ -1,7 +1,7 @@
 // Each model's best side faces +z, where the visitor stands.
 import {
   sphere, ellipsoid, box, rod, cylinder, torus, polygon, lathe, extrude, union, blend, cut, carve, meet, inflate,
-  move, scale, mirrorX, turn, around, onBed,
+  move, scale, mirrorX, mirrorZ, turn, around, onBed,
 } from './sdf.js';
 
 const { PI, sin, cos, abs, max, min, sqrt, atan2, hypot } = Math;
@@ -162,7 +162,7 @@ function duck() {
   const body = blend(1.4, ellipsoid([4.3, 2.9, 3.4], [-0.3, 3.0, 0]), ellipsoid([1.6, 1.4, 1.5], [-4.0, 4.6, 0]));
   const head = sphere(2.35, [2.0, 7.0, 0]);
   const beak = blend(0.3, ellipsoid([1.4, 0.42, 1.0], [4.45, 6.7, 0]), ellipsoid([1.2, 0.32, 0.85], [4.25, 6.25, 0]));
-  const wing = mirrorX(ellipsoid([2.2, 1.3, 0.6], [-0.9, 3.6, 3.15]));
+  const wing = mirrorZ(ellipsoid([2.2, 1.3, 0.6], [-0.9, 3.6, 3.15]));
   let f = blend(0.8, body, head, wing);
   f = blend(0.25, f, beak);
   f = cut(f, sphere(0.42, [3.2, 7.7, 1.45]), sphere(0.42, [3.2, 7.7, -1.45]));
@@ -209,8 +209,8 @@ function dino() {
     rod([1.8, 6.6, 0], [3.0, 8.8, 0], 1.45, 1.1),
   );
   const head = blend(0.6, box([1.9, 1.15, 1.2], [4.3, 9.7, 0], 0.8), box([1.6, 0.4, 0.95], [4.6, 8.5, 0], 0.3));
-  const legs = mirrorX(blend(0.5, ellipsoid([1.4, 1.9, 0.9], [-0.6, 4.0, 1.3]), rod([-0.2, 3.0, 1.4], [0.3, 0.8, 1.4], 0.65, 0.5), ellipsoid([1.3, 0.4, 0.7], [0.8, 0.4, 1.4])));
-  const arms = mirrorX(rod([2.6, 6.8, 1.0], [3.5, 6.0, 1.3], 0.32, 0.25));
+  const legs = mirrorZ(blend(0.5, ellipsoid([1.4, 1.9, 0.9], [-0.6, 4.0, 1.3]), rod([-0.2, 3.0, 1.4], [0.3, 0.8, 1.4], 0.65, 0.5), ellipsoid([1.3, 0.4, 0.7], [0.8, 0.4, 1.4])));
+  const arms = mirrorZ(rod([2.6, 6.8, 1.0], [3.5, 6.0, 1.3], 0.32, 0.25));
   const spikes = union(...Array.from({ length: 7 }, (_, i) => {
     const t = i / 6, px = 2.6 - t * 7.4, py = 8.4 - t * 3.9 - 0.9 * sin(t * PI) + 0.4;
     return rod([px, py - 0.6, 0], [px - 0.2, py + 0.55 - t * 0.3, 0], 0.5 - t * 0.2, 0.08);
