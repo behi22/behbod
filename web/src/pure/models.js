@@ -405,7 +405,7 @@ export const MODELS = [
   { id: 'flower', name: 'flower', words: ['flower', 'rose', 'bloom', 'daisy', 'flowers'], colour: 'pink', sides: [4, 12, 7, 'petals'], make: flower },
   { id: 'vase', name: 'vase', words: ['vase', 'jar', 'urn'], colour: 'gold', sides: [3, 12, 6, 'sides'], spiky: true, make: vase },
   { id: 'mug', name: 'mug', words: ['mug', 'cup', 'glass', 'coffee'], colour: 'white', make: mug },
-  { id: 'spiral', name: 'spiral', words: ['spiral', 'swirl', 'twister', 'twisty'], colour: 'teal', sides: [3, 8, 4, 'arms'], spiky: true, make: spiral, hidden: true },
+  { id: 'spiral', name: 'spiral', words: ['spiral', 'swirl', 'twister'], colour: 'teal', sides: [3, 8, 4, 'arms'], spiky: true, make: spiral, hidden: true },
   { id: 'cube', name: 'puzzle cube', words: ['cube', 'rubik', 'rubiks', 'puzzle'], colour: 'white', make: cube, hidden: true },
 ];
 export const MODEL = Object.fromEntries(MODELS.map(m => [m.id, m]));

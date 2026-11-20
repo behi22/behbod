@@ -85,6 +85,12 @@ test('nothing to act on gives nothing', () => {
   for (const t of ['', '   ', 'the a please', null, undefined, '""', '"   "', '​']) assert.equal(parsePrint(t), null, JSON.stringify(t));
 });
 
+test('twisty twists the print on the bed, as it did before the models', () => {
+  const r = parsePrint('make it twisty', parsePrint('rocket').p);
+  assert.deepEqual([r.p.model, r.p.twist], ['rocket', 0.5]);
+  assert.equal(parsePrint('rocket twisty').p.twist, 0.5);
+});
+
 test('everything stays inside what the printer can make, and old saves come back', () => {
   let p = parsePrint('rocket').p;
   for (let i = 0; i < 30; i++) p = parsePrint('taller wider bigger twist spikier more fins curvy', p).p;
