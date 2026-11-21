@@ -35,7 +35,7 @@ export const noteName = m => NAMES[m % 12] + (m % 12 === 0 ? Math.floor(m / 12) 
 
 export function makePianoMode(piano, { onExit, onPlay, onLearned, metronome = null, store = null }) {
   if (!document.getElementById('pm-css')) { const s = document.createElement('style'); s.id = 'pm-css'; s.textContent = CSS; document.head.append(s); }
-  let el = null, keys = {}, duet = true, active = false, lesson = null, hint = null, board = null, struck = -1e9;
+  let el = null, keys = {}, duet = true, active = false, lesson = null, hint = null, board = null, struck = -1e9, lessons = 0;
   let names = store?.get('loft.notenames') === '1', namesBtn = null, metBtn = null, tempo = null;
   function showNames() {
     board?.classList.toggle('names', names);
@@ -129,7 +129,7 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, metronome = nu
     for (const st of steps) st.midis = st.midis.map(m => m + shift);
     piano.setOctave(Math.round((Math.min(...steps.flatMap(st => st.midis)) - 60) / 12));
     labels();
-    lesson = { title: s.title.replace(/ No\. 1$/, ''), steps, i: 0, hit: new Set() };
+    lesson = { id: s.id, run: `lesson ${++lessons}`, title: s.title.replace(/ No\. 1$/, ''), steps, i: 0, hit: new Set() };
     showStep();
   }
   function endLesson() { lesson = null; for (const k of Object.values(keys)) k.classList.remove('next'); if (hint) { hint.textContent = 'Play with the keys shown, Z and X for the octave'; hint.classList.remove('pm-msg'); } }
@@ -163,6 +163,8 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, metronome = nu
     enter() { if (active) return; active = true; build(); },
     // A song set playing keeps going after you stand up; a lesson and the metronome end with you.
     exit() { if (!active) return; active = false; lesson = null; metronome?.stop(); el?.remove(); el = board = namesBtn = metBtn = tempo = null; },
+    // The lesson under way, for the sheet music: the song, which lesson, and where its next step is in the song.
+    get lesson() { return lesson ? { id: lesson.id, run: lesson.run, at: lesson.steps[lesson.i].t, live: false } : null; },
     // When you last struck a key yourself (performance.now()), played or tapped.
     get struck() { return struck; },
     // Returns true when the key belonged to the piano.

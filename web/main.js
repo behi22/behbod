@@ -18,6 +18,7 @@ import { makeTelescope } from './src/telescope.js';
 import { makePianoMode } from './src/pianomode.js';
 import { makeMetronome } from './src/metronome.js';
 import { makePianoLamp } from './src/pianolamp.js';
+import { makeSheetMusic } from './src/sheetmusic.js';
 import { makePanels } from './src/panel.js';
 import { makeLiveVideo } from './src/livevideo.js';
 import { makeFleet } from './src/fleet.js';
@@ -176,11 +177,12 @@ const scope = makeTelescope(scene, camera, meta, {
   onSpot: () => { toast('That is no moon.'); earn('telescope'); },
   onExit: () => { mode = 'walk'; me.root.visible = true; },
 });
-// The metronome on the piano's lid and the piano lamp that warms while it plays.
+// The metronome on the piano's lid, the piano lamp that warms while it plays and the sheet music that turns its pages.
 const metronome = makeMetronome({ scene, arm: world.pianoParts.arm, sound, audio, store });
 const pianoLamp = makePianoLamp({ scene, bulb: world.pianoParts.lamp });
+const sheetMusic = makeSheetMusic({ scene, meta, sheet: world.pianoParts.sheet, texture: screens.textures.sheet });
 const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano'), onLearned: title => toast(`You played ${title} all the way through.`), metronome, store });
-window.__piano = { metronome, lamp: pianoLamp };
+window.__piano = { metronome, lamp: pianoLamp, sheet: sheetMusic };
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
@@ -886,7 +888,7 @@ function step() {
   }
   hello.tick();
   lights.tick(dt, out3d ? out3d.light.dayK : 0, pos);
-  metronome.tick(dt); pianoLamp.tick(dt, audio.piano.playing, pianoMode.struck);
+  metronome.tick(dt); pianoLamp.tick(dt, audio.piano.playing, pianoMode.struck); sheetMusic.tick(dt, audio.piano.song || pianoMode.lesson);
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
   ambience(dt);

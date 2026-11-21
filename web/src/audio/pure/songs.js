@@ -15,9 +15,12 @@ const FE_LB = ['C3:.5 G3:.5 C4:.5 r:1.5', 'G2:.5 G3:.5 B3:.5 r:1.5', LA, LE];
 const ODE_1 = ['E5:1 E5:1 F5:1 G5:1', 'G5:1 F5:1 E5:1 D5:1', 'C5:1 C5:1 D5:1 E5:1'];
 const ODE_L1 = ['C3+G3:4', 'G2+D3:4', 'C3+G3:4'];
 
+// For the sheet music on the piano: `pages`, the bars on each page, every break on a phrase end; `sharps`, the key
+// signature; `heading` and `marking`, the title and the tempo word as printed.
 export const SONGS = [
   {
-    id: 'gymnopedie', title: 'Gymnopedie No. 1', composer: 'Erik Satie, 1888', bpm: 72, beatsPerBar: 3, pedal: true,
+    id: 'gymnopedie', title: 'Gymnopedie No. 1', composer: 'Erik Satie, 1888', bpm: 72, beatsPerBar: 3, pedal: true, sharps: 2, pages: [4, 4, 4, 4, 5],
+    heading: 'Gymnopédie No. 1', marking: 'Lent et douloureux',
     parts: {
       lead: bars('r:3', 'r:3', 'r:3', 'r:3', GYM_PHRASE, GYM_PHRASE, 'r:3'),
       bass: bars(alt(20, 'G2:3', 'D2:3'), 'G2:3'),
@@ -27,7 +30,8 @@ export const SONGS = [
     duet: { part: 'lead', fromBar: 12, transpose: 12, vel: 0.42 },
   },
   {
-    id: 'fur-elise', title: 'Fur Elise', composer: 'Ludwig van Beethoven, 1810', bpm: 132, beatsPerBar: 3, pedal: true,
+    id: 'fur-elise', title: 'Fur Elise', composer: 'Ludwig van Beethoven, 1810', bpm: 132, beatsPerBar: 3, pedal: true, pages: [5, 4, 4, 4, 4, 4, 4],
+    heading: 'Für Elise', marking: 'Poco moto',
     parts: {
       lead: bars('r:2 E5:.5 D#5:.5', FE_A, 'A4:1 r:1 E5:.5 D#5:.5', FE_A, 'A4:1 r:.5 B4:.5 C5:.5 D5:.5', FE_B, FE_A, 'A4:3'),
       left: bars('r:3', FE_LA, LA, FE_LA, LA, FE_LB, FE_LA, 'A2:.5 E3:.5 A3:2'),
@@ -36,7 +40,7 @@ export const SONGS = [
     duet: { part: 'lead', fromBar: 17, transpose: 12, vel: 0.36, minMidi: 69 },
   },
   {
-    id: 'ode-to-joy', title: 'Ode to Joy', composer: 'Ludwig van Beethoven, 1824', bpm: 108, beatsPerBar: 4, pedal: false,
+    id: 'ode-to-joy', title: 'Ode to Joy', composer: 'Ludwig van Beethoven, 1824', bpm: 108, beatsPerBar: 4, pedal: false, pages: [4, 4, 4, 4], marking: 'Allegro assai',
     parts: {
       lead: bars(ODE_1, 'E5:1.5 D5:.5 D5:2', ODE_1, 'D5:1.5 C5:.5 C5:2',
         'D5:1 D5:1 E5:1 C5:1', 'D5:1 E5:.5 F5:.5 E5:1 C5:1', 'D5:1 E5:.5 F5:.5 E5:1 D5:1', 'C5:1 D5:1 G4:2',

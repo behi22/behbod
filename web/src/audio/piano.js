@@ -1,7 +1,7 @@
 import { pianoVoice, sampleVoice } from './synths.js';
 import { makeKeyMap } from './pure/notes.js';
 import { SONGS, buildSong } from './pure/songs.js';
-import { stats, ahead } from './core.js';
+import { stats, ahead, heard } from './core.js';
 
 const MAX_VOICES = 40;
 // The recorded grand: one file every third semitone from A0 (21) to C8 (108), in web/assets/piano.
@@ -85,6 +85,7 @@ export function makePiano(env) {
     };
     stats.songs++;
     const job = {
+      id, start,
       finish(natural) {
         if (done) return;
         done = true;
@@ -123,6 +124,8 @@ export function makePiano(env) {
     keyToMidi: (code, type, repeat) => keymap.keyToMidi(code, type, repeat),
     get octave() { return keymap.octave; },
     get playing() { return !!song; },
+    // The song playing: its id, when it started (a new start of the same song is a new run) and how far in it is, as heard.
+    get song() { return song ? { id: song.id, run: song.start, at: heard(env.eng().ctx) - song.start, live: true } : null; },
     // Seconds since a key last sounded (played or from a song).
     get idle() { return (performance.now() - lastNote) / 1000; },
     get sampled() { return !!bank; },

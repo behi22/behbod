@@ -2,6 +2,7 @@
 // world. Anything that needs a server (Spotify, the guestbook, the range scores) says so until that part is built.
 import { drawGirih, drawPoster, drawProject, vanTime, seeded } from './room2.js';
 import { holidayAt } from './src/pure/calendar.js';
+import { drawSheet } from './src/sheetdraw.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const PROJECTS = {
@@ -333,11 +334,8 @@ export function makePanels(surface, ctx) {
   add('kilim', 1500, 1040, drawKilim);
   add('shelf_photo', 320, 440, drawShelfPhoto);
 
-  add('sheet', 420, 280, g => {
-    g.fillStyle = '#f4f1e8'; g.fillRect(0, 0, 420, 280);
-    for (let s = 0; s < 3; s++) for (let l = 0; l < 5; l++) { g.fillStyle = '#333'; g.fillRect(20, 40 + s * 80 + l * 8, 380, 1.5); }
-    for (let i = 0; i < 24; i++) { g.fillStyle = '#111'; g.beginPath(); g.ellipse(40 + (i % 8) * 46, 48 + Math.floor(i / 8) * 80 + ((i * 3) % 5) * 4, 6, 4.5, -0.4, 0, 7); g.fill(); }
-  });
+  // The sheet music on the piano: the song it is open at, two pages (src/sheetmusic.js turns them as it plays).
+  add('sheet', 840, 560, drawSheet);
 
   // Spotify: placeholders until the small server that keeps my login is built.
   add('nowplaying', 256, 256, g => {

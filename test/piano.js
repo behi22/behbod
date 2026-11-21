@@ -2,7 +2,8 @@
 //   the note names on the keys;
 //   the metronome on the lid;
 //   the lamp that warms while it plays;
-//   LOFT_URL=http://127.0.0.1:8822 node test/piano.js [names|metronome|lamp|phone|all]
+//   the sheet music that turns its pages with the song.
+//   LOFT_URL=http://127.0.0.1:8822 node test/piano.js [names|metronome|lamp|sheet|phone|all]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
@@ -66,11 +67,12 @@ const region = (px, x0, y0, x1, y1) => {
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const i = (y * 300 + x) * 4; r += px[i]; g += px[i + 1]; b += px[i + 2]; n++; }
   return { r: r / n, g: g / n, b: b / n, lum: (0.2126 * r + 0.7152 * g + 0.0722 * b) / n };
 };
-// The lamp's bulb, from just off the piano.
+// The lamp's bulb and the sheet music, from just off the piano.
 const LAMP_VIEW = [[18.9, 10.25, 1.45], [18.59, 10.66, 1.51]];
+const SHEET_VIEW = [[18.35, 9.95, 1.62], [18.35, 10.62, 1.26]];
 
 (async () => {
-  const M = await import('../web/src/pure/metronome.js');
+  const M = await import('../web/src/pure/metronome.js'), SH = await import('../web/src/pure/sheet.js');
   const { noteName } = await import('../web/src/pianomode.js');
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
@@ -259,6 +261,107 @@ const LAMP_VIEW = [[18.9, 10.25, 1.45], [18.59, 10.66, 1.51]];
       check('a song played for you warms it too', song[0] && song[1] > 0.8, JSON.stringify(song));
       await s.p.evaluate(() => __loft.audio.piano.stopSong());
       await s.ctx.close();
+    }
+
+    // ---------- the sheet music ----------
+    if (want('sheet')) {
+      const { ctx, p, errs } = await open(b, DESK, { sound: true });
+      const st0 = await p.evaluate(() => ({ ...__piano.sheet.state, w: __loft.screens.textures.sheet.image.width, h: __loft.screens.textures.sheet.image.height, leaf: __piano.sheet.leaf.visible }));
+      check('the desk opens at the first song\'s first two pages, nothing turning', st0.song === 'gymnopedie' && st0.spread === 0 && st0.left === 0 && st0.right === 1 && !st0.turn && !st0.leaf && st0.w === 840 && st0.h === 560, JSON.stringify(st0));
+      await sit(p);
+      await p.locator('.pm-song', { hasText: 'Fur Elise' }).locator('button', { hasText: 'Play for me' }).click();
+      await p.waitForTimeout(200);
+      const st1 = await p.evaluate(() => __piano.sheet.state);
+      check('a new song opens the sheet at its first page', st1.song === 'fur-elise' && st1.spread === 0 && st1.left === 0 && st1.right === 1, JSON.stringify(st1));
+      const sc = SH.score('fur-elise');
+      const log = await p.evaluate(async until => {
+        const out = [];
+        while (true) {
+          await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+          const s = __loft.audio.piano.song, st = __piano.sheet.state, leaf = __piano.sheet.leaf;
+          if (!s) break;
+          const pos = leaf.children[0].geometry.attributes.position;
+          let xs = [Infinity, -Infinity], zMin = Infinity;
+          for (let i = 0; i < pos.count; i++) { xs = [Math.min(xs[0], pos.getX(i)), Math.max(xs[1], pos.getX(i))]; zMin = Math.min(zMin, pos.getZ(i)); }
+          out.push({ at: s.at, spread: st.spread, p: st.turn ? st.turn.p : null, leaf: leaf.visible, left: st.left, right: st.right, xs, zMin });
+          if (s.at > until) break;
+        }
+        return out;
+      }, sc.turns[1] + 2);
+      const turning = log.filter(r => r.p !== null);
+      const startAt = turning[0]?.at, endAt = log.find(r => r.spread === 1)?.at;
+      check('the first page turn starts just before bar 10, when the theme comes back', Math.abs(startAt - sc.turns[1]) < 0.08, `starts at ${startAt?.toFixed(2)} s, due ${sc.turns[1].toFixed(2)} s`);
+      check('and lands as bar 10 begins', Math.abs(endAt - 9 * sc.barDur) < 0.08, `lands at ${endAt?.toFixed(2)} s, bar 10 at ${(9 * sc.barDur).toFixed(2)} s`);
+      check('it moves with the song\'s clock', turning.every(r => Math.abs(r.p - (r.at - sc.turns[1]) / SH.TURN) < 0.08 || r.p === 1), JSON.stringify(turning.slice(0, 4).map(r => [+r.at.toFixed(2), +r.p.toFixed(2)])));
+      const W = 0.21;
+      check('the page lifts off the desk and lands on the left, staying within the open book', turning.every(r => r.leaf && r.xs[0] >= -W - 1e-3 && r.xs[1] <= W + 1e-3 && r.zMin >= 0.001) && turning.some(r => r.xs[0] < -W * 0.5),
+        JSON.stringify(turning.filter((_, i) => i % 6 === 0).map(r => [+r.xs[0].toFixed(3), +r.xs[1].toFixed(3)])));
+      check('while it turns, the next right page is already under it; after, both new pages show', turning.every(r => r.left === 0 && r.right === 3) && log.at(-1).left === 2 && log.at(-1).right === 3 && !log.at(-1).leaf, JSON.stringify(log.at(-1)));
+      // The leaf is drawn with the desk sheet's own shader: nothing new to build when a page first turns.
+      const shared = await p.evaluate(() => { const P = m => __loft.renderer.properties.get(m).currentProgram; const leaf = P(__piano.sheet.leaf.children[0].material), desk = P(__loft.world.pianoParts.sheet.material); return [!!leaf, leaf === desk]; });
+      check('the turning page needs no shader of its own', shared[0] && shared[1], JSON.stringify(shared));
+      // Stopped, it stays where it is; a new start of the same song goes back to page one.
+      await button(p, 'Stop').click();
+      const halt = await p.evaluate(() => __piano.sheet.state);
+      await p.waitForTimeout(1500);
+      const halt2 = await p.evaluate(() => [__piano.sheet.state, __piano.sheet.leaf.visible]);
+      check('stopped, the sheet stays still where it is', JSON.stringify(halt) === JSON.stringify(halt2[0]) && halt.spread === 1 && !halt2[1], JSON.stringify(halt2));
+      await p.locator('.pm-song', { hasText: 'Fur Elise' }).locator('button', { hasText: 'Play for me' }).click();
+      await p.waitForTimeout(200);
+      const again = await p.evaluate(() => __piano.sheet.state);
+      check('starting the song again puts it back on page one', again.song === 'fur-elise' && again.spread === 0 && again.left === 0, JSON.stringify(again));
+      await button(p, 'Stop').click();
+      // Learning: the page turns when you reach the first note on the next pages.
+      await p.locator('.pm-song', { hasText: 'Ode to Joy' }).locator('button', { hasText: 'Learn' }).click();
+      await p.waitForTimeout(200);
+      const ode = SH.score('ode-to-joy');
+      const learn0 = await p.evaluate(() => __piano.sheet.state);
+      let turnedAt = null, steps = 0;
+      for (; steps < 60; steps++) {
+        const s = await p.evaluate(() => [__loft.pianoMode.lesson, __piano.sheet.state]);
+        if (!s[0]) break;
+        if (s[1].turn && turnedAt === null) turnedAt = SH.barAt(ode, s[0].at);
+        if (s[1].spread === 1) break;
+        const box = await p.locator('.pm .next').first().boundingBox();
+        if (!box) break;
+        await p.mouse.move(box.x + box.width / 2, box.y + box.height - 10); await p.mouse.down(); await p.waitForTimeout(40); await p.mouse.up();
+        await p.waitForTimeout(60);
+      }
+      await p.waitForTimeout(1200);
+      const learn1 = await p.evaluate(() => [__piano.sheet.state, __loft.pianoMode.lesson]);
+      check('learning Ode to Joy opens its first page; the page turns as you reach bar 9, the first note on the next pages', learn0.song === 'ode-to-joy' && learn0.spread === 0 && turnedAt === 8 && learn1[0].spread === 1 && !learn1[0].turn, JSON.stringify({ turnedAt, steps, st: learn1[0] }));
+      // The turns, step by step, straight to the sheet: back from a hidden tab pages on, it goes straight there.
+      await p.keyboard.press('Escape'); await p.waitForTimeout(1500);
+      const direct = await p.evaluate(turns => {
+        const s = __piano.sheet, out = [];
+        const src = at => ({ id: 'fur-elise', run: 'test', at, live: true });
+        s.tick(0.016, src(0)); out.push(s.state.spread);
+        s.tick(0.016, src(turns[1] + 0.3)); out.push(s.state.turn ? +s.state.turn.p.toFixed(2) : null);
+        s.tick(0.016, src(turns[1] + 0.95)); out.push(s.state.spread);
+        s.tick(0.016, src(30)); out.push([s.state.spread, !!s.state.turn]);
+        s.tick(0.016, src(39)); out.push([s.state.spread, !!s.state.turn]);
+        s.tick(0.016, null); out.push(s.state.spread);
+        return out;
+      }, sc.turns);
+      check('a turn follows the song\'s time; a jump of pages goes straight there, no turn', direct[0] === 0 && Math.abs(direct[1] - 0.33) < 0.02 && direct[2] === 1 && direct[3].join() === '2,false' && direct[4].join() === '3,false' && direct[5] === 3, JSON.stringify(direct));
+      check('sheet: no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+      // From over the bench, at night with the lamps on and off: the page turning is there to see and dims with the room.
+      const n = await open(b, DESK, { extra: '&time=22:00' });
+      await n.p.evaluate(() => { const s = __piano.sheet; window.__run = 'n' + Math.random(); s.tick(0.016, { id: 'fur-elise', run: __run, at: 0, live: true }); });
+      await n.p.evaluate(t => { __piano.sheet.tick(0.016, { id: 'fur-elise', run: __run, at: t, live: true }); }, sc.turns[1] + SH.TURN * 0.5);
+      const flat = await picture(n.p, ...SHEET_VIEW);
+      await n.p.evaluate(t => { __piano.sheet.tick(0.016, { id: 'fur-elise', run: __run, at: t, live: true }); }, sc.turns[1] + SH.TURN * 0.5);
+      const lifted = await picture(n.p, ...SHEET_VIEW);
+      await n.p.evaluate(() => __lights.set(false)); await n.p.waitForTimeout(800);
+      await n.p.evaluate(t => { __piano.sheet.tick(0.016, { id: 'fur-elise', run: __run, at: t, live: true }); }, sc.turns[1] + SH.TURN * 0.5);
+      const liftedDark = await picture(n.p, ...SHEET_VIEW);
+      let changed = 0;
+      for (let i = 0; i < flat.length; i += 4) if (Math.abs(flat[i] - lifted[i]) + Math.abs(flat[i + 1] - lifted[i + 1]) + Math.abs(flat[i + 2] - lifted[i + 2]) > 30) changed++;
+      check('mid-turn the lifted page is plain to see from the bench', changed > 300, `${changed} pixels changed`);
+      check('with the lamps off the sheet and its turning page go dark with the room', region(liftedDark, 60, 30, 240, 170).lum < region(lifted, 60, 30, 240, 170).lum * 0.4, `${region(lifted, 60, 30, 240, 170).lum.toFixed(0)} to ${region(liftedDark, 60, 30, 240, 170).lum.toFixed(0)}`);
+      check('sheet at night: no page errors', n.errs.length === 0, n.errs.slice(0, 3).join(' | '));
+      await n.ctx.close();
     }
 
     // ---------- on a phone ----------
