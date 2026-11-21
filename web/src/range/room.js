@@ -72,22 +72,27 @@ export async function prepare(renderer, scene, camera, { screen = true, picture 
 
 // three builds a reflection's two blur shaders the moment it first draws with them, which held a frame for up to a
 // quarter of a second; here they are asked for first and left to build between frames. These are three's own inner
-// names (three 0.170, pinned in index.html); if they ever change, this does nothing and the build happens as before.
-async function readyBlur(renderer, pmrem, size) {
-  if (typeof pmrem._setSize !== 'function' || typeof pmrem._allocateTargets !== 'function' || !renderer.compileAsync) return;
-  pmrem._setSize(size);
-  pmrem._allocateTargets().dispose();
-  const group = new THREE.Group(), was = renderer.getRenderTarget();
-  let job = null;
-  // Built for drawing into a picture, as the blur does.
+// names (three 0.170, pinned in index.html); if any of them differs, this does nothing and fromCubemap builds the blur
+// itself, as before.
+export async function readyBlur(renderer, pmrem, size) {
   try {
-    renderer.setRenderTarget(linear ||= new THREE.WebGLRenderTarget(1, 1));
-    pmrem.compileCubemapShader();
-    for (const m of [pmrem._cubemapMaterial, pmrem._blurMaterial]) if (m && pmrem._lodPlanes?.[0]) group.add(new THREE.Mesh(pmrem._lodPlanes[0], m));
-    job = renderer.compileAsync(group, new THREE.OrthographicCamera());
-  } finally { renderer.setRenderTarget(was); }
-  await job;
-  await useAhead(renderer, [pmrem._cubemapMaterial, pmrem._blurMaterial].filter(Boolean), { rest: breathe });
+    if (!renderer.compileAsync || ['_setSize', '_allocateTargets', 'compileCubemapShader'].some(k => typeof pmrem[k] !== 'function')) return;
+    pmrem._setSize(size);
+    pmrem._allocateTargets().dispose();
+    const was = renderer.getRenderTarget(), mats = [];
+    let job = null;
+    // Built for drawing into a picture, as the blur does.
+    try {
+      renderer.setRenderTarget(linear ||= new THREE.WebGLRenderTarget(1, 1));
+      pmrem.compileCubemapShader();
+      mats.push(pmrem._cubemapMaterial, pmrem._blurMaterial);
+      const plane = pmrem._lodPlanes?.[0];
+      if (plane?.isBufferGeometry && mats.every(m => m?.isMaterial)) job = renderer.compileAsync(new THREE.Group().add(...mats.map(m => new THREE.Mesh(plane, m))), new THREE.OrthographicCamera());
+    } finally { renderer.setRenderTarget(was); }
+    if (!job) return;
+    await job;
+    await useAhead(renderer, mats, { rest: breathe });
+  } catch (e) { /* fromCubemap builds it */ }
 }
 
 async function picture(url, small) {

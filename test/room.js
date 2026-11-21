@@ -188,9 +188,40 @@ async function phone(b) {
   await p.close();
 }
 
+// The reflection's blur is readied ahead through three's own inner parts (three 0.170). If they ever differ, that does
+// nothing and the range still builds, its reflection made the plain way. Regression: three without one of those parts
+// stopped the range from building at all.
+async function blurGuard(b) {
+  const p = await b.newPage({ viewport: { width: 1280, height: 800 } }), errs = [];
+  watch(p, errs);
+  await p.goto(`${BASE}/?q=ultra`);
+  await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
+  const stubs = await p.evaluate(async () => {
+    const { readyBlur } = await import('/src/range/room.js'), r = __loft.renderer, was = r.getRenderTarget(), out = [];
+    const f = () => {};
+    for (const [name, pmrem] of [['nothing', {}], ['a target with no dispose', { _setSize: f, _allocateTargets: () => ({}), compileCubemapShader: f }],
+      ['parts that throw', { _setSize: () => { throw new Error('no'); }, _allocateTargets: f, compileCubemapShader: f }],
+      ['no planes or materials', { _setSize: f, _allocateTargets: () => ({ dispose: f }), compileCubemapShader: f }]]) {
+      try { await readyBlur(r, pmrem, 128); out.push(r.getRenderTarget() === was ? 'ok' : `${name}: target left changed`); } catch (e) { out.push(`${name}: threw ${e.message}`); }
+    }
+    return out;
+  });
+  check('readying the blur with three\'s inner parts stubbed away does nothing, and throws nothing', stubs.every(s => s === 'ok'), stubs.join(', '));
+  const built = await p.evaluate(async () => {
+    const THREE = await import('three');
+    delete THREE.PMREMGenerator.prototype.compileCubemapShader;
+    try { await __loft.range.load(); } catch (e) { return 'failed: ' + e.message; }
+    return __loft.range.ready && !!__loft.range.room.scene.environment ? 'built' : 'not built';
+  });
+  check('three without the part the blur is readied through: the range still builds, with its reflection', built === 'built', built);
+  check('and nothing went wrong', errs.length === 0, errs.slice(0, 3).join(' | '));
+  await p.close();
+}
+
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--autoplay-policy=user-gesture-required'] });
   try {
+    await blurGuard(b);
     await desktop(b);
     await low(b);
     await phone(b);
