@@ -136,7 +136,9 @@ const shades = p => p.evaluate(() => {
       const off = await settleTo(() => __lights.k === 0);
       await run('scene chill');
       const offChill = await settleTo(() => __lights.movie === 0);
-      check('with the switch off, Movie or not, the lamps are off alike', off.room.every((v, i) => Math.abs(v - offChill.room[i]) < 1e-9) && off.room.every((v, i) => v < r[i]), JSON.stringify({ off: off.room, offChill: offChill.room }));
+      // The daylight moves a little between the two readings, so each is held to the lamps-off level of its own moment.
+      const lampsOff = x => x.room.every((v, i) => Math.abs(v - L.roomLight(x.day, 0)[i]) < 0.003);
+      check('with the switch off, Movie or not, the lamps are off alike', lampsOff(off) && lampsOff(offChill) && off.room.every((v, i) => v < r[i]), JSON.stringify({ off: off.room, offChill: offChill.room, day: [off.day, offChill.day] }));
       await run('scene movie'); await settleTo(() => __lights.movie === 1);
       await p.evaluate(() => __lights.set(true));
       const back = await settleTo(() => __lights.k === 1);
