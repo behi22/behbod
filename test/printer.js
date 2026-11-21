@@ -414,18 +414,21 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
         await p.waitForFunction(() => __loft.printer.built, null, { timeout: 90000 }).catch(() => {});
         // Timed as the worker's builds are: the screen open, the house timed still that way first.
         await p.evaluate(() => __loft.act('printer')); await p.waitForTimeout(2500);
+        // Timed round the printer's tick, where the page build runs: the house alone has 50 to 90 ms frames here at random, idle too.
+        await p.evaluate(() => { const pr = __loft.printer, tick = pr.tick; window.__own = 0; pr.tick = function (...a) { const t = performance.now(), r = tick.apply(this, a); window.__own = Math.max(window.__own, performance.now() - t); return r; }; });
+        const own = () => p.evaluate(() => { const v = +window.__own.toFixed(1); window.__own = 0; return v; });
         const cdp = await ctx.newCDPSession(p);
         await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-        const base = await frameGaps(p, () => p.waitForTimeout(5000));
+        const base = await frameGaps(p, () => p.waitForTimeout(5000)), baseOwn = await own();
         const model = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('chess knight')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 120000, polling: 100 }).catch(() => {}); await p.waitForTimeout(300); });
-        const madeModel = await state(p);
+        const modelOwn = await own(), madeModel = await state(p);
         const word = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('a keychain to build')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 120000, polling: 100 }).catch(() => {}); await p.waitForTimeout(300); });
-        const madeWord = await state(p);
+        const wordOwn = await own(), madeWord = await state(p);
         await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-        console.log(`  ${way}, frame gaps with the processor 4x slower (ms):`, JSON.stringify({ base, model, word }));
+        console.log(`  ${way}, with the processor 4x slower (ms): the printer's longest share of a frame ${JSON.stringify({ idle: baseOwn, model: modelOwn, word: wordOwn })}, frame gaps`, JSON.stringify({ base, model, word }));
         check(`${way}: the page builds the model, the same one a worker makes`, !madeModel.failed && madeModel.built?.tris === knight.index.length / 3 && madeModel.built.layers === knight.layers && Math.abs(madeModel.built.height - knight.height) < 1e-6, JSON.stringify(madeModel.built));
         check(`${way}: and a keychain`, !madeWord.failed && madeWord.print.model === 'word' && madeWord.built?.tris > 500, JSON.stringify(madeWord.built));
-        check(`${way}: a 4x slower phone keeps its frames coming while the page builds`, model.worst < base.worst + 25 && word.worst < base.worst + 25 && model.n > 30 && word.n > 30, `model worst ${model.worst} ms, keychain worst ${word.worst} ms, idle worst ${base.worst} ms`);
+        check(`${way}: on a 4x slower phone the page's build takes less than a 60 Hz frame's time (16.7 ms) of any frame, and frames keep coming`, modelOwn > 2 && modelOwn < 16.7 && wordOwn > 2 && wordOwn < 16.7 && model.n > 30 && word.n > 30, `the printer's longest share of a frame: ${modelOwn} ms building the model, ${wordOwn} ms the keychain (${baseOwn} ms idle); worst frames ${model.worst}, ${word.worst} and ${base.worst} ms idle`);
         check(`${way}: no error`, errs.filter(e => !/printwork\.js/.test(e)).length === 0, errs.slice(0, 3).join(' | '));
         await ctx.close();
       }
