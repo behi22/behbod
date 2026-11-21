@@ -28,24 +28,35 @@ export function livePicture(canvas) {
   return t;
 }
 
-// A big picture (flipY off) goes to the graphics card a band of rows at a time with `rest` between bands, so no frame
-// waits for the whole of it: the range's 4096 px lightmap held the page about 100 ms in one go.
-export async function sendInBands(renderer, t, rest, rows = 512) {
-  const image = t.image, mips = t.generateMipmaps;
+// A big 8-bit picture (flipY off) goes to the graphics card a band of rows at a time with `rest` between bands, so no
+// frame waits for the whole of it: the range's 4096 px lightmap held the page about 100 ms in one go. Each band's copy
+// settings are put in place by hand: three's own copy reads them back first, and each read waits for the graphics card
+// to catch up, about 50 ms a band at his laptop's size. A band of 512 rows (8 MB) also waited for the one before it.
+export async function sendInBands(renderer, t, rest, rows = 256) {
+  const image = t.image, gl = renderer.getContext();
   // Room made for it, nothing copied yet.
   t.source.dataReady = false;
   t.needsUpdate = true;
   renderer.initTexture(t);
   t.source.dataReady = true;
-  const from = new THREE.Texture(image), band = new THREE.Box2(), at = new THREE.Vector2();
-  try {
-    for (let y = 0; y < image.height; y += rows) {
-      await rest();
-      t.generateMipmaps = mips && y + rows >= image.height;
-      band.min.set(0, y); band.max.set(image.width, Math.min(image.height, y + rows)); at.set(0, y);
-      renderer.copyTextureToTexture(from, t, band, at);
-    }
-  } finally { t.generateMipmaps = mips; }
+  for (let y = 0; y < image.height; y += rows) {
+    await rest();
+    const tex = renderer.properties.get(t).__webglTexture, end = Math.min(image.height, y + rows);
+    // A lost graphics context (or three's insides not as expected): three sends it whole the next time it is drawn.
+    if (gl.isContextLost() || !(tex instanceof WebGLTexture)) { t.needsUpdate = true; return; }
+    renderer.state.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, t.premultiplyAlpha);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, t.unpackAlignment);
+    gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, image.width);
+    gl.pixelStorei(gl.UNPACK_SKIP_ROWS, y);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, y, image.width, end - y, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+    if (end === image.height && t.generateMipmaps) gl.generateMipmap(gl.TEXTURE_2D);
+    renderer.state.unbindTexture();
+  }
 }
 
 function send(pic) {

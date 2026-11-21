@@ -18,12 +18,14 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
     p.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200)); });
     await p.goto(`${BASE}/?auto&q=ultra`);
     await p.waitForFunction(() => window.__loft, null, { timeout: 120000 });
-    // From here, before the range is built behind the scenes: every send of a big decoded picture (2048 px or more), timed.
+    // From here, before the range is built behind the scenes: every send of a big decoded picture (2048 px or more), timed
+    // with all the page did for it, from the start of the spare moment it was sent in.
     await p.evaluate(() => {
-      const gl = __loft.renderer.getContext(), sub = gl.texSubImage2D;
-      window.__big = [];
+      const gl = __loft.renderer.getContext(), sub = gl.texSubImage2D, ric = window.requestIdleCallback;
+      window.__big = []; window.__idleAt = null;
+      window.requestIdleCallback = (f, o) => ric(d => { window.__idleAt = performance.now(); try { f(d); } finally { setTimeout(() => { window.__idleAt = null; }); } }, o);
       gl.texSubImage2D = function (...a) {
-        const src = a.at(-1), t = performance.now();
+        const src = a.at(-1), t = window.__idleAt ?? performance.now();
         try { return sub.apply(this, a); } finally { if ((src instanceof ImageBitmap || src instanceof HTMLImageElement) && src.width >= 2048) __big.push(performance.now() - t); }
       };
     });
@@ -98,6 +100,8 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
       return out;
     }, [names, send]);
     const big = await p.evaluate(() => __big);
+    // Regression: three's own copy read its settings back before each band, each read waiting on the graphics card, so
+    // a band took about 55 ms though the copy itself took 4.
     check('the range lightmap goes to the card in bands, none holding the page 20 ms (sends, longest ms)', big.length > 1 && Math.max(...big) < 20, `${big.length}, ${big.length ? Math.max(...big).toFixed(1) : '-'}`);
     const banded = await compare(['range light'], false);
     check('and it holds the same bytes as when sent whole (bytes that differ, full size/half size)', / 0\/0$/.test(banded[0]), banded[0]);
