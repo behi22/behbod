@@ -104,13 +104,15 @@ function machine(frames, stretches, tier = 'ultra') {
 }
 
 // Regression: with frames held to 30 a second (a battery saver) or to a 50 Hz screen, an idle machine walked from ultra
-// down to low within seconds and stayed there, though no tier was any faster.
-test('frames held to 30 a second: the drops buy nothing, so it goes back to ultra and stays', () => {
+// down to low within seconds and stayed there, though no tier was any faster. Then it walked down to low and back up
+// (4 switches) and never stepped down again. Now one step down shows the cap: straight back, and nothing fixed.
+test('frames held to 30 a second: one step down shows the cap, so it goes straight back to ultra and stays', () => {
   const { seen, state, switches } = machine(capped(33.3), 200);
   assert.equal(seen.at(-1), 'ultra');
-  assert.equal(state.floor, 'ultra');
-  assert.ok(seen.slice(40).every(t => t === 'ultra'));
-  assert.equal(switches, 4, 'down to low, then back');
+  assert.ok(seen.slice(20).every(t => t === 'ultra'), seen.slice(0, 20).join(' '));
+  assert.ok(switches <= 2, `${switches} switches`);
+  assert.equal(state.floor, 'low', 'no floor fixed');
+  assert.ok(Math.abs(state.held - 33.3) < 0.01, 'judged by the cap pace');
 });
 
 test('a 50 Hz screen: never a step down, the line follows the screen', () => {
@@ -125,14 +127,26 @@ test('a machine held to 30 fps on ultra by its graphics card and faster on high 
   assert.equal(state.floor, 'low');
 });
 
+// A graphics card held to two refreshes on most frames: it still makes a frame in one refresh now and then, as a card
+// does where some views are lighter, which a frame cap never does.
+const mostly30 = () => [...Array(88).fill(33.3), ...Array(12).fill(16.7)];
 test('on a 60 Hz screen, a graphics card too slow for one frame per refresh on ultra and high, but not on medium, gets to medium', () => {
-  const { seen } = machine(t => Array(60).fill(t === 'ultra' || t === 'high' ? 33.3 : 16.7), 200);
+  const { seen } = machine(t => (t === 'ultra' ? Array(60).fill(33.3) : t === 'high' ? mostly30() : Array(60).fill(16.7)), 200);
   assert.ok(seen.slice(60).every(t => t === 'medium'), seen.slice(0, 60).join(' '));
 });
 
 test('a graphics card that only gets faster with no effects at all is followed down to low', () => {
-  const { seen } = machine(t => Array(60).fill(t === 'low' ? 16.7 : 33.3), 200);
+  const { seen } = machine(t => (t === 'low' ? Array(60).fill(16.7) : t === 'ultra' ? Array(60).fill(33.3) : mostly30()), 200);
   assert.ok(seen.slice(40).every(t => t === 'low'), seen.slice(0, 40).join(' '));
+});
+
+// The price of telling a cap in one step: a machine whose every frame on ultra and on high comes at exactly two
+// refreshes, never one, looks just like a 30 fps cap, so it stays on ultra rather than walking down to find a tier
+// that helps.
+test('frames held at exactly two refreshes on ultra and high alike are taken for a cap', () => {
+  const { seen, switches } = machine(t => Array(60).fill(t === 'low' ? 16.7 : 33.3), 200);
+  assert.equal(seen.at(-1), 'ultra');
+  assert.ok(switches <= 2, `${switches} switches`);
 });
 
 // One stretch of frames from a screen refreshing every `r` ms, nine in ten taking `fast` refreshes and one in ten `slow`,
@@ -177,20 +191,55 @@ test('the refresh read while loading: the quick frames between the busy ones, or
   assert.equal(refreshFrom(Array(50).fill(3.2)), 4, 'never quicker than a 240 Hz screen');
 });
 
-test('with the line at 50 fps, a battery cap that starts mid visit (the screen read at 120 Hz) still meets the backstop: no gain, back up, and no more steps down', () => {
+// Regression: a battery cap that started mid visit walked down to low and back up (4 switches), then fixed the floor at
+// ultra, so a machine that later really struggled could never step down again.
+test('a battery cap that starts mid visit (the screen read at 120 Hz) costs one step down and back, and fixes nothing', () => {
   let tier = 'ultra', state = { top: 'ultra', refresh: 1000 / 120 }, now = 7000;
   const seen = [];
-  for (let k = 0; k < 120; k++) { state = tierStep(tier, k < 20 ? Array(100).fill(8.33) : Array(100).fill(33.3), now, state); tier = state.tier; seen.push(tier); now += 2500; }
-  assert.ok(seen.slice(60).every(t => t === 'ultra'), seen.join(' '));
-  assert.equal(state.floor, 'ultra');
+  for (let k = 0; k < 120; k++) { state = tierStep(tier, k < 20 ? Array(100).fill(8.33) : Array(100).fill(1000 / 30), now, state); tier = state.tier; seen.push(tier); now += 2500; }
+  assert.ok(seen.slice(40).every(t => t === 'ultra'), seen.join(' '));
+  assert.ok(switchesOf(seen) <= 2, `${switchesOf(seen)} switches: ${seen.join(' ')}`);
+  assert.equal(state.floor, 'low');
+});
+
+const held30 = () => Array(100).fill(1000 / 30);
+test('a cap that catches a shaky ultra on its second failed try still goes back to ultra, and ultra stays its top', () => {
+  const { seen, state } = visit([[60, held30]], { top: 'ultra', refresh: 1000 / 120, record: { ultra: [8, 4] }, fails: { ultra: 1 } });
+  assert.equal(seen.at(-1), 'ultra', seen.join(' '));
+  assert.equal(state.top, 'ultra');
+});
+test('under a battery cap, a machine that then really struggles on ultra still steps down to a tier that keeps the cap pace', () => {
+  const struggle = t => (t === 'ultra' ? [...Array(70).fill(1000 / 30), ...Array(30).fill(2000 / 30)] : held30());
+  const { seen } = visit([[20, () => Array(100).fill(8.33)], [30, held30], [80, struggle]], { top: 'ultra', refresh: 1000 / 120 });
+  assert.ok(seen.slice(-40).every(t => t === 'high'), seen.slice(50).join(' '));
+});
+
+test('once the cap lifts it is forgotten: later frames held at two refreshes on ultra, quicker on high, step down', () => {
+  const gpu = t => (t === 'ultra' ? held30() : Array(100).fill(1000 / 60));
+  const { seen, state, now: end } = visit([[20, () => Array(100).fill(8.33)], [30, held30], [10, () => Array(100).fill(8.33)]], { top: 'ultra', refresh: 1000 / 120 });
+  assert.equal(state.held, null);
+  const after = visit([[60, gpu]], state, end);
+  assert.ok(after.seen.slice(-20).every(t => t === 'high'), after.seen.join(' '));
+  assert.equal(seen.at(-1), 'ultra');
+});
+
+// Regression: when no step down helped, the floor was fixed for the rest of the visit, so a machine that later got much
+// slower on ultra and was smooth on high could never step down.
+test('a floor set when no step down helped lifts once frames are clearly worse than they were then', () => {
+  const ragged = late => [...Array(100 - late).fill(1000 / 60), ...Array(late).fill(50)];
+  const worse = t => (t === 'ultra' ? ragged(80) : Array(100).fill(1000 / 60));
+  const first = visit([[60, () => ragged(50)]], { top: 'ultra', refresh: 1000 / 60 });
+  assert.equal(first.state.floor, 'ultra', 'no tier helped, so the floor is set');
+  const later = visit([[60, worse]], first.state, first.now);
+  assert.ok(later.seen.slice(-20).every(t => t === 'high'), later.seen.join(' '));
 });
 
 // Stretches from a list of [count, frames] pairs, run through the judge from ultra; returns the tiers seen.
-function visit(plan, state = { top: 'ultra' }) {
-  let tier = 'ultra', now = 7000;
+function visit(plan, state = { top: 'ultra' }, now = 7000) {
+  let tier = state.tier || 'ultra';
   const seen = [];
   for (const [count, frames] of plan) for (let k = 0; k < count; k++) { state = tierStep(tier, frames(tier), now, state); tier = state.tier; seen.push(tier); now += 2500; }
-  return { seen, state };
+  return { seen, state, now };
 }
 // A 60 Hz screen where a few frames are drawn a little late (another task ran first), as a page measures them.
 const lateAt60 = () => [...Array(85).fill(1000 / 60 + 0.4), ...Array(15).fill(25)];
