@@ -304,6 +304,10 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.evaluate(() => __loft.creatures.act('bh22', { player: __loft.pos, mode: 'walk', facing: 0 }));
       const first = await p.evaluate(() => ({ holo: __loft.creatures.holo, toast: document.getElementById('toast').textContent }));
       check('never on the first chat, however lucky', !first.holo && /^BH-22: /.test(first.toast), JSON.stringify(first));
+      // After that first chat its picture is drawn in spare time, so the first message costs no long frame on a slow phone.
+      await p.waitForTimeout(3000);
+      const ahead = await p.evaluate(() => { const h = __loft.creatures.bh22.root.getObjectByName('bh22_hologram'); return h ? { visible: h.visible, w: h.material.map.image.width } : null; });
+      check('after the first chat the message is drawn ahead, unseen', ahead && !ahead.visible && ahead.w === 512, JSON.stringify(ahead));
       await ctx.close();
       const o = await open(b, DESK, '&holo');
       // Said hi before, so the first-chat achievement's note does not cover the message's.

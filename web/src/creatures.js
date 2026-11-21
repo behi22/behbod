@@ -345,6 +345,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
 
   // Now and then, instead of a tip, it plays a recorded message as a small hologram over its head (see pure/bh22.js).
   let holoSp = null, holoT = -1, holoShown = false, talks = 0;
+  const later = typeof requestIdleCallback === 'function' ? f => requestIdleCallback(f, { timeout: 2500 }) : f => setTimeout(f, 1200);
   function holoSprite() {
     const c = document.createElement('canvas'), W = 512, H = 384;
     c.width = W; c.height = H;
@@ -369,6 +370,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     mat.userData.lamp = 'glow';
     const sp = new THREE.Sprite(mat);
+    sp.name = 'bh22_hologram';
     sp.scale.set(0.6, 0.45, 1); sp.position.y = 0.62; sp.renderOrder = 7; sp.visible = false;
     r2.root.add(sp);
     return sp;
@@ -1083,6 +1085,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         r2.cup.visible = false; r2.speed = r2.base;
         onEvent('bh22');
         if (holoNow({ talks: ++talks, shown: holoShown, roll: Math.random(), force: holo })) { r2.timer = HOLO_TIME; hologram(); return null; }
+        // From the next chat on it may play its message, so the picture is drawn now, in spare time.
+        if (!holoSp && !holoShown) later(() => { holoSp ||= holoSprite(); });
         r2.bub.say(pick(WORDS), now); sfx.word(tipAt === 0 ? 'hello' : pick(['yay', 'behbod', 'hello']), r2.pos);
         toast('BH-22: ' + TIPS[tipAt++ % TIPS.length]);
         feel('love', 2.5);
