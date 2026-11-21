@@ -678,6 +678,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   // Called by the treat jar: down from wherever she is, then a trot over to `spot` (Blender axes) and a treat there.
   function pishiCome(spot) {
     if (pishi.hop || ['keys', 'todesk', 'flee', 'down', 'totreat', 'treat'].includes(pishi.state)) return false;
+    const from = pishi.state;
     stopPishi(); freshPishi();
     pishi.bub.say('!', now);
     const go = () => {
@@ -685,9 +686,11 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       goTo(pishi, spot, ok => { pishi.speed = pishi.base; if (ok && lastCtx) pishiTreat(lastCtx); else pishiNext(); });
     };
     const land = () => { pishi.onFloor = true; go(); };
-    if (pishi.state === 'window') { pishi.state = 'down'; hop(pishi, b2t(...windowFloor), land); }
-    else if (pishi.state === 'perch') pishiDown([...walkUp].reverse().slice(1).concat(b2t(...treeFloor)), land);
-    else if (pishi.state === 'treesit') pishiDown([climbUp[0], b2t(...treeFloor)], land);
+    // The jump down is part of her way to the treat.
+    pishi.state = 'totreat';
+    if (from === 'window') hop(pishi, b2t(...windowFloor), land);
+    else if (from === 'perch') hops(pishi, [...walkUp].reverse().slice(1).concat(b2t(...treeFloor)), land);
+    else if (from === 'treesit') hops(pishi, [climbUp[0], b2t(...treeFloor)], land);
     else go();
     return true;
   }
@@ -759,9 +762,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   ball.visible = false; scene.add(ball);
   let flight = null, ballGone = 0, roll = null;
   const JESSI_GO = [[11.5, 12.6, 0], [14.6, 9.4, 0], [10.4, 7.0, 0], [3.0, 13.0, 0], [16.5, 12.0, 0], meta.spots.lounge].filter(Boolean);
-  function jessiWake(then) {
+  function jessiWake(then, as = 'waking') {
     if (jessi.onFloor) { then(); return; }
-    jessi.state = 'waking';
+    jessi.state = as;
     jessi.bub.say('*yawn*', now);
     hop(jessi, b2t(...bedFloor), () => { jessi.onFloor = true; jessi.pos.y = groundAt(jessi.pos.x, jessi.pos.z, 0.1); then(); }, 0.4, 0.15);
   }
@@ -892,7 +895,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     jessiWake(() => {
       jessi.state = 'totreat'; jessi.speed = 1.6;
       goTo(jessi, spot, ok => { jessi.speed = jessi.base; if (ok) jessiTreat(); else jessiNext(lastCtx); });
-    });
+    }, 'totreat');
     return true;
   }
   function jessiTreat() {
@@ -1018,6 +1021,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       if (jessiCome(spots.jessi)) came.push('Jessi');
       return came;
     },
+    // Whether either of them is still on the way to the jar.
+    get coming() { return pishi.state === 'totreat' || jessi.state === 'totreat'; },
     // BH-22 and Jessi go through the balcony door, so it opens for them too (the mouse droid would keep it busy).
     positions: [r2.pos, jessi.pos],
     tick(dt, t, ctx) {

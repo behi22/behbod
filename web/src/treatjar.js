@@ -39,17 +39,15 @@ export function makeTreatJar(scene, { creatures, sfx }) {
 
   const spot = { id: 'treats', at: [...stand], r: 0.6, label: 'Shake the treat jar', x: stand[0], y: stand[2], z: -stand[1] };
   const reach = new THREE.Sphere(group.position.clone().setY(group.position.y + H / 2), 0.13), hitAt = new THREE.Vector3();
-  // shook: the last shake anyone came for; wobble: the last shake of all.
-  let shook = -9, wobble = -9, now = 0;
+  let wobble = -9, now = 0;
   return {
     spot,
     // A shake: the jar wobbles, the lid lifts, the treats rattle, and whoever is free comes. Returns what to say.
     shake() {
-      if (now - shook < 6) return 'One moment, they are on their way.';
+      const came = creatures.treats(spots);
+      if (!came.length && creatures.coming) return 'One moment, they are on their way.';
       wobble = now;
       sfx?.rattle?.(group.position);
-      const came = creatures.treats(spots);
-      if (came.length) shook = now;
       return came.length ? `You shake the treat jar. ${came.join(' and ')} ${came.length > 1 ? 'come' : 'comes'} running.` : 'You shake the treat jar. Nobody is free right now.';
     },
     hit(ray, blockers) {

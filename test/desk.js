@@ -352,6 +352,17 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       check('each eats a treat at its own place by the jar', eat.dp < 0.35 && eat.dj < 0.35, JSON.stringify(eat));
       await p.waitForTimeout(4500);
       check('then they carry on', await p.evaluate(() => !['treat', 'totreat'].includes(__loft.creatures.pishi.state) && !['treat', 'totreat'].includes(__loft.creatures.jessi.state)));
+      // From far off, both by the front door (well over seven seconds' walk). Shaken again while both are still on their
+      // way, it says so (it once went by a six-second clock, and said nobody was free).
+      await p.evaluate(([a1, a2]) => {
+        const c = __loft.creatures, put = (a, at, state) => { Object.assign(a, { state, timer: 999, onFloor: true, route: [], hop: null, then: null, pending: null, repath: 99 }); a.epoch++; a.pos.set(at[0], at[2], -at[1]); };
+        put(c.pishi, a1, 'sit'); put(c.jessi, a2, 'follow');
+      }, [[2.6, 2.4, 0], [4.0, 2.4, 0]]);
+      await p.waitForTimeout(300);
+      const far = await p.evaluate(() => __jar.shake());
+      await p.waitForTimeout(7500);
+      const again = await p.evaluate(() => [__jar.shake(), __loft.creatures.pishi.state, __loft.creatures.jessi.state]);
+      check('from far off both come, and shaken again while they are still on their way it says so', far === 'You shake the treat jar. Pishi and Jessi come running.' && again[1] === 'totreat' && again[2] === 'totreat' && again[0] === 'One moment, they are on their way.', `${far} / ${JSON.stringify(again)}`);
       check('jar: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
