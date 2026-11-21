@@ -8,14 +8,9 @@ export const TIERS = {
   ultra: { ratio: 2, post: true, bloom: true, smaa: true, grain: true },
 };
 
-// A rebuilt effects chain recompiles every effect's shader, a long freeze, so it is only rebuilt when an effect comes or goes.
+// A tier's set of effects by name: tiers with the same set share one effects chain, so a switch between them
+// changes only the sharpness.
 const EFFECTS = ['post', 'bloom', 'smaa', 'grain'];
-export function switchWork(from, to) {
-  const a = TIERS[from], b = TIERS[to];
-  if (!a || !b) return { post: true, ratio: true };
-  return { post: EFFECTS.some(k => !!a[k] !== !!b[k]), ratio: a.ratio !== b.ratio };
-}
-// A tier's set of effects by name: one effects chain serves every tier with the same set.
 export function effectsOf(name) {
   const t = TIERS[name];
   return t ? EFFECTS.filter(k => t[k]).join('+') || 'none' : null;
