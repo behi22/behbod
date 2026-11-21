@@ -5,7 +5,7 @@ import { GAMES, SHELF, shelfSlots, thickness, titleLines } from '../../web/src/p
 test('his twenty games, in the order he listed them, Spider-Man once', () => {
   assert.deepEqual(GAMES.map(g => g.title), [
     'Warzone', 'Escape from Tarkov', 'Battlefield', 'Call of Duty', 'Counter-Strike 1.6', 'CS:GO', 'Hunt: Showdown',
-    'FIFA', 'Grand Theft Auto', 'Detroit: Become Human', 'Elden Ring', 'Spider-Man', 'Dark Souls', 'Mafia', "Assassin's Creed",
+    'FIFA', 'GTA', 'Detroit: Become Human', 'Elden Ring', 'Spider-Man', 'Dark Souls', 'Mafia', "Assassin's Creed",
     'Max Payne', 'Rainbow Six Siege', 'Watch Dogs', 'Fallout', 'Batman',
   ]);
   assert.equal(new Set(GAMES.map(g => g.id)).size, 20);

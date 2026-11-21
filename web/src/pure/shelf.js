@@ -12,7 +12,7 @@ export const GAMES = [
   { id: 'csgo', title: 'CS:GO', bg: '#1b2a3a', ink: '#f1f3f6', accent: '#f2a93b', art: 'tactic', mark: 'diamond', pic: 'a tactical plan of two sites, A and B, with routes drawn in orange' },
   { id: 'hunt', title: 'Hunt: Showdown', bg: '#1d241b', ink: '#e8dcc2', accent: '#9e2216', art: 'bayou', mark: 'drop', pic: 'a swamp at dusk, cypress trees hung with moss, a shack on stilts and one lantern' },
   { id: 'fifa', title: 'FIFA', bg: '#0f5a2e', ink: '#ffffff', accent: '#d8ff3a', art: 'pitch', mark: 'ball', pic: 'a floodlit pitch at night seen from above, the ball on the centre spot' },
-  { id: 'gta', title: 'Grand Theft Auto', bg: '#2a1640', ink: '#fff3e6', accent: '#ff5f8a', art: 'sunset', mark: 'sun', pic: 'palm trees and a city skyline against a striped sunset, light trails on the highway' },
+  { id: 'gta', title: 'GTA', bg: '#2a1640', ink: '#fff3e6', accent: '#ff5f8a', art: 'sunset', mark: 'sun', pic: 'palm trees and a city skyline against a striped sunset, light trails on the highway' },
   { id: 'detroit', title: 'Detroit: Become Human', bg: '#0d1f33', ink: '#eef6fb', accent: '#2fd2ff', art: 'snow', mark: 'tri', pic: 'snow falling over a cold blue city, a cyan line of light' },
   { id: 'elden', title: 'Elden Ring', bg: '#100e0b', ink: '#efe2c0', accent: '#d4a64a', art: 'gold', mark: 'star', pic: 'broken arches in the mist, a golden glow on the horizon and falling gold leaves' },
   { id: 'spiderman', title: 'Spider-Man', bg: '#14183a', ink: '#ffffff', accent: '#d7192f', art: 'rooftops', mark: 'bars', pic: 'a red dusk over skyscrapers, a rooftop water tower in front' },
