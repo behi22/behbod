@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CAMS, pickCam, fovFor, placeOf, doingOf } from './pure/pishicam.js';
 
 // Small and a few times a second, and only while the little screen is in sight: each picture is the house drawn again.
-const W = 256, H = 152, FPS = 6, FPS_TOUCH = 4, SEEN = 7;
+const W = 256, H = 152, FPS = 6, FPS_TOUCH = 2, SEEN = 7;
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 
 // The house drawn from the wall camera that sees her, with words; at the lowest quality (no effects) the words alone.

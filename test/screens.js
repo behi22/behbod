@@ -338,7 +338,7 @@ const shades = p => p.evaluate(() => {
       const ph = await open(b, UPRIGHT);
       await ph.p.evaluate(() => { __loft.pos.set(19.5, 0.05, -1.3); __loft.yaw = -Math.PI / 2; }); await ph.p.waitForTimeout(2500);
       const p0 = await ph.p.evaluate(() => __pishiCam.shots); await ph.p.waitForTimeout(2000); const p1 = await ph.p.evaluate(() => ({ shots: __pishiCam.shots, live: __pishiCam.live }));
-      check('phone: live, about four pictures a second', p1.live && p1.shots - p0 >= 5 && p1.shots - p0 <= 10, JSON.stringify({ p0, p1 }));
+      check('phone: live, about two pictures a second', p1.live && p1.shots - p0 >= 2 && p1.shots - p0 <= 6, JSON.stringify({ p0, p1 }));
       await ph.p.screenshot({ path: path.join(OUT, 'cam-phone.png') });
       check('cam (phone): no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
       await ph.ctx.close();
