@@ -16,6 +16,10 @@ export function makeLiveVideo({ scene, camera, meta, videos, canvas }) {
   const thumb = mesh.material;
   // Writes (0, 0, 0, 0): no colour and no cover, so the page layer underneath shows. No fog, or the haze would tint it.
   const hole = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, blending: THREE.NoBlending, fog: false });
+  // A hidden twin wears the hole, so its shader is built while the house loads, not when the playing video first shows.
+  const twin = new THREE.Mesh(mesh.geometry, hole);
+  twin.visible = false;
+  scene.add(twin);
   const css = new CSS3DRenderer();
   Object.assign(css.domElement.style, { position: 'fixed', inset: '0', pointerEvents: 'none' });
   css.domElement.setAttribute('aria-hidden', 'true');

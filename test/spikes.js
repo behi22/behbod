@@ -1,6 +1,7 @@
 // Long frames from what the house repaints, at his laptop's size (1440x900 at 2x) on ultra, standing where a visit
 // starts with the TV's live match in sight: a repaint of a canvas on a model must not hold the graphics card, and
-// what the card holds must be the same picture as before, byte for byte.
+// what the card holds must be the same picture as before, byte for byte. Then the screening wall, whose live video
+// must start without building a shader.
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
@@ -88,6 +89,20 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
     }, [names, send]);
     const same = await compare(['tv', 'code'], true);
     check('the TV and a desk screen hold the same bytes as when sent the old way (bytes that differ, full size/half size)', same.every(s => / 0\/0$/.test(s)), same.join(', '));
+    // Facing the screening wall from close by, its live video plays and the screen becomes a see-through hole: that
+    // look's shader is built while the house loads, so no frame waits for it here.
+    const shaders = await p.evaluate(() => __loft.renderer.info.programs.length);
+    await p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); __loft.yaw = -Math.PI / 2; }, b2t(19.0, 7.65, 0));
+    const live = await p.waitForFunction(() => __loft.liveVideo.live, null, { timeout: 15000 }).then(() => true, () => false);
+    await p.waitForTimeout(2500);
+    const wall = await p.evaluate(async () => {
+      const THREE = await import('three');
+      const cam = __loft.camera, screen = __loft.scene.getObjectByName('screen_video0');
+      const view = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+      return { hole: screen.material.opacity === 0 && view.intersectsObject(screen), built: __loft.renderer.info.programs.length };
+    });
+    const built = wall.built - shaders;
+    check('facing the screening wall, its live video plays through the hole and no shader is built for it (shaders built)', live && wall.hole && built === 0, !live ? 'the video did not start' : !wall.hole ? 'the hole was not in sight' : `${built}`);
     check('no error', errs.length === 0, errs.slice(0, 3).join(' | '));
     const before = errs.length;
     // A lost graphics context comes back with every screen on it, the ones painted only once too.
