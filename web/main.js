@@ -302,7 +302,7 @@ const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
 things.items.push(...hello.spots);
 things.items.push(...lights.spots);
-const spots = makeSpots({ panels, desktop: screens.desktop }); things.items.push(...spots.items);
+const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, coarse }); things.items.push(...spots.items);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
@@ -427,7 +427,6 @@ const SAY = {
   resume: 'My resume is coming with the LinkedIn update.',
   secret_room: 'Locked. Three stars on every stage of the range, on Hard, opens it.',
   loadout: 'The gun wall. More guns hang here as you earn stars at the line.',
-  projects: 'My projects, all the way up the stairs.',
   claude: 'A tribute to Claude, who helped me bring this idea to life.',
   wall: 'The weather and this month, holidays circled.',
   trophies: 'The trophy shelf.',

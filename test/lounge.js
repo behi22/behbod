@@ -1,13 +1,13 @@
-// The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards and the Shahnameh on the mezzanine
-// opening the reader, at a desk and on phones.
+// The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards, the Shahnameh on the mezzanine
+// opening the reader, and the project frames up the stairs, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8823 node test/lounge.js [outdir] [parts]
-// Parts: khatam, game, reader, phone.
+// Parts: khatam, game, reader, frames, phone.
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/lounge';
-const ONLY = process.argv[3] || 'khatam,game,reader,phone';
+const ONLY = process.argv[3] || 'khatam,game,reader,frames,phone';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
@@ -154,11 +154,56 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       await p.close();
     }
 
+    if (want('frames')) {
+      const { p, errs } = await open(b, DESK);
+      const names = await p.evaluate(() => __loft.meta.projects);
+      const allowed = await p.evaluate(async () => { const m = await import('./src/pure/desktop.js'); return { sites: Object.values(m.PROJECTS).map(x => x.site).filter(Boolean), gh: m.GITHUB }; });
+      for (let i = 0; i < names.length; i++) {
+        const s = await p.evaluate(i => __loft.meta.screens[`proj${i}`].center, i);
+        await standAt(p, [0.75, s[1], s[2] - 1.5], [0.03, s[1], s[2]]);
+        const label = await prompt(p);
+        // On a stair the body settles onto its step first.
+        await p.waitForTimeout(800);
+        const before = await p.evaluate(() => __loft.pos.toArray());
+        await p.keyboard.press('KeyE'); await p.waitForTimeout(400);
+        const r = await p.evaluate(() => {
+          const box = document.querySelector('.pn');
+          return box && { title: box.querySelector('h2').firstChild.nodeValue, rows: [...box.querySelectorAll('.lp-projects li')].map(li => li.querySelector('b').textContent), on: [...box.querySelectorAll('.lp-projects li.lp-on b')].map(x => x.textContent), links: [...box.querySelectorAll('.lp-projects a')].map(a => ({ href: a.href, target: a.target, rel: a.rel })), focus: document.activeElement?.closest?.('li.lp-on') ? 'on' : document.activeElement?.tagName };
+        });
+        const safe = r && r.links.every(l => l.target === '_blank' && l.rel === 'noopener noreferrer' && (allowed.sites.includes(l.href) || allowed.sites.map(x => x + '/').includes(l.href) || names.some(n => l.href === `${allowed.gh}/${n}`)));
+        check(`frame ${i + 1}: E opens the projects at ${names[i]}`, label === `See ${names[i]}` && r?.title === 'PROJECTS' && r.rows.join() === names.join() && r.on.join() === names[i] && r.focus === 'on', `${label} | ${JSON.stringify({ on: r?.on, focus: r?.focus })}`);
+        check(`frame ${i + 1}: every link is a real page of his, opening in a new tab with no way back to this one`, safe && r.links.length >= names.length, r?.links.map(l => l.href).join(' '));
+        if (i === 2) await p.screenshot({ path: path.join(OUT, 'projects-desk.png') });
+        await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+        const after = await p.evaluate(() => [__loft.pos.toArray(), !!document.querySelector('.pn')]);
+        check(`frame ${i + 1}: Esc closes it where I stood`, !after[1] && after[0].every((v, k) => Math.abs(v - before[k]) < 0.02), JSON.stringify([before, after[0]]));
+      }
+      const foot = await p.evaluate(() => __loft.meta.interact.find(i => i.id === 'projects').at);
+      await standAt(p, foot);
+      check('the foot of the stairs still offers my projects', (await prompt(p)) === 'See my projects', await prompt(p));
+      await p.keyboard.press('KeyE'); await p.waitForTimeout(300);
+      const all = await p.evaluate(() => [document.querySelector('.pn h2')?.firstChild?.nodeValue, document.querySelectorAll('.pn .lp-projects li').length, document.querySelectorAll('.pn li.lp-on').length]);
+      check('and opens all five, none marked', all[0] === 'PROJECTS' && all[1] === 5 && all[2] === 0, all.join(' | '));
+      await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+      // From the foot of the stairs, a click on the third frame walks up to it and opens it.
+      await standAt(p, [2.2, 9.2, 0], [0.03, 6.42, 3]);
+      await p.waitForTimeout(1200);
+      const s2 = await p.evaluate(() => __loft.meta.screens.proj2.center);
+      const at = await onScreen(p, s2);
+      await p.mouse.click(at.x, at.y);
+      await p.waitForFunction(() => document.querySelector('.pn li.lp-on'), null, { timeout: 20000 }).catch(() => {});
+      const on = await p.evaluate(() => document.querySelector('.pn li.lp-on b')?.textContent);
+      check('a click on a frame walks me up to it and opens its project', on === names[2], `${on} ${JSON.stringify(at)}`);
+      await p.keyboard.press('Escape');
+      check('frames: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
+
     if (want('phone')) {
       for (const [name, opts] of [['upright', UPRIGHT], ['sideways', SIDEWAYS]]) {
         const { p, errs } = await open(b, opts);
         const use = async () => { const r = await p.evaluate(() => { const e = document.getElementById('use').getBoundingClientRect(); return [e.x + e.width / 2, e.y + e.height / 2]; }); await p.touchscreen.tap(...r); await p.waitForTimeout(500); };
-        for (const [spot, title] of [[BOOK.spot, 'SHAHNAMEH']]) {
+        for (const [spot, title] of [[BOOK.spot, 'SHAHNAMEH'], [[0.75, 6.42, 1.5], 'PROJECTS']]) {
           await standAt(p, spot);
           await use();
           await p.waitForTimeout(900);
