@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { LOCO, CROUCH, STRIDE, blendWeights, strideRate } from './pure/blend.js';
 import { HEADS as ORDER, HEAD_NAMES as NAMES, FITS, sanitizeLook, hoodUp, wornColours } from './pure/look.js';
 import { veilRadius, mirrorImage } from './pure/veil.js';
+import { livePicture } from './canvastex.js';
 
 const HEADS = { hood: ['V3_head_void'], tv: ['V3_head_tv', 'V3_head_tv_neck'], visor: ['V3_head_helmet', 'V3_head_visor', 'V3_head_visor_face'], emoji: ['V3_head_emoji'], mosaic: ['V3_head_toy'] };
 export const HEAD_NAMES = Object.fromEntries(Object.entries(NAMES).map(([k, v]) => [k, 'Head: ' + v]));
@@ -110,7 +111,7 @@ export function makeMe(scene, gltf, opts) {
   const faces = {};
   for (const [key, mat] of [['tv', 'M_TV_Screen'], ['emoji', 'M_Emoji_Screen']]) {
     const c = document.createElement('canvas'); c.width = c.height = 256;
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false;
+    const t = livePicture(c); t.flipY = false;
     faces[key] = { g: c.getContext('2d'), t, last: -1 };
     (mats[mat] || []).forEach(m => { m.emissiveMap = t; m.emissive.set(0xffffff); m.emissiveIntensity = 1.4; m.color.set(0x000000); });
   }

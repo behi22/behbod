@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { drawWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
 import { makePanels } from './panels.js';
 import { W as DW, H as DH, BAR, DOCK, TITLE, PAD, STYLE, appById, newDesktop, dock as dockIcons, rows as appRows, layout, wrap, termShown, open as openApp, keepOpen, clockText, calcLayout, tail } from './src/pure/desktop.js';
@@ -12,6 +11,7 @@ import { WALLPAPERS } from './src/pure/desktop.js';
 import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
 import { paintStory, paintWallpaper } from './src/shah/scenes.js';
 import { helloWorld } from './src/pure/hello.js';
+import { livePicture } from './src/canvastex.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -19,8 +19,7 @@ const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
 function surface(w, h) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
+  const t = livePicture(c);
   t.anisotropy = 4;
   // glTF UVs run top-down, so canvases on exported meshes must not be flipped.
   t.flipY = false;
