@@ -12,6 +12,7 @@ import { WALLPAPERS } from './src/pure/desktop.js';
 import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
 import { paintStory, paintWallpaper } from './src/shah/scenes.js';
 import { helloWorld } from './src/pure/hello.js';
+import { newHistory, remember, browse } from './src/pure/history.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -62,6 +63,7 @@ export function makeCanvases(meta, opts = {}) {
   // the same desktop out in HTML over this screen, from the same model.
   S.main = surface(DW, DH);
   const term = { lines: [], input: '', focus: false, blink: 0 };
+  const hist = newHistory();
   const desk = { st: newDesktop(), ctx: { wallpaper: loadWallpaper() }, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), reader: newReader(), sfx: null, dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
   // Painted once and kept: each is many shapes, and the monitor repaints every second.
@@ -420,11 +422,14 @@ export function makeCanvases(meta, opts = {}) {
     type(text) { keepOpen(desk.st, 'terminal'); say('$ ' + text.slice(0, 40), `command not found: ${text.slice(0, 40)}  (that was Pishi)`); },
     // Commands the rest of the loft adds: fn(say, argument).
     command(name, fn) { EXTRA[name] = fn; },
+    // Up (-1) or Down (+1) through the commands entered, from the line now typed: the line to show, or null.
+    recall: (dir, current) => browse(hist, dir, current),
     run(text, exit) {
       const cmd = text.trim().toLowerCase().replace(/\s+/g, ' ');
       openApp(desk.st, 'terminal');
       say('$ ' + text.slice(0, 60));
       term.input = '';
+      remember(hist, text);
       if (cmd === 'exit') { exit(); return; }
       const [word, ...rest] = cmd.split(' ');
       let hello = null;
@@ -456,6 +461,7 @@ export function makeCanvases(meta, opts = {}) {
         const names = [...Object.keys(CMDS), ...Object.keys(EXTRA), 'exit'].filter(n => term.input && n.startsWith(term.input.toLowerCase()));
         if (names.length === 1) { term.input = names[0]; changed(); } else if (names.length > 1) say(names.join('  '));
       } else if (e.key === 'Enter') { this.run(term.input, exit); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const line = browse(hist, e.key === 'ArrowUp' ? -1 : 1, term.input); if (line !== null) { term.input = line; changed(); } }
       else if (e.key === 'Backspace') { term.input = term.input.slice(0, -1); changed(); }
       else if (e.key.length === 1 && term.input.length < 60) { term.input += e.key; changed(); }
       e.preventDefault();
