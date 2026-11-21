@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePrint, cleanPrint, cleanText, describe, DEFAULT, SHOWN, SWATCHES, COLOURS, MAX_TEXT, sidesOf } from '../../web/src/pure/printer.js';
+import { parsePrint, cleanPrint, cleanText, describe, DEFAULT, SHOWN, SWATCHES, COLOURS, MAX_TEXT, sidesOf, printColour } from '../../web/src/pure/printer.js';
 import { MODELS, MODEL } from '../../web/src/pure/models.js';
 import { buildPrint, slice, REACH, TALLEST, PATH } from '../../web/src/pure/printbuild.js';
 import { meshSdf, finish } from '../../web/src/pure/mesher.js';
@@ -154,7 +154,12 @@ test('every model is whole, inside its bounds, and fits on the bed standing up',
     assert.ok(Math.abs(lo) < 0.002, `${m.id} stands on the bed (${lo})`);
     assert.ok(b.height > 0.06 && b.height <= TALLEST / 100 + 1e-6 && b.radius <= REACH / 100 + 1e-6, `${m.id} ${b.height} ${b.radius}`);
     assert.ok(b.index.length > 3000 && Math.max(...b.index) < b.pos.length / 3, m.id);
-    assert.ok(b.colour.every((v, i) => i % 3 || (v > 0.02 && v < 1.3)), m.id);
+    // The shading under the print's colour (base x s + sheen x s x s) stays between near black and a little over white.
+    const { base, sheen } = printColour(cleanPrint({ model: m.id }).colour);
+    for (let i = 0; i < b.colour.length; i += 3) {
+      const v = b.colour[i], s = sheen ? (Math.sqrt(base[0] ** 2 + 4 * sheen * v) - base[0]) / (2 * sheen) : v / base[0];
+      assert.ok(s > 0.02 && s < 1.3, `${m.id} ${s}`);
+    }
     assert.equal(b.path.length, b.layers * PATH * 2);
   }
 });
@@ -267,12 +272,13 @@ test('a build on the page without a worker looks at the clock between any two sa
 });
 
 test('the page only hands on what the build made: its colours and bounding sphere are worked out with it', () => {
-  const b = build({ model: 'duck' }), n = b.pos.length / 3;
+  const q = cleanPrint({ model: 'duck' }), { colour: name, ...plain } = q, { base, sheen } = printColour(name);
+  const b = finish(buildPrint(q, { points: 30000 })), u = finish(buildPrint(plain, { points: 30000 })).colour, n = b.pos.length / 3;
   assert.equal(b.colour.length, n * 3);
   for (let i = 0; i < n; i++) {
-    const s = b.colour[i * 3];
-    assert.equal(b.colour[i * 3 + 1], Math.fround(s * 0.99));
-    assert.equal(b.colour[i * 3 + 2], Math.fround(s * 0.97));
+    assert.equal(u[i * 3 + 1], Math.fround(u[i * 3] * 0.99));
+    assert.equal(u[i * 3 + 2], Math.fround(u[i * 3] * 0.97));
+    for (let k = 0; k < 3; k++) assert.equal(b.colour[i * 3 + k], Math.fround(base[k] * u[i * 3 + k] + sheen * u[i * 3 + k] ** 2));
   }
   // As three works it out: the middle of the box round every point, out to the farthest point.
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
@@ -342,4 +348,17 @@ test('the little Pishi is a tabby: shallow stripes on her back and flanks, a pla
   for (let x = 0.05; x < 4.6; x += 0.15) for (let y = 2.2; y < 12.7; y += 0.15) for (let z = -4.2; z < 4.2; z += 0.15) {
     assert.equal(f(x, y, z) < 0, f(-x, y, z) < 0, `at ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}`);
   }
+});
+
+test('a black print shows its shape in the dim room: a sheen on the faces the light reaches, its shadows still black', () => {
+  const q = cleanPrint({ model: 'penguin' }), { colour: name, ...plain } = q;
+  assert.equal(name, 'black');
+  const b = finish(buildPrint(q, { points: 30000 })), u = finish(buildPrint(plain, { points: 30000 })).colour, { base } = printColour(name);
+  // As the screen shows it, out of 255: how far the lit faces stand from the shadows, with the sheen and with black alone.
+  const srgb = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255;
+  const spread = f => { const a = Array.from({ length: u.length / 3 }, (_, i) => srgb(f(i))).sort((x, y) => x - y); return [a[Math.floor(a.length * 0.05)], a[Math.floor(a.length * 0.95)]]; };
+  const [lo, hi] = spread(i => b.colour[i * 3]), [plo, phi] = spread(i => base[0] * u[i * 3]);
+  assert.ok(hi - lo > 1.6 * (phi - plo), `lit against shadow: ${(hi - lo).toFixed(0)} with the sheen, ${(phi - plo).toFixed(0)} without`);
+  assert.ok(lo < 40, `its shadows stay black (${lo.toFixed(0)})`);
+  for (const c of SWATCHES) assert.equal(printColour(c).sheen > 0, c === 'black', c);
 });

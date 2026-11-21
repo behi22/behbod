@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT, COLOURS, TOO_LONG, parsePrint, cleanPrint, cleanText, tooMany, describe } from './pure/printer.js';
+import { DEFAULT, TOO_LONG, parsePrint, cleanPrint, cleanText, tooMany, describe, printColour } from './pure/printer.js';
 import { FONT, layout } from './pure/letters.js';
 
 // Models are built off the page's thread when first needed, never at the start; the page loads only this and the words it knows.
@@ -49,7 +49,8 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
   try { const saved = JSON.parse(store.get(KEY) || 'null'); if (saved) { p = cleanPrint(saved); mine = true; } } catch { /* a broken save prints the default */ }
   let built = null, asked = false, failed = false, worker = null, slow = null, job = 0;
   let clock = 0, start = 0, printFrom = 0, done = mine, sounding = false;
-  const paint = () => { mat.color.set(COLOURS[p.colour]); capMat.color.set(COLOURS[p.colour]).multiplyScalar(0.9); };
+  // The print's own colour is in its vertices (printbuild.js); the flat cut on top matches a lit face of it.
+  const paint = () => { const { base, sheen } = printColour(p.colour); capMat.color.setRGB(...base.map(c => c * 0.9 + sheen * 0.81), THREE.LinearSRGBColorSpace); };
   paint();
 
   function take(id, b) {

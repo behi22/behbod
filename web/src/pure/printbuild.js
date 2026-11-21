@@ -4,7 +4,7 @@ import { rod, blend } from './sdf.js';
 import { MODEL } from './models.js';
 import { keychain } from './keychain.js';
 
-import { REACH, TALLEST, GROW } from './printer.js';
+import { REACH, TALLEST, GROW, printColour } from './printer.js';
 
 export { REACH, TALLEST, GROW };
 const { PI, sin, cos, hypot, max, min, round, abs } = Math;
@@ -109,12 +109,13 @@ export function* buildPrint(p, { field = null, points = 240000, layerMm = 3, due
     uv[i * 2 + 1] = Q[i * 3 + 1] / layerH / 2;
     if ((i & 31) === 31 && due()) yield 0;
   }
-  // The colours and the bounding sphere (as three works it out) are made here too, so the page only hands them on.
-  const colour = new Float32Array(n * 3);
+  // The colours (the print's own, in the vertices) and the bounding sphere (as three works it out) are made here too, so the page only hands them on.
+  const colour = new Float32Array(n * 3), { base, sheen } = printColour(p.colour);
   let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity, sz0 = Infinity, sz1 = -Infinity;
   for (let i = 0; i < n; i++) {
     const s = shade[i], x = Q[i * 3], y = Q[i * 3 + 1], z = Q[i * 3 + 2];
     colour[i * 3] = s; colour[i * 3 + 1] = s * 0.99; colour[i * 3 + 2] = s * 0.97;
+    for (let c = i * 3, k = 0; k < 3; c++, k++) colour[c] = base[k] * colour[c] + sheen * colour[c] * colour[c];
     sx0 = min(sx0, x); sx1 = max(sx1, x); sy0 = min(sy0, y); sy1 = max(sy1, y); sz0 = min(sz0, z); sz1 = max(sz1, z);
     if ((i & 1023) === 1023 && due()) yield 0;
   }

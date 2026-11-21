@@ -59,6 +59,15 @@ export function describe(p) {
   return `${an(what)} ${what}${p.model === 'word' ? ` that says ${p.text}` : ''}`;
 }
 
+// A print's colour in linear light, and a sheen for a dark one that grows with the light on each face: black shows its shape, its shadows stay black.
+const SHEEN = 0.13;
+const lin = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+export function printColour(name) {
+  if (!Object.hasOwn(COLOURS, name)) return { base: [1, 1, 1], sheen: 0 };
+  const base = [1, 3, 5].map(i => lin(parseInt(COLOURS[name].slice(i, i + 2), 16) / 255));
+  return { base, sheen: SHEEN * Math.max(0, 1 - (0.2126 * base[0] + 0.7152 * base[1] + 0.0722 * base[2]) / 0.15) };
+}
+
 export function wordColour(text) {
   let h = 2166136261;
   for (const ch of String(text)) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619); }
