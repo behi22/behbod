@@ -926,6 +926,7 @@ camera.position.copy(start.p); camLook.copy(start.l);
 $('note').textContent = 'Getting the room ready';
 lights.adopt();
 await engine.warmUp();
+screens.contrib.start();
 $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
 function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }
 $('enter').classList.add('ready');

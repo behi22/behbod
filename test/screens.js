@@ -1,5 +1,5 @@
 // The desk's little screens, its terminal and the light scenes, in real browsers.
-//   LOFT_URL=http://127.0.0.1:8821 node test/screens.js [outdir] [only: history,movie]
+//   LOFT_URL=http://127.0.0.1:8821 node test/screens.js [outdir] [only: history,movie,contrib,net]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -39,6 +39,23 @@ async function open(b, opts, { q = opts.isMobile ? 'medium' : 'high', graph = 'f
   return { ctx, p, errs, asked };
 }
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
+
+// The contribution file, shaped like the published one: the last 365 days to today and two daily series.
+function graphFile() {
+  const end = new Date(), start = new Date(end.getTime() - 364 * 86400000), iso = d => d.toISOString().slice(0, 10);
+  const days = f => Array.from({ length: 365 }, (_, i) => f(i));
+  return { start: iso(start), end: iso(end), personal: days(i => (i % 5 === 0 ? 3 : i % 11 === 0 ? 9 : 0)), other: days(i => (i % 7 === 0 ? 2 : 0)) };
+}
+const sum = a => a.reduce((t, v) => t + v, 0);
+// How many of the graph screen's pixels are each of GitHub's greens, and how many the empty square.
+const shades = p => p.evaluate(() => {
+  const c = __loft.screens.textures.contrib.image, d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  const want = { empty: [0x16, 0x1b, 0x22], l1: [0x0e, 0x44, 0x29], l2: [0x00, 0x6d, 0x32], l3: [0x26, 0xa6, 0x41], l4: [0x39, 0xd3, 0x53] }, n = {};
+  for (const k in want) n[k] = 0;
+  for (let i = 0; i < d.length; i += 4) for (const [k, [r, g, b]] of Object.entries(want)) if (Math.abs(d[i] - r) < 3 && Math.abs(d[i + 1] - g) < 3 && Math.abs(d[i + 2] - b) < 3) n[k]++;
+  n.green = n.l1 + n.l2 + n.l3 + n.l4;
+  return n;
+});
 
 (async () => {
   const L = await import('../web/src/pure/lamps.js');
@@ -153,6 +170,72 @@ const b2t = (x, y, z) => ({ x, y: z, z: -y });
       await ph.ctx.close();
     }
 
+    // ---------- his live contribution graph: good, failed and bad answers, kept between visits, never read at startup ----------
+    if (want('contrib')) {
+      const file = graphFile(), total = sum(file.personal) + sum(file.other);
+      // A fresh visitor, the file answering well: nothing is read while the house starts; once it has settled, one read.
+      {
+        const { ctx, p, errs, asked } = await open(b, DESK, { graph: file });
+        const early = asked.length, first = await p.evaluate(() => __loft.screens.contrib.state);
+        await p.waitForFunction(() => __loft.screens.contrib.state === 'live', null, { timeout: 20000 }).catch(() => {});
+        const s = await p.evaluate(() => ({ state: __loft.screens.contrib.state, total: __loft.screens.contrib.total, kept: localStorage.getItem('home.contrib') }));
+        const n = await shades(p), kept = JSON.parse(s.kept || '{}');
+        check('nothing is read while the house starts; once it settles, one read', early === 0 && first === 'waiting' && asked.length === 1, `${early} early, ${asked.length} in all, first ${first}`);
+        check('the live graph: both series added up, drawn in GitHub\'s greens, the total on top', s.state === 'live' && s.total === total && n.green > 2000 && n.l4 > 0 && n.empty > 0, JSON.stringify({ ...s, kept: undefined, n }));
+        check('the copy kept in the browser holds only the added-up days', Object.keys(kept).sort().join() === 'at,days,start' && kept.days.length === 365 && sum(kept.days) === total);
+        await p.evaluate(() => { __loft.pos.set(19.4, 0.05, -1.0); __loft.yaw = -Math.PI / 2; }); await p.waitForTimeout(900);
+        await p.screenshot({ path: path.join(OUT, 'graph-desk.png') });
+        check('contrib (good): no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+        await p.close();
+        // The same visitor again with the file out of reach: the kept copy shows straight away and stays.
+        const again = await open(b, DESK, { graph: 'fail', ctx });
+        const a0 = await again.p.evaluate(() => __loft.screens.contrib.state), a1 = await again.p.evaluate(() => __loft.screens.contrib.refresh());
+        const an = await shades(again.p);
+        check('back again with the file out of reach: the kept copy, at once and after the failed read', a0 === 'saved' && a1 === 'saved' && an.green > 2000 && (await again.p.evaluate(() => __loft.screens.contrib.total)) === total, `${a0} ${a1} green ${an.green}`);
+        // A bad file does not replace it either.
+        await ctx.unroute(GRAPH);
+        await ctx.route(GRAPH, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"start":"2025-11-21","personal":[1,2,3],"other":[1]}' }));
+        const a2 = await again.p.evaluate(() => __loft.screens.contrib.refresh());
+        check('a file of the wrong shape changes nothing', a2 === 'saved' && (await again.p.evaluate(() => __loft.screens.contrib.total)) === total, a2);
+        check('contrib (kept): no error', again.errs.length === 0, again.errs.slice(0, 3).join(' | '));
+        await ctx.close();
+      }
+      // A fresh visitor and nothing loads: failed, broken text, wrong shape, a server error. Never made-up squares.
+      for (const [what, graph] of [['out of reach', 'fail'], ['broken text', '{"start": "2025-11-21", "personal": [1, 2'], ['the wrong shape', { start: 'today', personal: [1, 2, 3] }], ['a server error', 500]]) {
+        const ctx = await b.newContext(DESK);
+        if (graph === 500) await ctx.route(GRAPH, r => r.fulfill({ status: 500, body: 'oops' }));
+        const { p, errs } = await open(b, DESK, { graph: graph === 500 ? null : graph, ctx });
+        const st = await p.evaluate(() => __loft.screens.contrib.refresh());
+        const n = await shades(p), said = await p.evaluate(() => localStorage.getItem('home.contrib'));
+        check(`nothing ever loaded, ${what}: a plain empty graph that says it could not load`, st === 'none' && n.green === 0 && n.empty > 2000 && said === null, JSON.stringify({ st, n, said }));
+        if (what === 'out of reach') { await p.evaluate(() => { __loft.pos.set(19.4, 0.05, -1.0); __loft.yaw = -Math.PI / 2; }); await p.waitForTimeout(900); await p.screenshot({ path: path.join(OUT, 'graph-empty.png') }); }
+        check(`contrib (${what}): no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+        await ctx.close();
+      }
+      // Phones, lamps off.
+      const ph = await open(b, UPRIGHT, { graph: file });
+      check('phone: the live graph', (await ph.p.evaluate(() => __loft.screens.contrib.refresh())) === 'live');
+      check('contrib (phone): no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
+      await ph.ctx.close();
+    }
+
+    // ---------- the real file, from the page, in Chrome, Firefox and WebKit: its CORS header and the page's CSP allow it ----------
+    if (want('net')) {
+      for (const [name, type, opts] of [['chrome', pw.chromium, CHROME], ['firefox', pw.firefox, {}], ['webkit', pw.webkit, {}]]) {
+        const bb = name === 'chrome' ? b : await launch(type, opts);
+        const { ctx, p, errs } = await open(bb, DESK, { q: 'low', graph: null });
+        const r = await p.evaluate(async () => {
+          const res = await fetch('https://behi22.github.io/profile-art/data/contrib.json', { credentials: 'omit' });
+          const csp = document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.content || '';
+          return { ok: res.ok, type: res.type, csp, state: await __loft.screens.contrib.refresh(), total: __loft.screens.contrib.total };
+        }).catch(e => ({ error: e.message }));
+        // A readable 'cors' answer means its Access-Control-Allow-Origin let this page in (the header itself is hidden from scripts).
+        check(`${name}: the real file reads from the page (a ${r.type} answer; the CSP limits frames only) and draws live`, r.ok && r.type === 'cors' && /frame-src/.test(r.csp) && !/connect-src|default-src/.test(r.csp) && r.state === 'live' && r.total > 0, JSON.stringify({ ...r, csp: r.csp?.slice(0, 40) }));
+        check(`${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+        await ctx.close();
+        if (bb !== b) await bb.close();
+      }
+    }
   } finally {
     await b.close();
   }

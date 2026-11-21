@@ -13,6 +13,7 @@ import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
 import { paintStory, paintWallpaper } from './src/shah/scenes.js';
 import { helloWorld } from './src/pure/hello.js';
 import { newHistory, remember, browse } from './src/pure/history.js';
+import { makeContrib } from './src/contrib.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -261,16 +262,9 @@ export function makeCanvases(meta, opts = {}) {
     t.needsUpdate = true;
   }
 
-  // Little screens: contributions, training loss, Pishi cam.
+  // Little screens: his live contributions, training loss, Pishi cam.
   S.contrib = surface(320, 190);
-  (() => {
-    const { g, c, t } = S.contrib, r = seeded(22);
-    g.fillStyle = '#0a0f15'; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = '#7f8aa0'; g.font = `14px ${MONO}`; g.fillText('contributions', 12, 22);
-    const pal = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'];
-    for (let x = 0; x < 52; x++) for (let y = 0; y < 7; y++) { const v = r(); g.fillStyle = pal[v < 0.25 ? 0 : v < 0.5 ? 1 : v < 0.72 ? 2 : v < 0.9 ? 3 : 4]; g.fillRect(12 + x * 5.6, 40 + y * 18, 4.6, 15); }
-    t.needsUpdate = true;
-  })();
+  const contrib = makeContrib(S.contrib, { store: local, font: MONO });
   S.loss = surface(320, 190);
   const lossPts = [];
   const lr = seeded(5);
@@ -424,6 +418,7 @@ export function makeCanvases(meta, opts = {}) {
     command(name, fn) { EXTRA[name] = fn; },
     // Up (-1) or Down (+1) through the commands entered, from the line now typed: the line to show, or null.
     recall: (dir, current) => browse(hist, dir, current),
+    contrib,
     run(text, exit) {
       const cmd = text.trim().toLowerCase().replace(/\s+/g, ' ');
       openApp(desk.st, 'terminal');
