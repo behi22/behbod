@@ -119,6 +119,18 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
         return per;
       });
       check('each cover and spine takes a few hundred drawing calls, its grain one fill', Math.max(...calls) < 1200, calls.join(' '));
+      // Drawn on the processor, as the shelf and the panel draw them: nothing may wait on the graphics card to read a picture back.
+      const traced = path.join(OUT, 'covers-trace.json');
+      await b.startTracing(p, { path: traced, categories: ['gpu', 'devtools.timeline', 'disabled-by-default-devtools.timeline'] });
+      await p.evaluate(async () => {
+        const { paintCover } = await import('/src/covers.js'), { GAMES } = await import('/src/pure/shelf.js');
+        GAMES.forEach((game, i) => { const c = document.createElement('canvas'); c.width = 320; c.height = 396; paintCover(c.getContext('2d', { willReadFrequently: true }), game, i + 1, 320, 396); });
+      });
+      await b.stopTracing();
+      const events = JSON.parse(fs.readFileSync(traced, 'utf8')).traceEvents;
+      fs.unlinkSync(traced);
+      const readbacks = events.filter(e => e.name === 'RasterImplementation::ReadbackImagePixels' && e.ph !== 'E').length;
+      check('painting the twenty covers reads nothing back from the graphics card', readbacks === 0, `${readbacks} readbacks`);
       check('covers: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }

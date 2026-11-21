@@ -65,7 +65,7 @@ function grain(g, r, w, h, alpha) {
     const S = 128, q = rng('grain');
     grainTile = document.createElement('canvas');
     grainTile.width = grainTile.height = S;
-    const t = grainTile.getContext('2d');
+    const t = grainTile.getContext('2d', { willReadFrequently: true });
     for (let i = 0; i < Math.round(S * S / 90); i++) { t.fillStyle = `rgba(${q() < 0.5 ? '255,255,255' : '0,0,0'},${0.4 + q() * 0.6})`; t.fillRect(q() * S, q() * S, 1 + q(), 1 + q()); }
   }
   const p = g.createPattern(grainTile, 'repeat');
