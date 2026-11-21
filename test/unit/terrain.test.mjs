@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { terrainData, vertexNormals, boundingSphere, SIL_N } from '../../web/src/pure/terrain.js';
+import { terrainData, terrainSteps, vertexNormals, boundingSphere, SIL_N } from '../../web/src/pure/terrain.js';
 
 // The plain way, in full precision: each corner's normal is the sum of its triangles' normals, made unit length.
 function plainNormals(pos, index) {
@@ -43,5 +43,17 @@ test('the land: the same numbers every time, an index in 16 bits only while it f
       if (Math.abs(l - 1) > 1e-5) assert.fail(`${q} normal ${v / 3} has length ${l}`);
     }
     assert.equal(a.sil.el.length, SIL_N); assert.equal(a.sil.dist.length, SIL_N); assert.equal(a.sil.tower.length, SIL_N);
+  }
+});
+
+test('the land worked out a step at a time is the same to the last bit as all at once, and yields often', () => {
+  for (const q of ['low', 'medium']) {
+    const steps = terrainSteps(q), whole = terrainData(q);
+    let yields = 0, r;
+    while (!(r = steps.next()).done) yields++;
+    for (const k of ['pos', 'kind', 'index', 'normal']) assert.deepEqual(r.value[k], whole[k], `${q} ${k}`);
+    assert.deepEqual(r.value.sphere, whole.sphere);
+    assert.deepEqual(r.value.sil, whole.sil);
+    assert.ok(yields >= 100, `${q}: ${yields} steps`);
   }
 });

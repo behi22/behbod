@@ -85,6 +85,38 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
       check(`${part}: and what was on screen stays`, now.tier === 'ultra' && now.outside === 'high', JSON.stringify(now));
       await p.close();
     }
+    // A land worker that never answers. Regression: the outside's rebuild waited on it for good, and every later change
+    // of tier waited behind it. Now the page works the land out itself, a slice at a time, and the land is the same.
+    {
+      const { p, errs } = await open(b, 'ultra');
+      await p.evaluate(() => {
+        window.__workers = { made: 0, ended: 0 };
+        window.Worker = class { constructor() { __workers.made++; } postMessage() {} terminate() { __workers.ended++; } };
+      });
+      const reach = (to, quality) => p.evaluate(([to, quality]) => new Promise(done => {
+        const t = performance.now();
+        __loft.autoTierTo(to);
+        const look = () => (__loft.out3d.quality === quality ? done(performance.now() - t) : performance.now() - t > 20000 ? done(null) : setTimeout(look, 50));
+        look();
+      }), [to, quality]);
+      const took = await reach('low', 'low');
+      check('a land worker that never answers: the outside still changes', took !== null, took === null ? 'not in 20 s' : `${(took / 1000).toFixed(1)} s`);
+      const same = await p.evaluate(async () => {
+        const { terrainData } = await import('/src/pure/terrain.js');
+        const d = terrainData('low'), g = __loft.out3d.parts.terrain.geometry;
+        const eq = (a, b) => a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+        return eq(g.attributes.position.array, d.pos) && eq(g.attributes.normal.array, d.normal) && eq(g.index.array, d.index);
+      });
+      check('and its land is the same to the last bit', same);
+      await p.evaluate(() => __loft.autoTierTo('ultra'));
+      await p.waitForTimeout(300);
+      const back = await reach('medium', 'medium');
+      check('a change of mind while a worker hangs: the build waiting on it stops, and the last tier asked for arrives', back !== null, back === null ? 'not in 20 s' : `${(back / 1000).toFixed(1)} s`);
+      const w = await p.evaluate(() => window.__workers);
+      check('every worker that hung was let go', w.made > 0 && w.ended === w.made, JSON.stringify(w));
+      check('a hanging worker: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
   } finally {
     await b.close();
   }

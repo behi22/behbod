@@ -9,9 +9,9 @@ import { makeWater, makeStreaks } from './outside/water.js';
 import { facadeMaterial, makeTowers, makeLights, makeBridge, makeLines, bridgeExtras } from './outside/city.js';
 import { makeVessels, makeGulls, vesselLights, vesselStreaks } from './outside/life.js';
 import { makeRain, makeSnow, makeFireworks } from './outside/weather.js';
-import { terrainData } from './pure/terrain.js';
+import { terrainData, terrainSteps } from './pure/terrain.js';
 import { makeRebuilder, STALE } from './pure/rebuild.js';
-import { inSlices, breathe as breath } from './pure/slices.js';
+import { inSlices, stepsInSlices, breathe as breath } from './pure/slices.js';
 import { useAhead } from './useahead.js';
 
 const DEG = Math.PI / 180;
@@ -99,17 +99,24 @@ export function makeOutside3d(opts = {}) {
   }
   // A change of quality builds the new world in the background while the old one stays up, then swaps it in whole:
   // built in one go it held a slowed phone for up to 0.6 s. The land comes from a worker, the other pieces one per
-  // breath, and every shader is built before the swap, both ways the outside is drawn.
-  function landInWorker(q) {
+  // breath, and every shader is built before the swap, both ways the outside is drawn. A worker that fails, is missing
+  // or has not answered in a few seconds gives null, and the page works the land out itself a slice at a time; one
+  // still working when the build is stopped is let go at once.
+  function landInWorker(q, gone) {
     if (typeof Worker !== 'function') return Promise.resolve(null);
-    return new Promise(resolve => {
-      let w = null;
-      try { w = new Worker(new URL('./outside/terrainworker.js', import.meta.url), { type: 'module' }); } catch (e) { resolve(null); return; }
-      w.onmessage = ({ data }) => { w.terminate(); resolve(data.error ? null : data); };
-      w.onerror = () => { w.terminate(); resolve(null); };
+    let w = null;
+    try { w = new Worker(new URL('./outside/terrainworker.js', import.meta.url), { type: 'module' }); } catch (e) { return Promise.resolve(null); }
+    return new Promise((resolve, reject) => {
+      const until = performance.now() + 5000;
+      let watch = 0;
+      const end = v => { if (!w) return; clearInterval(watch); w.terminate(); w = null; if (v === STALE) reject(STALE); else resolve(v); };
+      watch = setInterval(() => { if (gone()) end(STALE); else if (performance.now() > until) end(null); }, 100);
+      w.onmessage = ({ data }) => end(data.error ? null : data);
+      w.onerror = () => end(null);
       w.postMessage({ q });
     });
   }
+  const landOnPage = (q, gone) => stepsInSlices(terrainSteps(q), { rest: async () => { await breath(); if (gone()) throw STALE; } });
   // A piece at a time, a slice of a frame's time each, so asking for them holds no frame either.
   async function shadersFor(p, gone) {
     const r = opts.renderer;
@@ -134,7 +141,7 @@ export function makeOutside3d(opts = {}) {
   }
   async function buildInBackground(q, { made, stale }) {
     const gone = () => stale() || disposed;
-    const land = await landInWorker(q);
+    const land = await landInWorker(q, gone) ?? await landOnPage(q, gone);
     if (gone()) throw STALE;
     const p = {};
     made.push(p);

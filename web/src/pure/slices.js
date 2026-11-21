@@ -10,3 +10,14 @@ export async function inSlices(items, work, { rest, budget = 8, now = () => perf
     if (now() - start >= budget) { await rest(); start = now(); }
   }
 }
+
+// Runs a long job written as steps (a generator that yields between its pieces), waiting on `rest()` after every
+// `budget` ms of it; returns what the job returns.
+export async function stepsInSlices(steps, { rest, budget = 8, now = () => performance.now() }) {
+  let start = now();
+  for (;;) {
+    const { done, value } = steps.next();
+    if (done) return value;
+    if (now() - start >= budget) { await rest(); start = now(); }
+  }
+}

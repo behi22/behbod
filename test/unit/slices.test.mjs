@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inSlices } from '../../web/src/pure/slices.js';
+import { inSlices, stepsInSlices } from '../../web/src/pure/slices.js';
 
 // A clock the work moves on by hand, and a log of what ran and where the frame was handed back.
 function bench(costs) {
@@ -26,4 +26,22 @@ test('nothing to do is no rest at all', async () => {
   const b = bench([]);
   await inSlices([], b.work, { rest: b.rest, budget: 8, now: b.now });
   assert.deepEqual(b.log, []);
+});
+
+// A land worker that never answered held the outside's rebuild for good; the page now works the land out itself, as
+// steps spread over frames.
+test('a job written as steps hands the frame back once a slice of time is spent, and returns what the job returns', async () => {
+  let t = 0;
+  const log = [];
+  function* job() { for (let k = 0; k < 5; k++) { t += 3; log.push(k); yield; } return 'done'; }
+  const got = await stepsInSlices(job(), { rest: async () => { log.push('rest'); }, budget: 8, now: () => t });
+  assert.equal(got, 'done');
+  assert.deepEqual(log, [0, 1, 2, 'rest', 3, 4]);
+});
+
+test('a rest that throws stops the job there', async () => {
+  let t = 0, ran = 0;
+  function* job() { for (;;) { t += 10; ran++; yield; } }
+  await assert.rejects(stepsInSlices(job(), { rest: async () => { throw new Error('stop'); }, budget: 8, now: () => t }), /stop/);
+  assert.equal(ran, 1);
 });
