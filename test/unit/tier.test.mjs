@@ -185,6 +185,28 @@ test('with the line at 50 fps, a battery cap that starts mid visit (the screen r
   assert.equal(state.floor, 'ultra');
 });
 
+// On a 60 Hz screen frames come in whole refreshes: a stretch of 100 frames with `late` of them two refreshes long.
+const at60 = late => [...Array(100 - late).fill(1000 / 60), ...Array(late).fill(2000 / 60)];
+const switchesOf = seen => seen.filter((t, k) => k > 0 && t !== seen[k - 1]).length;
+// Regression: a step down had to make frames 10% quicker on average, but on 60 Hz a tier that was slow with 11 late
+// frames in 100 has an average only 11% over a smooth one, so a smooth tier below did not count. Ultra stuttering with
+// 11 late frames in 100 walked down to low and back, then stayed on ultra, stuttering, for the rest of the visit.
+test('on 60 Hz, a tier below that is no longer slow has bought something, though its average is about the same', () => {
+  const { seen, state } = machine(t => at60(t === 'ultra' ? 11 : 0), 200);
+  assert.ok(!seen.includes('medium') && !seen.includes('low'), seen.slice(0, 20).join(' '));
+  assert.ok(seen.slice(60).every(t => t === 'high'), seen.slice(0, 60).join(' '));
+  assert.notEqual(state.floor, 'ultra');
+});
+
+// Regression: ultra with 20 late frames in 100 and high with 8 (smooth by the line) went on to medium, since high's
+// average was not 10% better, and the visit saw 7 switches instead of 3.
+test('on 60 Hz, a step down stops at the first tier that is smooth', () => {
+  const { seen } = machine(t => at60({ ultra: 20, high: 8, medium: 2, low: 0 }[t]), 200);
+  assert.ok(!seen.includes('medium'), seen.slice(0, 40).join(' '));
+  assert.ok(switchesOf(seen) <= 3, `${switchesOf(seen)} switches: ${seen.slice(0, 40).join(' ')}`);
+  assert.ok(seen.slice(60).every(t => t === 'high'));
+});
+
 // Regression: a switch that adds or drops an effect built the new effects chain and compiled its shaders inside one
 // frame: 150 to 310 ms on his laptop at 2x, 80 to 230 ms on a slowed phone. Now it is built in the background, one
 // chain per set of effects, and ultra and high share theirs.
