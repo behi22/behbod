@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { piece, mesh, glow, sph, cyl, box, rbox, torus, PAINT } from './shapes.js';
 import { b2t } from './engine.js';
 import { firesideAt, byFire } from './pure/shahnameh.js';
-import { MOODS, heart, arch, cross } from './pure/bh22.js';
+import { MOODS, heart, arch, cross, holoNow, HOLO_TIME, HOLO_TEXT } from './pure/bh22.js';
 
 // The loft's residents, built from simple shapes: BH-22 the droid, the mouse droid it chases, Pishi the grey tabby
 // and Jessi the white Shih Tzu. They walk the same path grid I do and run small daily routines.
@@ -183,6 +183,7 @@ function bubble(parent, y) {
       tex.needsUpdate = true; until = t + dur; sp.visible = true;
     },
     tick(t) { const left = until - t; sp.visible = left > 0; if (sp.visible) sp.material.opacity = Math.min(1, left * 2.5); },
+    hide() { until = 0; sp.visible = false; },
   };
 }
 
@@ -203,8 +204,9 @@ const WORDS = ['beep', 'boop', 'bwee!', 'brrt', 'dweet', 'bip bip'];
 // `fx` is the audio module's effects (positioned in the room); without it the simple synth tones stand in.
 // `findPath(from, to)` resolves to a path or null (planned off the main thread); `clear(from, to)` says whether a straight
 // line between two points stays on walkable floor.
-// `fan`: where BH-22 stands to switch the desk fan on (Blender axes) and the fan itself (three's).
-export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {}, fan = null }) {
+// `fan`: where BH-22 stands to switch the desk fan on (Blender axes) and the fan itself (three's); `holo` shows its rare
+// hologram on the first chat (?holo).
+export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {}, fan = null, holo = false }) {
   const P = meta.points, agents = [], waits = [], lastPlayer = new THREE.Vector3();
   const items = Object.fromEntries(['bh22', 'pishi', 'jessi'].map(id => [id, { id, r: 1.1, label: '', x: 0, y: 0, z: 0 }]));
   // Pressing E takes turns through each one's things to do, so a visit is never the same thing twice running.
@@ -339,6 +341,58 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (m.colour) r2.eyeMat.color.setRGB(...m.colour);
     else if (r2.state !== 'petted' && r2.state !== 'play') r2.eyeMat.color.copy(r2.eyeLit);
     r2.eye.scale.y = 1;
+  }
+
+  // Now and then, instead of a tip, it plays a recorded message as a small hologram over its head (see pure/bh22.js).
+  let holoSp = null, holoT = -1, holoShown = false, talks = 0;
+  function holoSprite() {
+    const c = document.createElement('canvas'), W = 512, H = 384;
+    c.width = W; c.height = H;
+    const g = c.getContext('2d'), ink = a => `rgba(150,225,255,${a})`;
+    // The beam up from its head, then the picture: a panel with scan lines, the heading and the message.
+    const beam = g.createLinearGradient(0, H, 0, 250);
+    beam.addColorStop(0, ink(0.35)); beam.addColorStop(1, ink(0.05));
+    g.fillStyle = beam; g.beginPath(); g.moveTo(W / 2 - 5, H); g.lineTo(W / 2 + 5, H); g.lineTo(W - 44, 250); g.lineTo(44, 250); g.closePath(); g.fill();
+    g.beginPath();
+    if (g.roundRect) g.roundRect(24, 24, W - 48, 226, 18); else g.rect(24, 24, W - 48, 226);
+    g.fillStyle = ink(0.14); g.fill();
+    g.strokeStyle = ink(0.85); g.lineWidth = 3; g.stroke();
+    g.fillStyle = ink(0.08);
+    for (let y = 30; y < 246; y += 5) g.fillRect(28, y, W - 56, 2);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = ink(0.9); g.font = "600 25px 'JetBrains Mono', ui-monospace, monospace";
+    g.fillText(HOLO_TEXT.head, W / 2, 66, W - 80);
+    g.fillStyle = '#e4f7ff'; g.font = '600 36px system-ui, sans-serif';
+    HOLO_TEXT.lines.forEach((l, i) => g.fillText(l, W / 2, 130 + i * 52, W - 80));
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    mat.userData.lamp = 'glow';
+    const sp = new THREE.Sprite(mat);
+    sp.scale.set(0.6, 0.45, 1); sp.position.y = 0.62; sp.renderOrder = 7; sp.visible = false;
+    r2.root.add(sp);
+    return sp;
+  }
+  function hologram() {
+    holoShown = true;
+    holoSp ||= holoSprite();
+    holoT = 0;
+    r2.bub.hide();
+    feel('love', HOLO_TIME);
+    sfx.word('hello', r2.pos);
+    toast(`BH-22 plays a message: ${HOLO_TEXT.lines.join(' ')}`);
+  }
+  function tickHolo(dt) {
+    if (holoT < 0) return;
+    holoT += dt;
+    const left = HOLO_TIME - holoT;
+    if (left <= 0) { holoT = -1; holoSp.visible = false; return; }
+    holoSp.visible = true;
+    // It grows out of the beam, flickers now and then like an old recording, and fades at the end.
+    const grow = Math.min(1, holoT / 0.35), flick = Math.sin(now * 47) * Math.sin(now * 13.3) > 0.92 ? 0.45 : 1;
+    holoSp.material.opacity = Math.min(grow, left / 0.5) * flick * (0.9 + 0.1 * Math.sin(now * 9));
+    holoSp.scale.x = 0.6 * (0.6 + 0.4 * grow);
+    holoSp.position.y = 0.62 + Math.sin(now * 2.2) * 0.006;
   }
 
   // While the PC is busy it goes over to the desk and switches the fan on with its antenna.
@@ -888,15 +942,16 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.route = []; r2.then = null; r2.pending = null; r2.epoch++; r2.speed = r2.base;
       if (r2.state.startsWith('keeper')) { r2.state = 'pause'; r2.timer = 1.5; r2.stops = 2; r2.bub.say('good game', now); }
     },
-    // The DEPLOY dance, wherever it is, unless it is out on an errand.
+    // The DEPLOY dance, wherever it is, unless it is out on an errand or playing its message.
     celebrate() {
-      if (![...FREE, 'talk', 'chase'].includes(r2.state)) return false;
+      if (holoT >= 0 || ![...FREE, 'talk', 'chase'].includes(r2.state)) return false;
       r2Fun('play'); r2.bub.say('shipped!', now);
       return true;
     },
     // How BH-22 feels about something that just happened elsewhere: 'love', 'happy' or 'dizzy'.
     feel: name => feel(name),
     get mood() { return mood; },
+    get holo() { return holoT >= 0; },
     // BH-22 and Jessi go through the balcony door, so it opens for them too (the mouse droid would keep it busy).
     positions: [r2.pos, jessi.pos],
     tick(dt, t, ctx) {
@@ -907,7 +962,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       for (let i = waits.length - 1; i >= 0; i--) { const w = waits[i]; if (w.at > t) continue; waits.splice(i, 1); if (w.a.epoch === w.epoch) w.fn(); }
       if (ctx.mode === 'sit' && lastMode !== 'sit' && ctx.stand) { if (Math.random() < 0.6) bringTea(ctx.stand); else if (byFire(...ctx.stand)) comeTell(ctx.stand); }
       lastMode = ctx.mode;
-      tickR2(dt, ctx); tickMood(); tickMouse(dt, ctx); tickPishi(dt, ctx); tickJessi(dt, ctx);
+      tickR2(dt, ctx); tickMood(); tickHolo(dt); tickMouse(dt, ctx); tickPishi(dt, ctx); tickJessi(dt, ctx);
       for (const a of agents) {
         move(a, dt);
         a.root.position.copy(a.pos);
@@ -953,9 +1008,10 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         endR2Fun();
         r2.state = 'talk'; r2.timer = 3.5; r2.route = []; r2.pending = null; r2.epoch++;
         r2.cup.visible = false; r2.speed = r2.base;
+        onEvent('bh22');
+        if (holoNow({ talks: ++talks, shown: holoShown, roll: Math.random(), force: holo })) { r2.timer = HOLO_TIME; hologram(); return null; }
         r2.bub.say(pick(WORDS), now); sfx.word(tipAt === 0 ? 'hello' : pick(['yay', 'behbod', 'hello']), r2.pos);
         toast('BH-22: ' + TIPS[tipAt++ % TIPS.length]);
-        onEvent('bh22');
         feel('love', 2.5);
         return null;
       }

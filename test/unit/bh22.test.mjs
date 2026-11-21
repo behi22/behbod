@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MOODS, heart, arch, cross } from '../../web/src/pure/bh22.js';
+import { MOODS, heart, arch, cross, holoNow, HOLO_ODDS, HOLO_TEXT } from '../../web/src/pure/bh22.js';
 
 const box = pts => pts.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity]);
 // Twice the signed area: positive for an outline that runs anticlockwise (the side a flat shape faces).
@@ -33,4 +33,25 @@ test('the arch is open below: in the middle it is only its top band, its feet re
   const pts = arch(), [, y0] = box(pts);
   assert.ok(!pts.some(([x, y]) => Math.abs(x) < 0.003 && y < 0));
   assert.ok(y0 < -0.003);
+});
+
+test('the hologram is rare: never on the first chat, never twice a visit, then one chat in HOLO_ODDS', () => {
+  assert.equal(holoNow({ talks: 1, shown: false, roll: 0 }), false);
+  assert.equal(holoNow({ talks: 2, shown: false, roll: 0 }), true);
+  assert.equal(holoNow({ talks: 2, shown: false, roll: 1 / HOLO_ODDS }), false);
+  assert.equal(holoNow({ talks: 9, shown: true, roll: 0 }), false);
+  assert.equal(holoNow({ talks: 1, shown: false, roll: 0.99, force: true }), true, '?holo shows it on the first chat');
+  assert.equal(holoNow({ talks: 1, shown: true, roll: 0, force: true }), false);
+  let seen = 0;
+  for (let i = 0; i < 80000; i++) if (holoNow({ talks: 2 + (i % 5), shown: false, roll: (i * 0.6180339887) % 1 })) seen++;
+  assert.ok(Math.abs(seen / 80000 - 1 / HOLO_ODDS) < 0.005, `${seen / 80000}`);
+});
+
+test('the message is plain and short: no dashes, no emoji, a few words a line', () => {
+  for (const s of [HOLO_TEXT.head, ...HOLO_TEXT.lines]) {
+    assert.ok(!/[–—]|--/.test(s), s);
+    assert.ok(/^[\x20-\x7e]+$/.test(s), s);
+    assert.ok(s.length <= 24, `${s} is ${s.length} long`);
+  }
+  assert.ok(HOLO_TEXT.lines.length <= 3);
 });

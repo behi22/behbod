@@ -33,3 +33,12 @@ export function cross(len = 0.024, t = 0.0055) {
     return [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]].map(([x, y]) => [x * c - y * s, x * s + y * c]);
   });
 }
+
+// The rare hologram: once a visit at most, never on the first chat, then one chat in HOLO_ODDS. `force` is ?holo.
+export const HOLO_ODDS = 8, HOLO_TIME = 6.5;
+export const HOLO_TEXT = { head: 'A MESSAGE FROM BEHBOD', lines: ['Thanks for coming by.', 'Make yourself at home.'] };
+export function holoNow({ talks, shown, roll, force = false }) {
+  if (shown) return false;
+  if (force) return true;
+  return talks > 1 && roll < 1 / HOLO_ODDS;
+}

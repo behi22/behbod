@@ -6,13 +6,14 @@
 //   phone    a tap on DEPLOY walks over and presses it
 //   button   the button presses down into its base (failed before these changes)
 //   fan      BH-22 switches the desk fan on while the PC is busy, and it spins down after
+//   holo     its rare hologram
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -52,6 +53,7 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
 (async () => {
   const W = require('../web/assets/world.json');
   const { FAN_SPOT, COOL } = await import('../web/src/pure/desk.js');
+  const { HOLO_TEXT, HOLO_TIME } = await import('../web/src/pure/bh22.js');
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
     // ---------- the fish: they turn round in the water, about themselves ----------
@@ -276,6 +278,34 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.evaluate(() => __loft.screens.desktop.games.stop());
       check('fan: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
+    }
+    // ---------- the hologram ----------
+    if (want('holo')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      const s = W.points.spawn;
+      await standAt(p, s, Math.PI);
+      await r2At(p, [s[0] + 0.6, s[1] + 0.1, s[2]]);
+      await p.evaluate(() => { Math.random = () => 0; });
+      await p.evaluate(() => __loft.creatures.act('bh22', { player: __loft.pos, mode: 'walk', facing: 0 }));
+      const first = await p.evaluate(() => ({ holo: __loft.creatures.holo, toast: document.getElementById('toast').textContent }));
+      check('never on the first chat, however lucky', !first.holo && /^BH-22: /.test(first.toast), JSON.stringify(first));
+      await ctx.close();
+      const o = await open(b, DESK, '&holo');
+      // Said hi before, so the first-chat achievement's note does not cover the message's.
+      await o.p.evaluate(() => __loft.progress.earn('bh22'));
+      await standAt(o.p, s, Math.PI);
+      await r2At(o.p, [s[0] + 0.6, s[1] + 0.1, s[2]]);
+      await o.p.evaluate(() => __loft.creatures.act('bh22', { player: __loft.pos, mode: 'walk', facing: 0 }));
+      await o.p.waitForTimeout(900);
+      const h = await o.p.evaluate(() => ({ holo: __loft.creatures.holo, toast: document.getElementById('toast').textContent, mood: __loft.creatures.mood }));
+      await o.p.screenshot({ path: path.join(OUT, 'holo.png') });
+      check('?holo: the hologram plays over its head, the message in the note too', h.holo && h.toast === `BH-22 plays a message: ${HOLO_TEXT.lines.join(' ')}` && h.mood === 'love', JSON.stringify(h));
+      await o.p.waitForTimeout(HOLO_TIME * 1000);
+      check('and ends after a few seconds', !(await o.p.evaluate(() => __loft.creatures.holo)));
+      await o.p.evaluate(() => { Math.random = () => 0; for (let i = 0; i < 6; i++) __loft.creatures.act('bh22', { player: __loft.pos, mode: 'walk', facing: 0 }); });
+      check('once a visit at most', !(await o.p.evaluate(() => __loft.creatures.holo)));
+      check('holo: no error', errs.length === 0 && o.errs.length === 0, [...errs, ...o.errs].slice(0, 3).join(' | '));
+      await o.ctx.close();
     }
   } finally {
     await b.close();

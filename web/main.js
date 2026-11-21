@@ -140,7 +140,7 @@ const keyboard = () => {
 };
 const creatures = makeCreatures(scene, meta, {
   findPath, clear: (a, b) => nav.clear(a, b), groundAt: col.groundAt, sound, fx: audio.sfx, keyboard, toast,
-  fan: world.fanAt && { spot: FAN_SPOT, at: world.fanAt },
+  fan: world.fanAt && { spot: FAN_SPOT, at: world.fanAt }, holo: params.has('holo'),
   onEvent: (name, data) => { if (name === 'pishi_keys') { if (mode === 'desk') screens.type(data); } else if (name === 'fan') { deskBits.fanOn(performance.now() / 1000); audio.sfx.click(world.fanAt); } else earn(name); },
 });
 function toast(text) {
