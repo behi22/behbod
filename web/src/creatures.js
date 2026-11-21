@@ -410,7 +410,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     faceTo(r2, fan.at, dt);
     r2.funT += dt;
     r2.tip.scale.setScalar(r2.funT > 0.55 && r2.funT < 0.95 ? 1.8 : 1);
-    if (r2.funT >= 0.7 && !r2.switched) { r2.switched = true; onEvent('fan'); r2.bub.say('fan on', now); blip(sfx.chirp, r2, ctx.player); feel('happy', 2); }
+    if (r2.funT >= 0.7 && !r2.switched) {
+      r2.switched = true;
+      // Switched off by hand while it was on its way, or the PC long quiet by now: it leaves the fan as it is.
+      if (ctx.fanCall) { onEvent('fan'); r2.bub.say('fan on', now); feel('happy', 2); } else r2.bub.say('all cool', now);
+      blip(sfx.chirp, r2, ctx.player);
+    }
     if ((r2.timer -= dt) > 0) return;
     r2.tip.scale.setScalar(1);
     r2.state = 'pause'; r2.timer = 2; r2.stops = Math.min(r2.stops, 1);

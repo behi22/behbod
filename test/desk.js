@@ -278,6 +278,18 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.waitForTimeout(1500);
       const off = await p.evaluate(() => ({ line: __loft.screens.desktop.term.lines.at(-1), on: __desk.fan.on, r2: __loft.creatures.bh22.state }));
       check('typed again while busy: off, and BH-22 leaves it off', off.line === 'fan off.' && !off.on && off.r2 !== 'fan' && off.r2 !== 'fanOn', JSON.stringify(off));
+      // Switched off by hand while BH-22 is on its way: it gets there and leaves the fan off.
+      await p.evaluate(() => __loft.screens.desktop.games.stop());
+      await p.waitForTimeout(400);
+      await r2At(p, [19.0, 3.6, 0.45], 0.1);
+      await p.evaluate(() => __loft.screens.desktop.games.start('orbit'));
+      await p.waitForFunction(() => __loft.creatures.bh22.state === 'fan', null, { timeout: 10000 }).catch(() => {});
+      const going = await p.evaluate(() => __loft.creatures.bh22.state);
+      await p.evaluate(() => { __loft.screens.run('fan', () => {}); __loft.screens.run('fan', () => {}); });
+      await p.waitForFunction(() => __loft.creatures.bh22.state === 'fanOn', null, { timeout: 30000 }).catch(() => {});
+      await p.waitForTimeout(1500);
+      const left = await p.evaluate(() => ({ on: __desk.fan.on, speed: __loft.world.fanSpeed, line: __loft.screens.desktop.term.lines.at(-1) }));
+      check('switched off by hand while BH-22 was on its way: it gets there and leaves the fan off', going === 'fan' && !left.on && left.speed === 0 && left.line === 'fan off.', `${going} ${JSON.stringify(left)}`);
       await p.evaluate(() => __loft.screens.desktop.games.stop());
       check('fan: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
