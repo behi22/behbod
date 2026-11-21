@@ -27,11 +27,11 @@ export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy 
     world.deploy(performance.now() / 1000);
     onDeploy();
     // Made at the first deploy; it draws with the mini goal's confetti material, so nothing new is compiled.
-    confetti ||= makeConfetti(scene, { name: 'deploy_confetti', count: 44, size: [0.026, 0.015], colours: ['#3ee6c4', '#7dffa0', '#f3f4f8', '#b49cff'] });
-    // High and wide enough to show round me as I stand at the button.
+    confetti ||= makeConfetti(scene, { name: 'deploy_confetti', count: 64, life: 2.6, colours: ['#3ee6c4', '#7dffa0', '#f3f4f8', '#b49cff'] });
+    // Up over my head and out to either side, or my own back hides it from the camera behind me.
     confetti.burst((p, v) => {
       p.copy(btn).add(new THREE.Vector3((Math.random() - 0.5) * 0.05, 0.02, (Math.random() - 0.5) * 0.05));
-      v.set((Math.random() - 0.5) * 1.0, 1.8 + Math.random() * 1.0, (Math.random() - 0.5) * 1.0);
+      v.set((Math.random() - 0.5) * 2.4, 3.2 + Math.random() * 1.4, (Math.random() - 0.5) * 2.4);
     }, settle);
     creatures.celebrate();
     return true;

@@ -210,6 +210,36 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.evaluate(() => __desk.press());
       const n1 = await p.evaluate(() => __loft.screens.desktop.term.lines.length);
       check('with the terminal shut, the button still deploys and writes nothing', n1 === n0 && (await p.evaluate(() => __deploys)) === 4, `${n0} -> ${n1}`);
+      // From where I stand to press it, the confetti shows round me: up over my head and out to the sides (it rose only
+      // to about my head, and my own back hid most of it from the camera behind me).
+      await p.waitForTimeout(3200);
+      await standAt(p, spot, yawTo(spot, W.points.deploy));
+      await p.waitForTimeout(800);
+      await p.keyboard.press('e');
+      const seen = await p.evaluate(async () => {
+        const THREE = await import('three');
+        const L = __loft, C = L.camera, mesh = L.scene.getObjectByName('deploy_confetti'), m = new THREE.Matrix4(), q = new THREE.Vector3(), s = new THREE.Vector3(), r = new THREE.Quaternion();
+        const shots = [], t0 = performance.now();
+        for (const at of [400, 700, 1000, 1300]) {
+          while (performance.now() - t0 < at) await new Promise(f => requestAnimationFrame(f));
+          const pts = [];
+          for (let i = 0; i < mesh.count; i++) { mesh.getMatrixAt(i, m); m.decompose(q, r, s); if (s.x > 0.01) pts.push(q.clone()); }
+          shots.push({ pts, cam: C.position.clone(), vp: C.projectionMatrix.clone().multiply(C.matrixWorldInverse) });
+        }
+        const ray = new THREE.Raycaster();
+        return shots.map(({ pts, cam, vp }) => {
+          let n = 0;
+          for (const pt of pts) {
+            const ndc = pt.clone().applyMatrix4(vp);
+            if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1 || ndc.z > 1) continue;
+            ray.set(cam, pt.clone().sub(cam).normalize()); ray.far = pt.distanceTo(cam);
+            if (!ray.intersectObject(L.me.root, true).some(h => h.object.isMesh)) n++;
+          }
+          return +(n / mesh.count).toFixed(2);
+        });
+      });
+      const share = seen.reduce((a, v) => a + v, 0) / seen.length;
+      check('from where I stand to press it, most of the confetti shows round me', share > 0.5, `share in sight at 0.4, 0.7, 1.0, 1.3 s: ${seen.join(', ')}`);
       check('deploy: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }

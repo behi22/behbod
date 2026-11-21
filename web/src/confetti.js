@@ -4,8 +4,8 @@ import * as THREE from 'three';
 // made after the house is ready draws with the shader already built for the first (the mini goal's, at the start).
 let mat = null;
 
-// colours: the paper's colours in turn; size: one square's width and height in metres.
-export function makeConfetti(scene, { name, count = 40, size = [0.04, 0.024], colours }) {
+// colours: the paper's colours in turn; size: one square's width and height in metres; life: seconds from burst to gone.
+export function makeConfetti(scene, { name, count = 40, size = [0.04, 0.024], colours, life = 1.8 }) {
   mat ||= new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, fog: true });
   const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(size[0], size[1]), mat, count);
   const bits = Array.from({ length: count }, () => ({ p: new THREE.Vector3(), v: new THREE.Vector3(), r: new THREE.Euler(), w: new THREE.Vector3() }));
@@ -14,7 +14,6 @@ export function makeConfetti(scene, { name, count = 40, size = [0.04, 0.024], co
   mesh.name = name; mesh.frustumCulled = false;
   scene.add(mesh);
   let t = -1, ground = () => 0;
-  const LIFE = 1.8;
   return {
     get active() { return t >= 0; },
     // place(p, v, i) puts bit i at its start and sets its velocity; floor(p) is the height it settles at.
@@ -32,8 +31,8 @@ export function makeConfetti(scene, { name, count = 40, size = [0.04, 0.024], co
     tick(dt) {
       if (t < 0) { mesh.visible = false; return; }
       t += dt;
-      if (t > LIFE) { t = -1; mesh.visible = false; return; }
-      const size = Math.min(1, (LIFE - t) / 0.4);
+      if (t > life) { t = -1; mesh.visible = false; return; }
+      const size = Math.min(1, (life - t) / 0.4);
       for (let i = 0; i < count; i++) {
         const b = bits[i];
         b.v.y -= 2.6 * dt;
