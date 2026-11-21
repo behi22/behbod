@@ -1,6 +1,7 @@
 // Sitting at the piano: the keyboard plays it (A W S E D F T G Y H U J K O L P ;, Z and X shift the octave), the
 // keys on screen light up and can be tapped. Each song has two ways: Learn (the next keys glow gold and wait for you)
-// and Play for me (it plays on, with BH-22 on the duet, even after you stand up and walk off).
+// and Play for me (it plays on, with BH-22 on the duet, even after you stand up and walk off). N shows the note names
+// on the keys.
 const CSS = `
 .pm { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; width: min(760px, calc(100vw - 32px));
   box-sizing: border-box; padding: 12px; border-radius: 14px; background: rgba(10, 12, 18, .86); border: 1px solid rgba(255,255,255,.14);
@@ -18,13 +19,27 @@ const CSS = `
 .pm-song { display: inline-flex; gap: 4px; align-items: center; margin-right: 6px; } .pm-song b { font-weight: 600; color: #e8edf5; margin-right: 2px; }
 .pm-msg { color: #f5c451; }
 .pm-w span { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; color: #6a6f78; font-size: 10px; }
+.pm-n { display: none; position: absolute; left: 0; right: 0; text-align: center; font-style: normal; font-weight: 700; pointer-events: none; }
+.pm-keys.names .pm-n { display: block; }
+.pm-w .pm-n { bottom: 19px; color: #2a2e36; font-size: 11px; }
+.pm-b .pm-n { bottom: 5px; color: #d8dee9; font-size: 9px; font-weight: 600; }
+@media (max-width: 560px) { .pm-keys.names .pm-b .pm-n { display: none; } .pm-w .pm-n { font-size: 10px; bottom: 18px; } }
 `;
 const LO = 48, HI = 84, BLACK = new Set([1, 3, 6, 8, 10]);
 const LABELS = ['A', 'W', 'S', 'E', 'D', 'F', 'T', 'G', 'Y', 'H', 'U', 'J', 'K', 'O', 'L', 'P', ';'];
+const NAMES = ['C', 'C\u266f', 'D', 'D\u266f', 'E', 'F', 'F\u266f', 'G', 'G\u266f', 'A', 'A\u266f', 'B'];
+// The Cs carry their octave (C4 is middle C), so the names also say where you are on the keyboard.
+export const noteName = m => NAMES[m % 12] + (m % 12 === 0 ? Math.floor(m / 12) - 1 : '');
 
-export function makePianoMode(piano, { onExit, onPlay, onLearned }) {
+export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }) {
   if (!document.getElementById('pm-css')) { const s = document.createElement('style'); s.id = 'pm-css'; s.textContent = CSS; document.head.append(s); }
-  let el = null, keys = {}, duet = true, active = false, lesson = null, hint = null;
+  let el = null, keys = {}, duet = true, active = false, lesson = null, hint = null, board = null;
+  let names = store?.get('loft.notenames') === '1', namesBtn = null;
+  function showNames() {
+    board?.classList.toggle('names', names);
+    namesBtn?.setAttribute('aria-pressed', String(names));
+  }
+  function toggleNames() { names = !names; store?.set('loft.notenames', names ? '1' : '0'); showNames(); }
   const light = (m, on, who) => { const k = keys[m]; if (!k) return; k.classList.toggle('on', on && who !== 'bh22'); k.classList.toggle('duet', on && who === 'bh22'); };
   function labels() {
     for (const k of Object.values(keys)) k.querySelector('span')?.remove();
@@ -51,7 +66,10 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned }) {
     const up = document.createElement('button'); up.type = 'button'; up.textContent = 'Stand up';
     up.addEventListener('click', () => onExit());
     row.append(d, stop, up);
-    const board = document.createElement('div'); board.className = 'pm-keys';
+    const tools = document.createElement('div'); tools.className = 'pm-row';
+    namesBtn = button('Note names', toggleNames); namesBtn.title = 'Show the note names on the keys (N)'; namesBtn.setAttribute('aria-keyshortcuts', 'N');
+    tools.append(namesBtn);
+    board = document.createElement('div'); board.className = 'pm-keys';
     const whites = []; for (let m = LO; m <= HI; m++) if (!BLACK.has(m % 12)) whites.push(m);
     const w = 100 / whites.length;
     keys = {};
@@ -61,6 +79,7 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned }) {
       const i = whites.indexOf(m - 1);
       const k = document.createElement('div'); k.className = 'pm-b'; k.style.left = (i + 0.68) * w + '%'; k.style.width = w * 0.64 + '%'; k.dataset.m = m; board.append(k); keys[m] = k;
     }
+    for (const [m, k] of Object.entries(keys)) { const n = document.createElement('i'); n.className = 'pm-n'; n.textContent = noteName(+m); k.append(n); }
     // Tapping the keys on screen plays them too, so it works on a phone.
     const held = new Map();
     board.addEventListener('pointerdown', e => {
@@ -72,9 +91,10 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned }) {
     const release = e => { const m = held.get(e.pointerId); if (m) { piano.noteOff(m); light(m, false); held.delete(e.pointerId); } };
     board.addEventListener('pointerup', release);
     board.addEventListener('pointercancel', release);
-    el.append(row, songs, board);
+    el.append(row, songs, tools, board);
     document.body.append(el);
     labels();
+    showNames();
     if (lesson) showStep();
   }
   // Learn: the melody, a step at a time (notes struck together are one step), moved by octaves onto the keys on
@@ -125,10 +145,14 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned }) {
     get active() { return active; },
     enter() { if (active) return; active = true; build(); },
     // A song set playing keeps going after you stand up; a lesson ends with you.
-    exit() { if (!active) return; active = false; lesson = null; el?.remove(); el = null; },
+    exit() { if (!active) return; active = false; lesson = null; el?.remove(); el = board = namesBtn = null; },
     // Returns true when the key belonged to the piano.
     key(e) {
       if (e.code === 'KeyZ' || e.code === 'KeyX') { piano.keyToMidi(e); labels(); return true; }
+      // With Ctrl, Cmd or Alt held the key is the browser's (its zoom, a new window), not the piano's.
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.code === 'KeyN') { if (!e.repeat) toggleNames(); return true; }
+      }
       const m = piano.keyToMidi(e);
       if (m === null) return false;
       if (!e.repeat) { piano.noteOn(m, 0.75); light(m, true); onPlay(); pressed(m); }

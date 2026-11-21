@@ -174,7 +174,7 @@ const scope = makeTelescope(scene, camera, meta, {
   onSpot: () => { toast('That is no moon.'); earn('telescope'); },
   onExit: () => { mode = 'walk'; me.root.visible = true; },
 });
-const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano'), onLearned: title => toast(`You played ${title} all the way through.`) });
+const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano'), onLearned: title => toast(`You played ${title} all the way through.`), store });
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
