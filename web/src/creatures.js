@@ -321,7 +321,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     m.visible = false; r2.eye.add(m);
     return (moodEyes[kind] = m);
   }
-  let mood = null, moodUntil = 0, bumpAt = -99, fondAt = -99;
+  let mood = null, moodUntil = 0, bumpAt = -99, touchAt = 0, fondAt = -99;
   // Resting or on its rounds: free to drop what it is doing for something new.
   const FREE = ['dock', 'pause', 'patrol', 'home'];
   function feel(name, time) {
@@ -561,10 +561,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.bub.say('!!', now); blip(sfx.alert, r2, ctx.player);
     }
     if (fan && ctx.fanCall && FREE.includes(r2.state) && now - fanMiss > 20) toFan();
-    // Walked into at a run or a walk, it says so, x x.
-    if (playerSpeed > 1.3 && playerSpeed < 12 && now - bumpAt > 4 && [...FREE, 'talk', 'fan', 'chase'].includes(r2.state)
-      && Math.hypot(ctx.player.x - r2.pos.x, ctx.player.z - r2.pos.z) < 0.3 && Math.abs(ctx.player.y - r2.pos.y) < 0.6) {
-      bumpAt = now; feel('dizzy'); r2.bub.say('oof!', now); blip(p => (fx ? fx.bh22('sad', p) : sfx.chirp(p)), r2, ctx.player);
+    // Walked into, it says so, x x; only if I am still moving a moment after the touch, so walking up to say hello is none.
+    const moving = playerSpeed > 1.3 && playerSpeed < 12;
+    if (!touchAt && moving && now - bumpAt > 4 && Math.hypot(ctx.player.x - r2.pos.x, ctx.player.z - r2.pos.z) < 0.3 && Math.abs(ctx.player.y - r2.pos.y) < 0.6) touchAt = now;
+    if (touchAt && now - touchAt > 0.25) {
+      touchAt = 0;
+      if (moving && [...FREE, 'talk', 'fan', 'chase'].includes(r2.state)) { bumpAt = now; feel('dizzy'); r2.bub.say('oof!', now); blip(p => (fx ? fx.bh22('sad', p) : sfx.chirp(p)), r2, ctx.player); }
     }
     // Resting, it is glad of Pishi or Jessi coming by.
     if ((r2.state === 'dock' || r2.state === 'pause') && now - fondAt > 40) {

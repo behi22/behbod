@@ -139,6 +139,22 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.keyboard.down('w'); await p.waitForTimeout(700); await p.keyboard.up('w');
       const bump = await eyes(p);
       check('walked into, it reels: x x', bump.mood === 'dizzy', JSON.stringify(bump));
+      // A click on it from across the room walks me right up to it to say hello: no oof on the way in (stopping beside it
+      // read as walking into it). It stands on a point of the walk grid, as it does once it has rolled anywhere.
+      await p.waitForTimeout(4500);
+      const { makeNav } = await import('../web/src/pure/nav.js');
+      const node = makeNav(W, { off: n => n === 'slider_slide' }).path([12.1, 9.4, 0], [12.1, 9.4, 0])[0];
+      await r2At(p, node);
+      await p.evaluate(() => { __loft.creatures.bh22.chaseCool = 999; });
+      await standAt(p, [12.1, 6.4, 0], yawTo([12.1, 6.4], node));
+      await p.waitForTimeout(900);
+      const at = await onScreen(p, b2t(node[0], node[1], node[2] + 0.2));
+      await p.evaluate(() => { window.__moods = new Set(); const look = () => { window.__moods.add(__loft.creatures.mood); if (window.__moods) window.__mf = requestAnimationFrame(look); }; look(); });
+      await p.mouse.click(at.x, at.y);
+      await p.waitForFunction(() => ['talk', 'petted', 'play'].includes(__loft.creatures.bh22.state), null, { timeout: 8000 }).catch(() => {});
+      await p.waitForTimeout(600);
+      const went = await p.evaluate(() => { cancelAnimationFrame(__mf); const r = __loft.creatures.bh22; return { moods: [...__moods], state: r.state, d: +Math.hypot(__loft.pos.x - r.pos.x, __loft.pos.z - r.pos.z).toFixed(2) }; });
+      check('a click on it walks me up to it and it greets me, with no oof on the way in', !went.moods.includes('dizzy') && ['talk', 'petted', 'play'].includes(went.state) && went.d < 1.1, `${JSON.stringify(at)} ${JSON.stringify(went)}`);
       check('moods: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
