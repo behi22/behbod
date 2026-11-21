@@ -32,7 +32,7 @@ export function placeOf([x, y, z], state) {
   if (state === 'window') return 'window sill';
   if (state === 'perch') return 'perch by the fire';
   if (z > 0.6 && x < 2.2) return y < 13.6 ? 'wall shelves' : 'cat tree';
-  if (x > 15 && y < 7) return 'studio';
+  if ((x > 11.3 && y < 6) || (x > 15 && y < 7)) return 'studio';
   if (x >= 2.4 && x <= 9.8 && y >= 7 && y <= 13.6) return 'lounge';
   if (x < 2.4 && y >= 7 && y <= 13.6) return 'by the fire';
   if (y > 13.6) return 'by the window';

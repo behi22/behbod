@@ -48,6 +48,9 @@ test('her place in the words of the house: the sill, the tree, the perch, the de
   assert.equal(placeOf([0.16, 12.85, 2.32], 'climb'), 'wall shelves');
   assert.equal(placeOf([7, 10.2, -0.45], 'sit'), 'lounge');
   assert.equal(placeOf([20.1, 0.4, 0], 'sit'), 'studio');
+  // The studio runs from the partition to the east wall: its sofas, the arcade and the board too.
+  for (const at of [[13.27, 3.95, 0.45], [13.15, 2.2, 0.45], [13.95, 1.5, 0.45], [11.6, 5.6, 0.45]]) assert.equal(placeOf(at, 'sit'), 'studio', String(at));
+  for (const at of [[10.9, 2.2, 0], [8.9, 2.25, 0], [13, 6.5, 0]]) assert.equal(placeOf(at, 'sit'), 'hall', String(at));
   assert.equal(placeOf([1.2, 10, 0], 'sit'), 'by the fire');
   assert.equal(placeOf([8, 14.2, 0], 'wander'), 'by the window');
   assert.equal(placeOf([18.3, 10, 0], 'wander'), 'piano corner');
