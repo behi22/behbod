@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { onSwitch, roomLight, bulbLight, fillLight, settle, lightRole, indoors, GLASS_Y, OFF, SWITCH, SPOT, label, said, lightsCommand } from '../../web/src/pure/lamps.js';
+import { onSwitch, roomLight, bulbLight, fillLight, settle, lightRole, indoors, GLASS_Y, OFF, SWITCH, SPOT, label, said, lightsCommand, MOVIE, dimsLamps, SCENE_RATE } from '../../web/src/pure/lamps.js';
 import { checkLayout } from '../../web/src/pure/layoutcheck.js';
 import { makeInteract } from '../../web/src/pure/interact.js';
 
@@ -126,3 +126,39 @@ test('what it says: plain and short, and the terminal can always turn them back 
     assert.ok(s.length <= 60 && !/[–—]/.test(s), s);
   }
 });
+
+test('the Movie scene: the lamps low and warm, at any time of day, and only the Movie scene asks for it', () => {
+  assert.ok(dimsLamps('movie') && !['chill', 'focus', 'matchday', 'off', 'party', 'visualizer', 'holiday', '', undefined].some(dimsLamps));
+  for (const d of [0, 0.4, 1]) {
+    const r = roomLight(d, 1, 1), off = roomLight(d, 0);
+    // The lamps' share is warm: redder against blue than the window's light alone, and outright warm at night.
+    assert.ok(r[0] / r[2] > off[0] / off[2] && (d > 0 || (r[0] > r[1] && r[1] > r[2])), `warm: ${r}`);
+    for (let i = 0; i < 3; i++) assert.ok(r[i] < 1 && r[i] > off[i], `between off and on: ${r} ${off}`);
+    assert.ok(bulbLight(d, 1, 1) < 0.6 && bulbLight(d, 1, 1) > bulbLight(d, 0) && fillLight(d, 1, 1) < 1 && fillLight(d, 1, 1) > fillLight(d, 0));
+  }
+  // At night the room sits near a third of its light.
+  assert.ok(Math.abs(roomLight(0, 1, 1)[0] - (1 - (1 - OFF.night[0]) * (1 - MOVIE.level))) < 1e-12);
+});
+
+test('the Movie scene leaves the switch in charge: off is off whatever the scene, and with no Movie every level is as before, to the bit', () => {
+  const old = (off, k) => 1 - (1 - off) * (1 - k);
+  for (const d of [0, 0.3, 1]) for (const k of [0, 0.2, 0.5, 0.97, 1]) {
+    for (const m of [0, 0.4, 1]) {
+      assert.deepEqual(roomLight(d, 0, m), roomLight(d, 0));
+      assert.equal(bulbLight(d, 0, m), bulbLight(d, 0));
+    }
+    assert.deepEqual(roomLight(d, k, 0), OFF.night.map((n, i) => old(n + (OFF.day[i] - n) * d, k)));
+    assert.equal(fillLight(d, k, 0), fillLight(d, k));
+  }
+  assert.deepEqual(roomLight(0.5, 1, 0), [1, 1, 1]);
+  // Fading in, the room only ever gets dimmer; fading out, brighter.
+  for (let m = 0; m < 1; m += 0.05) for (let i = 0; i < 3; i++) assert.ok(roomLight(0, 1, m + 0.05)[i] < roomLight(0, 1, m)[i]);
+});
+
+test('a scene fades in and out more slowly than the switch, and still lands exactly', () => {
+  const run = (k, on, rate) => { let t = 0; while (k !== (on ? 1 : 0) && t < 5) { k = settle(k, on, 1 / 60, rate); t += 1 / 60; } return [k, t]; };
+  const [inK, inT] = run(0, true, SCENE_RATE), [outK, outT] = run(1, false, SCENE_RATE), [, flip] = run(1, false);
+  assert.equal(inK, 1); assert.equal(outK, 0);
+  assert.ok(inT > 1 && inT < 2.5 && outT > 1 && outT < 2.5 && outT > flip * 3, `${inT} ${outT} ${flip}`);
+});
+

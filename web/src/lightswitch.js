@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { makeKit } from './persia/kit.js';
-import { SWITCH, SPOT, GLASS_Y, roomLight, bulbLight, fillLight, settle, lightRole, label, said } from './pure/lamps.js';
+import { SWITCH, SPOT, GLASS_Y, SCENE_RATE, roomLight, bulbLight, fillLight, settle, dimsLamps, lightRole, label, said } from './pure/lamps.js';
 
 // Scaled in linear light before the output conversion, so every quality setting dims alike.
 const VERT_HEAD = 'varying float vLampY;\n';
@@ -83,7 +83,7 @@ export function makeLights(scene, world, { sfx = null, skip = [] } = {}) {
   const lit = (world.lights || []).map(([light, l]) => ({ light, base: light.intensity, role: lightRole(l) })).filter(x => x.role);
   const at = SPOT.at, spot = { ...SPOT, at: [...at], label: label(true), x: at[0], y: at[2], z: -at[1] };
   const where = group.position.clone();
-  let on = true, k = 1, tip = -0.13, dayK = -1, outK = 0;
+  let on = true, k = 1, tip = -0.13, dayK = -1, outK = 0, movie = 0;
   const showLed = () => (on ? led.material.color.setRGB(0.16, 0.11, 0.06) : led.material.color.setRGB(2.4, 1.25, 0.32));
   showLed();
   rocker.rotation.x = tip;
@@ -102,6 +102,7 @@ export function makeLights(scene, world, { sfx = null, skip = [] } = {}) {
     group, spots: [spot], uniforms: U, count, adopt, set,
     get on() { return on; },
     get k() { return k; },
+    get movie() { return movie; },
     poke(id) {
       if (id !== SPOT.id) return null;
       set(!on);
@@ -114,14 +115,15 @@ export function makeLights(scene, world, { sfx = null, skip = [] } = {}) {
     },
     tick(dt, day, player) {
       if (rocker.rotation.x !== tip) { const r = rocker.rotation.x + (tip - rocker.rotation.x) * Math.min(1, dt * 30); rocker.rotation.x = Math.abs(tip - r) < 1e-4 ? tip : r; }
-      const was = k, outWas = outK, out = player && -player.z >= GLASS_Y ? 1 : 0;
+      const was = k, movieWas = movie, outWas = outK, out = player && -player.z >= GLASS_Y ? 1 : 0;
       k = settle(k, on, dt);
+      movie = settle(movie, dimsLamps(world.sceneName), dt, SCENE_RATE);
       outK = Math.abs(out - outK) < 0.01 ? out : outK + (out - outK) * Math.min(1, dt * 3);
       // Fully on, nothing is touched, so the house is exactly as it always was.
-      if (k === 1 && was === 1) return;
-      if (k === was && outK === outWas && Math.abs(day - dayK) <= 0.005) return;
+      if (k === 1 && was === 1 && movie === 0 && movieWas === 0) return;
+      if (k === was && movie === movieWas && outK === outWas && Math.abs(day - dayK) <= 0.005) return;
       dayK = day;
-      const r = roomLight(day, k), b = bulbLight(day, k), f = fillLight(day, k);
+      const r = roomLight(day, k, movie), b = bulbLight(day, k, movie), f = fillLight(day, k, movie);
       U.room.value.set(r[0], r[1], r[2]);
       U.bulb.value.setScalar(b);
       for (const x of lit) { const lv = x.role === 'fill' ? f : b; x.light.intensity = outK === 1 ? x.base : x.base * (lv + (1 - lv) * outK); }

@@ -1,5 +1,5 @@
 // The desk's little screens, its terminal and the light scenes, in real browsers.
-//   LOFT_URL=http://127.0.0.1:8821 node test/screens.js [outdir] [only: history]
+//   LOFT_URL=http://127.0.0.1:8821 node test/screens.js [outdir] [only: history,movie]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -41,6 +41,7 @@ async function open(b, opts, { q = opts.isMobile ? 'medium' : 'high', graph = 'f
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
 
 (async () => {
+  const L = await import('../web/src/pure/lamps.js');
   const b = await launch(pw.chromium, CHROME);
   try {
     // ---------- Up and Down through earlier commands, at a keyboard and in the phone's command box ----------
@@ -78,6 +79,77 @@ const b2t = (x, y, z) => ({ x, y: z, z: -y });
       for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown']) { await ph.p.press('#cmd', k); box.push(await ph.p.inputValue('#cmd')); }
       check('phone: the command box walks the same way, and gives back what was being typed', box.join('|') === 'contact|whoami|contact|he', box.join(' | '));
       check('history (phone): no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
+      await ph.ctx.close();
+    }
+
+    // ---------- the Movie light scene: with the switch, and with every other scene before and after it ----------
+    if (want('movie')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      // The studio's purple strips: the biggest merged mesh in the chill scene's purple, found at the start.
+      await p.evaluate(() => {
+        let found = null;
+        __loft.scene.traverse(o => { if (o.isMesh && /^merged_/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6 && (!found || o.geometry.attributes.position.count > found.geometry.attributes.position.count)) found = o; });
+        window.__strip = found.material;
+        window.__main = __loft.scene.getObjectByName('screen_main').material;
+      });
+      const state = () => p.evaluate(() => ({ scene: __loft.world.sceneName, movie: __lights.movie, on: __lights.on, room: __lights.uniforms.room.value.toArray(), bulb: __lights.uniforms.bulb.value.x,
+        strip: __strip.color.toArray().map(v => +v.toFixed(4)), main: __main.color.toArray(), mainLamp: __main.userData.lamp, day: __loft.out3d?.light.dayK ?? 0 }));
+      const settleTo = async (fn, t = 6000) => { await p.waitForFunction(fn, null, { timeout: t }).catch(() => {}); await p.waitForTimeout(150); return state(); };
+      const run = async c => { await p.evaluate(c => __loft.screens.run(c, () => {}), c); };
+      const scenes = await p.evaluate(() => __loft.world.scenes);
+      check('Movie is one of the light scenes', scenes.includes('movie') && scenes.join() === 'chill,focus,matchday,movie,off,party,visualizer', scenes.join(' '));
+      const before = await state();
+      await run('scene movie');
+      const movie = await settleTo(() => __lights.movie === 1);
+      const said = await p.evaluate(() => __loft.screens.desktop.term.lines.slice(-1)[0]);
+      const r = movie.room, want = L.roomLight(movie.day, 1, 1), dark = L.roomLight(movie.day, 0);
+      check('the terminal\'s scene movie: the lamps come down low and warm', said === 'lights: movie' && movie.scene === 'movie' && movie.movie === 1 && r.every((v, i) => Math.abs(v - want[i]) < 0.01 && v < 0.8) && r[0] / r[2] > dark[0] / dark[2] && movie.bulb < 0.6, JSON.stringify({ said, r, bulb: movie.bulb, day: movie.day }));
+      check('the LEDs go dim, and the screens keep their glow', movie.strip.join() === [0.16 * 3.2, 0.05 * 3.2, 0.3 * 3.2].map(v => +v.toFixed(4)).join() && movie.main.join() === before.main.join() && movie.mainLamp === 'glow', JSON.stringify({ strip: movie.strip, main: movie.main }));
+      await p.evaluate(() => { __loft.pos.set(19.2, 0.05, -1.6); __loft.yaw = -Math.PI / 2; }); await p.waitForTimeout(800);
+      await p.screenshot({ path: path.join(OUT, 'movie-desk.png') });
+      // The switch is still in charge.
+      await p.evaluate(() => __lights.set(false));
+      const off = await settleTo(() => __lights.k === 0);
+      await run('scene chill');
+      const offChill = await settleTo(() => __lights.movie === 0);
+      check('with the switch off, Movie or not, the lamps are off alike', off.room.every((v, i) => Math.abs(v - offChill.room[i]) < 1e-9) && off.room.every((v, i) => v < r[i]), JSON.stringify({ off: off.room, offChill: offChill.room }));
+      await run('scene movie'); await settleTo(() => __lights.movie === 1);
+      await p.evaluate(() => __lights.set(true));
+      const back = await settleTo(() => __lights.k === 1);
+      check('switched back on in Movie: back to Movie\'s low warm lamps, not full', back.room.every((v, i) => Math.abs(v - r[i]) < 0.02), JSON.stringify({ back: back.room, movie: r }));
+      // Every other scene, before and after Movie: each lands exactly as it was, the lamps exactly full.
+      const exact = {};
+      for (const s of scenes.filter(s => s !== 'movie' && s !== 'party')) { await run('scene ' + s); exact[s] = (await settleTo(() => __lights.movie === 0)).strip.join(); }
+      const wrong = [];
+      for (const s of scenes.filter(s => s !== 'movie')) {
+        await run('scene ' + s); const a = await settleTo(() => __lights.movie === 0);
+        await run('scene movie'); const m = await settleTo(() => __lights.movie === 1);
+        await run('scene ' + s); const z = await settleTo(() => __lights.movie === 0);
+        const full = x => x.room.every(v => v === 1) && x.bulb === 1;
+        if (!full(a) || !full(z) || (s !== 'party' && (a.strip.join() !== exact[s] || z.strip.join() !== exact[s])) || m.room.some((v, i) => Math.abs(v - r[i]) > 0.02)) wrong.push(`${s}: ${JSON.stringify({ a: a.room, z: z.room, m: m.room })}`);
+      }
+      check('every scene before and after Movie: its own strips, the lamps exactly full; Movie the same each time', !wrong.length, wrong.join(' | '));
+      // The Settings window's lights row has it too.
+      await p.evaluate(() => __loft.useDesk());
+      await p.waitForFunction(() => document.querySelector('.dt.on'), null, { timeout: 15000 });
+      await p.click('.dt-icon[aria-label="Open Settings"]'); await p.waitForTimeout(300);
+      await p.click('.dt-win[data-app="settings"] .dt-pill:text-is("movie")');
+      const viaSettings = await settleTo(() => __lights.movie === 1);
+      await p.waitForTimeout(1200);
+      const lit = await p.evaluate(() => [...document.querySelectorAll('.dt-win[data-app="settings"] .dt-pill.on')].map(x => x.textContent));
+      check('the Settings lights row has Movie, and it works there too', viaSettings.scene === 'movie' && viaSettings.movie === 1 && lit.includes('movie'), JSON.stringify({ scene: viaSettings.scene, lit }));
+      await p.screenshot({ path: path.join(OUT, 'movie-settings.png') });
+      check('movie: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+
+      const ph = await open(b, UPRIGHT);
+      await ph.p.evaluate(() => __loft.screens.run('scene movie', () => {}));
+      await ph.p.waitForFunction(() => __lights.movie === 1, null, { timeout: 6000 }).catch(() => {});
+      await ph.p.screenshot({ path: path.join(OUT, 'movie-phone.png') });
+      await ph.p.evaluate(() => __lights.set(false)); await ph.p.waitForTimeout(800);
+      await ph.p.screenshot({ path: path.join(OUT, 'movie-phone-off.png') });
+      check('phone: Movie works there too', await ph.p.evaluate(() => __lights.movie === 1), '');
+      check('movie (phone): no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
       await ph.ctx.close();
     }
 
