@@ -16,7 +16,7 @@ const SETTLE = 3000;
 
 const item = o => ({ ...o, x: o.at[0], y: o.at[2], z: -o.at[1] });
 
-export function makeSpots({ scene, meta, panels, desktop, adopt, coarse = false }) {
+export function makeSpots({ scene, meta, panels, desktop, adopt, renderer = null, coarse = false }) {
   const look = makeLookPanels(panels, { coarse });
   const names = meta.projects || [];
   const frames = names.map((project, i) => {
@@ -24,7 +24,7 @@ export function makeSpots({ scene, meta, panels, desktop, adopt, coarse = false 
     return s ? item({ id: `proj${i}`, project, label: `See ${project}`, at: [STAIR_MID, s.center[1], s.center[2] - FRAME_HANG], r: 0.38 }) : null;
   }).filter(Boolean);
   const frameMeshes = frames.map(f => scene.getObjectByName(`screen_${f.id}`)).filter(Boolean);
-  const shelf = makeGameShelf(scene, { adopt });
+  const shelf = makeGameShelf(scene, { adopt, renderer });
   const book = item(BOOK_SPOT);
   // An unseen box round the book, only for clicks: the book itself is part of the room's baked mesh.
   const bookBox = new THREE.Mesh(new THREE.BoxGeometry(BOOK.size[0], BOOK.size[2], BOOK.size[1]), new THREE.MeshBasicMaterial());

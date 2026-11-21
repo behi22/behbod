@@ -14,7 +14,7 @@ const STEEL = 20;
 // Up to 4 ms of painting at a time; the covers are drawn ahead once you are this near the shelf, in metres.
 const SLICE = 4, NEAR = 5;
 
-export function makeGameShelf(scene, { adopt = () => {} } = {}) {
+export function makeGameShelf(scene, { adopt = () => {}, renderer = null } = {}) {
   const later = typeof requestIdleCallback === 'function' ? f => requestIdleCallback(f, { timeout: 1500 }) : f => setTimeout(() => f({ timeRemaining: () => SLICE }), 200);
   const slots = shelfSlots();
   const canvas = document.createElement('canvas');
@@ -64,6 +64,8 @@ export function makeGameShelf(scene, { adopt = () => {} } = {}) {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
     material = new THREE.MeshBasicMaterial({ map: tex, fog: true });
+    // Sent to the graphics card now, in a quiet moment, rather than in the frame that first shows the shelf.
+    renderer?.initTexture(tex);
     mesh = new THREE.Mesh(geo, material);
     mesh.name = 'game_shelf';
     mesh.matrixAutoUpdate = false;
@@ -89,7 +91,7 @@ export function makeGameShelf(scene, { adopt = () => {} } = {}) {
       g.save(); g.translate(painted * SW, 0); paintSpine(g, GAMES[painted], painted + 1, SW, SH); g.restore();
       painted++;
     }
-    if (painted < GAMES.length) later(work); else build();
+    if (painted < GAMES.length) later(work); else later(build);
   }
   // The covers for the games panel, a few each quiet moment.
   function covers(deadline) {

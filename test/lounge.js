@@ -152,7 +152,11 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
     if (want('shelf')) {
       const { p, errs } = await open(b, DESK);
       check('the shelf is not built while the house loads', !(await p.evaluate(() => !!__loft.scene.getObjectByName('game_shelf'))));
+      // Out on the balcony facing the sea while it is built, so nothing draws the shelf yet.
+      await standAt(p, [15.0, 17.5, 0], [15.0, 25, 0]);
       await p.waitForFunction(() => { if (__loft.scene.getObjectByName('game_shelf')) { window.__shelfAt ||= performance.now(); return true; } return false; }, null, { timeout: 30000, polling: 50 });
+      const sent = await p.evaluate(() => { const t = __loft.scene.getObjectByName('game_shelf').material.map; return __loft.renderer.properties.get(t).__version === t.version; });
+      check('its picture goes to the graphics card as it is built, not in the frame that first shows it', sent);
       const when = await p.evaluate(() => window.__shelfAt - window.__up);
       check('it is built a few seconds after the house is up, a few spines at a time', when > 2500, `${Math.round(when)} ms after`);
       {

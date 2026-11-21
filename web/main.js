@@ -302,7 +302,7 @@ const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
 things.items.push(...hello.spots);
 things.items.push(...lights.spots);
-const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, adopt: o => lights.adopt(o), coarse }); things.items.push(...spots.items);
+const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, adopt: o => lights.adopt(o), renderer, coarse }); things.items.push(...spots.items);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
