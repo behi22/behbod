@@ -415,7 +415,7 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
         const base = await frameGaps(p, () => p.waitForTimeout(5000));
         const model = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('chess knight')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 120000, polling: 100 }).catch(() => {}); await p.waitForTimeout(300); });
         const madeModel = await state(p);
-        const word = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('a long keychain to build here')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 120000, polling: 100 }).catch(() => {}); await p.waitForTimeout(300); });
+        const word = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('a keychain to build')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 120000, polling: 100 }).catch(() => {}); await p.waitForTimeout(300); });
         const madeWord = await state(p);
         await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
         console.log(`  ${way}, frame gaps with the processor 4x slower (ms):`, JSON.stringify({ base, model, word }));
@@ -441,7 +441,7 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       const base = await gaps(() => p.waitForTimeout(2500));
       const opening = await gaps(async () => { await p.evaluate(() => __loft.act('printer')); await p.waitForTimeout(2500); });
       const building = await gaps(async () => { await p.tap('.ps-tile >> text=chess knight'); await p.tap('.ps-print'); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000 }).catch(() => {}); await p.waitForTimeout(500); });
-      const keyring = await gaps(async () => { await p.evaluate(() => __loft.printer.ask('a long keychain to build here')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000 }).catch(() => {}); await p.waitForTimeout(500); });
+      const keyring = await gaps(async () => { await p.evaluate(() => __loft.printer.ask('a keychain to build')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000 }).catch(() => {}); await p.waitForTimeout(500); });
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       console.log('frame gaps with the processor 4x slower, phone size (ms):', JSON.stringify({ base, opening, building, keyring }));
       // A plain turn of the camera costs the house about 110 ms on such a phone, so opening (which moves it) is held to that.
