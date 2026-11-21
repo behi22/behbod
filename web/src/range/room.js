@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from '../engine.js';
 import { U, lit, makeDetail } from './lit.js';
 import { MOODS } from '../pure/moods.js';
-import { inSlices, whenIdle } from '../pure/slices.js';
+import { inSlices, whenIdle, breathe as breath } from '../pure/slices.js';
 import { useAhead } from '../useahead.js';
 
 // The range's rooms. Unlike the house, whose zones are baked pictures, these are real materials: each surface's own
@@ -41,8 +41,9 @@ export const breathe = () => whenIdle();
 // around the room), and three decides which by what is being drawn into at the moment it is asked. So it is asked
 // twice, once with each in place; the building itself goes on off the frame.
 let linear = null;
-// `into`: the scene a piece added later will be drawn in, whose lights its shaders are built for.
-export async function prepare(renderer, scene, camera, { screen = true, picture = true, into = null } = {}) {
+// `into`: the scene a piece added later will be drawn in, whose lights its shaders are built for. `rest`: a short
+// breath for work somebody waits on (the bench, the gunsmith, a gun taken); the background build passes `breathe`.
+export async function prepare(renderer, scene, camera, { screen = true, picture = true, into = null, rest = breath } = {}) {
   // Asked a piece at a time, in slices of a frame's time: asking for a whole room at once held a slow phone for up to
   // a quarter of a second. One piece per material, kind of mesh and set of shape data (each may need its own program:
   // colours, tangents, extra UVs, morphs); the rest share its program.
@@ -63,12 +64,12 @@ export async function prepare(renderer, scene, camera, { screen = true, picture 
       // The target is in place only while three decides what to build, and is put back whatever happens.
       try { renderer.setRenderTarget(target); if (renderer.compileAsync) jobs.push(renderer.compileAsync(o, camera, lights)); else renderer.compile(o, camera, lights); }
       finally { renderer.setRenderTarget(was); }
-    }, { rest: breathe });
+    }, { rest });
     await Promise.all(jobs);
   }
   const mats = new Set();
   for (const o of pieces) for (const m of [].concat(o.material || [])) mats.add(m);
-  await useAhead(renderer, mats, { rest: breathe });
+  await useAhead(renderer, mats, { rest });
 }
 
 // three builds a reflection's two blur shaders the moment it first draws with them, which held a frame for up to a
@@ -220,7 +221,7 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
   await breathe();
   // That look is drawn before the rooms have a reflection, with shaders of its own: built here, between frames, so
   // the look itself has nothing left to build.
-  await prepare(renderer, scene, new THREE.PerspectiveCamera(90, 1, 0.1, 120), { screen: false });
+  await prepare(renderer, scene, new THREE.PerspectiveCamera(90, 1, 0.1, 120), { screen: false, rest: breathe });
   await reflect();
   await breathe();
 
@@ -266,7 +267,7 @@ export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
       // Hidden things too (a target waiting in its pool, a spent case): shown for the build, then hidden again.
       const hidden = [];
       stage.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-      try { for (const s of [scene, stage]) await prepare(renderer, s, camera); }
+      try { for (const s of [scene, stage]) await prepare(renderer, s, camera, { rest: breathe }); }
       finally { for (const o of hidden) o.visible = false; }
       const seen = new Set();
       for (const s of [scene, stage]) s.traverse(o => { for (const m of [].concat(o.material || [])) for (const v of Object.values(m)) if (v?.isTexture && !v.isRenderTargetTexture) seen.add(v); });

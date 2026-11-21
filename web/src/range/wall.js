@@ -98,7 +98,7 @@ export function makeWall(stage, meta, { renderer, camera, player, best, held, al
     show.name = `gunwall_${id}`; show.visible = false;
     m.model = show;
     group.add(show);
-    try { await prepare(renderer, show, camera, { into: stage }); } catch (e) { /* drawn anyway; the first look builds it */ }
+    try { await prepare(renderer, show, camera, { into: stage, rest: breathe }); } catch (e) { /* drawn anyway; the first look builds it */ }
     m.ready = true;
     if (list.length) sync();
   }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { b2t } from '../engine.js';
 import { U, patched } from './lit.js';
 import { loadRangeRoom, breathe, prepare } from './room.js';
+import { breathe as breath } from '../pure/slices.js';
 import { makeGun } from './gun.js';
 import { makeFx } from './fx.js';
 import { makeTargets } from './targets.js';
@@ -62,7 +63,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     loading ||= busy((async () => {
       const r = await loadRangeRoom(meta, engine.renderer, { small: coarse });
       await breathe();
-      const g = await makeGun({ env: r.env, onCue: cue });
+      const g = await makeGun({ env: r.env, onCue: cue, rest: breathe });
       await breathe();
       // The bench's top and the floor are what a spent case lands on.
       const b0 = b2t(R.strafe[0] - 1, R.line[1] - 0.3, 0), b1 = b2t(R.strafe[1] + 1, R.line[1] + 0.3, 0);
@@ -87,7 +88,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
       first.visible = false; r.stage.add(first);
       await hall.ready(() => r.warmUp(camera), breathe);
       await breathe();
-      await prepare(engine.renderer, g.scene, g.camera);
+      await prepare(engine.renderer, g.scene, g.camera, { rest: breathe });
       room = r; gun = g;
       engine.addLayer({ scene: r.scene, under: true, on: () => active || visible() });
       engine.addLayer({ scene: r.stage, under: true, on: () => active || visible() });
@@ -118,7 +119,7 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
   function loadGun(id) {
     fetching[id] ||= busy((async () => {
       const g = await makeGun({ env: room.env, id, onCue: cue });
-      await breathe();
+      await breath();
       await prepare(engine.renderer, g.scene, g.camera);
       layer(guns[id] = g);
       wall.hang(id, g.model);

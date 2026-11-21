@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lit } from './lit.js';
-import { whenIdle as breathe } from '../pure/slices.js';
+import { breathe as breath } from '../pure/slices.js';
 import { makeHand, makeHandMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
 import { blend, qFrame, relaxed } from '../pure/hands.js';
@@ -42,7 +42,7 @@ function flashTexture() {
   return t;
 }
 
-export async function makeGun({ env, id = 'pistol', file, onCue }) {
+export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }) {
   const spec = RIGS[id];
   if (!spec) throw new Error('no such gun: ' + id);
   // The hip in the eye's space (x right, y up, -z ahead), the way the magazine comes out, the grip's middle a clip turns about.
@@ -124,7 +124,7 @@ export async function makeGun({ env, id = 'pistol', file, onCue }) {
   for (const m of Object.values(hm)) (mats[m.name] ||= new Set()).add(m);
   // A breath between the hands, each a few dozen bones built in code, so a slowed phone never holds a frame for both.
   const right = makeHand('right', hm);
-  await breathe();
+  await rest();
   const hands = { right, left: makeHand('left', hm) };
   turn.add(hands.right.root, hands.left.root);
   // The hands' poses on this gun, solved ahead of time (blender/holds.js).

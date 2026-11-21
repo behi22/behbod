@@ -237,6 +237,18 @@ async function idleBuild(b) {
   await p.waitForTimeout(1000);
   const got = await p.evaluate(async () => { const before = window.__idle; await __loft.range.load(); return { idle: window.__idle - before, ready: __loft.range.ready }; });
   check('the range builds behind the scenes in the page\'s spare time', got.ready && got.idle >= 20, JSON.stringify(got));
+  // Regression: every breath of the range's code waited for spare time, also where a visitor waits (the gun put on the
+  // bench, the gunsmith's kit, a gun taken from the wall): on a 4x slowed machine with no spare time, readying the
+  // loadout room's shaders again took 2.4 to 4.5 s (main 40 to 70 ms), each breath running out its 300 ms.
+  const waited = await p.evaluate(async () => {
+    const [{ prepare }, { makeGun }] = await Promise.all([import('/src/range/room.js'), import('/src/range/gun.js')]);
+    const r = __loft.range.room, before = window.__idle;
+    await prepare(__loft.renderer, r.stage, __loft.camera);
+    const gun = await makeGun({ env: r.env, onCue: () => {} });
+    gun.scene.traverse(o => { o.geometry?.dispose(); for (const m of [].concat(o.material || [])) m.dispose(); });
+    return window.__idle - before;
+  });
+  check('readying shaders or a gun that a visitor is waiting on never waits for spare time', waited === 0, `${waited} waits`);
   check('and nothing went wrong', errs.length === 0, errs.slice(0, 3).join(' | '));
   await p.close();
 }
