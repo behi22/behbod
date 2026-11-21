@@ -39,6 +39,14 @@ export function armAngle(t, t0, bpm, amp = SWING) {
   return amp * Math.sin(Math.PI * phase(t, t0, bpm));
 }
 
+// Started again while the arm is still settling: the start is set back so the swing picks up where the arm is, on its
+// way back to the middle, instead of jumping to the middle.
+export function resume(t, angle, bpm, amp = SWING) {
+  const a = Math.max(-1, Math.min(1, angle / amp));
+  if (!a) return t;
+  return t - (((a > 0 ? 1 : 2) - Math.asin(Math.abs(a)) / Math.PI) * 60) / bpm;
+}
+
 // A new tempo keeps the arm where it is in its swing: the start moves so the beat count carries on unbroken.
 export function retime(t, t0, oldBpm, newBpm) {
   return t - (Math.max(0, phase(t, t0, oldBpm)) * 60) / newBpm;

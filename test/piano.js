@@ -166,6 +166,20 @@ const SHEET_VIEW = [[18.35, 9.95, 1.62], [18.35, 10.62, 1.26]];
       await p.waitForTimeout(900);
       const still = await p.evaluate(() => __piano.metronome.angle);
       check('M again stops it: nothing more scheduled, the arm back in the middle', !stopped.on && !stopped.running && stopped.ticks === 0 && still === 0, JSON.stringify({ ...stopped, still }));
+      // Started again while the arm is still settling back, it carries on from where it is, without a jump to the middle.
+      const resumed = await p.evaluate(async () => {
+        const m = __piano.metronome, frame = () => new Promise(r => requestAnimationFrame(r));
+        m.start();
+        for (let i = 0; i < 300 && Math.abs(m.angle) < 0.3; i++) await frame();
+        m.stop(); await frame(); await frame();
+        const before = m.angle;
+        m.start(); m.tick(0);
+        const after = m.angle, swing = [];
+        for (let i = 0; i < 40; i++) { await frame(); swing.push(m.angle); }
+        m.stop();
+        return { before, after, most: Math.max(...swing.map(Math.abs)), crossed: swing.some(a => Math.sign(a) === -Math.sign(before)) };
+      });
+      check('started again while the arm settles, it swings on from where it is', Math.abs(resumed.before) > 0.1 && Math.abs(resumed.after - resumed.before) < 0.01 && resumed.crossed && resumed.most <= M.SWING + 1e-9, JSON.stringify(resumed));
       // A hidden tab stops it, and it stays off when the tab comes back.
       await p.keyboard.press('KeyM'); await p.waitForTimeout(300);
       await hide(p, true); await p.waitForTimeout(100);

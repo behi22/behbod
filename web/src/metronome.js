@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { makeKit } from './persia/kit.js';
 import { heard } from './audio/core.js';
-import { START_BPM, onScale, step, armAngle, retime, weightAt } from './pure/metronome.js';
+import { START_BPM, onScale, step, armAngle, retime, resume, weightAt } from './pure/metronome.js';
 
 // The metronome on the piano's lid: off until asked, then its arm swings in time and it ticks softly. The arm follows
 // the sound's own clock, so what you see and what you hear agree; with no sound yet it keeps time by the page's clock.
@@ -48,7 +48,7 @@ export function makeMetronome({ scene, arm, sound, audio, store }) {
   function start() {
     if (on) return;
     const c = clock();
-    on = true; dom = c.dom; t0 = c.t;
+    on = true; dom = c.dom; t0 = resume(c.t, angle, bpm);
     if (dom === 'audio') audio.metronome.start(beat);
     changed();
   }

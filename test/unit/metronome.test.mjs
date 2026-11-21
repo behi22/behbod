@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MARKS, START_BPM, SWING, onScale, step, phase, ticks, armAngle, retime, weightAt } from '../../web/src/pure/metronome.js';
+import { MARKS, START_BPM, SWING, onScale, step, phase, ticks, armAngle, retime, resume, weightAt } from '../../web/src/pure/metronome.js';
 
 const close = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
 
@@ -72,4 +72,21 @@ test('a new tempo carries the swing on from where the arm is', () => {
 test('the weight rides high for slow tempos and low for fast ones, always on the arm', () => {
   for (let i = 1; i < MARKS.length; i++) assert.ok(weightAt(MARKS[i]) < weightAt(MARKS[i - 1]));
   assert.ok(weightAt(40) <= 0.95 && weightAt(208) >= 0.2);
+});
+test('started again while the arm is still settling, the swing picks up where the arm is, heading back to the middle', () => {
+  const t = 12.5;
+  assert.equal(resume(t, 0, 96), t);
+  for (const bpm of [40, 96, 208]) for (const a of [0.41, 0.2, 0.004, -0.004, -0.2, -0.41]) {
+    const t0 = resume(t, a, bpm);
+    assert.ok(t0 < t && t - t0 < 2 * 60 / bpm);
+    assert.ok(close(armAngle(t, t0, bpm), a, 1e-9), `${bpm} ${a}`);
+    // Moving towards the middle, as it was while settling.
+    assert.ok(Math.abs(armAngle(t + 1e-5, t0, bpm)) < Math.abs(a));
+    // The next tick is at the far end on the other side, and it comes within a beat and a half.
+    const next = ticks(t, t + 5, t0, bpm)[0];
+    assert.ok(next > t && next - t < 1.5 * 60 / bpm);
+    assert.equal(Math.sign(armAngle(next, t0, bpm)), -Math.sign(a));
+  }
+  // Past the end of the swing it is held at the end.
+  assert.ok(close(armAngle(t, resume(t, 0.9, 96), 96), SWING, 1e-9));
 });
