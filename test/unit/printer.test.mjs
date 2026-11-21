@@ -298,3 +298,24 @@ test('a flower always has five petals or more, so none of them makes a cross wit
   assert.ok(parsePrint('a 4 petal flower').p.sides >= 5);
   assert.ok(parsePrint('3 petals', parsePrint('flower').p).p.sides >= 5);
 });
+
+test("the duck's eyes are round dimples with soft rims, not holes with knife-thin edges", () => {
+  const { f } = MODEL.duck.make({ sides: 8, depth: 0 });
+  // The eye sits at (3.46, 7.55, 1.77) once the duck is set down on the bed; its head is a ball of 2.35 round (2, 6.7, 0).
+  const at = y => { for (let z = 4; z > 0; z -= 0.002) if (f(3.46, y, z) < 0) return z; return null; };
+  const head = y => Math.sqrt(2.35 ** 2 - 1.46 ** 2 - (y - 6.7) ** 2);
+  const normal = (x, y, z) => { const e = 1e-3, g = [f(x + e, y, z) - f(x - e, y, z), f(x, y + e, z) - f(x, y - e, z), f(x, y, z + e) - f(x, y, z - e)], l = Math.hypot(...g); return g.map(v => v / l); };
+  let prev = null, turn = 0, deepest = Infinity;
+  for (let y = 6.75; y <= 8.35; y += 0.02) {
+    const z = at(y);
+    if (z === null) continue;
+    if (Math.abs(y - 7.55) < 0.08) deepest = Math.min(deepest, z);
+    const m = normal(3.46, y, z);
+    if (prev) turn = Math.max(turn, Math.acos(Math.min(1, m[0] * prev[0] + m[1] * prev[1] + m[2] * prev[2])) * 180 / Math.PI);
+    prev = m;
+  }
+  assert.ok(turn < 20, `the surface turns ${turn.toFixed(1)} degrees between points 0.2 mm apart`);
+  assert.ok(head(7.55) - deepest > 0.2, `the dimple is ${(head(7.55) - deepest).toFixed(2)} cm deep`);
+  // One each side, where the head would otherwise be solid.
+  for (const z of [1.5, -1.5]) assert.ok(f(3.46, 7.55, z) > 0 && Math.abs(z) < head(7.55), 'an eye is open');
+});

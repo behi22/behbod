@@ -166,7 +166,8 @@ function duck() {
   const wing = mirrorZ(ellipsoid([2.2, 1.3, 0.6], [-0.9, 3.6, 3.15]));
   let f = blend(0.8, body, head, wing);
   f = blend(0.25, f, beak);
-  f = cut(f, sphere(0.42, [3.2, 7.7, 1.45]), sphere(0.42, [3.2, 7.7, -1.45]));
+  // Round eye dimples set on the head's surface with soft rims: sunk just under it, they left knife-thin edges that printed rough.
+  f = carve(0.15, f, mirrorZ(sphere(0.42, [3.46, 7.85, 1.77])));
   return { f: onBed(move(f, [0, -0.3, 0])), bounds: [-6, 0, -4, 6.2, 9.4, 4], lip: 1.7 };
 }
 function penguin() {
