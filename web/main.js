@@ -25,7 +25,7 @@ import { makeAria } from './src/aria.js';
 import { makeShahnameh } from './src/shah/index.js';
 import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
-import { makeDeskBits } from './src/deskbits.js';
+import { makeDeskBits, FAN_SPOT } from './src/deskbits.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
@@ -140,7 +140,8 @@ const keyboard = () => {
 };
 const creatures = makeCreatures(scene, meta, {
   findPath, clear: (a, b) => nav.clear(a, b), groundAt: col.groundAt, sound, fx: audio.sfx, keyboard, toast,
-  onEvent: (name, data) => { if (name === 'pishi_keys') { if (mode === 'desk') screens.type(data); } else earn(name); },
+  fan: world.fanAt && { spot: FAN_SPOT, at: world.fanAt },
+  onEvent: (name, data) => { if (name === 'pishi_keys') { if (mode === 'desk') screens.type(data); } else if (name === 'fan') { deskBits.fanOn(performance.now() / 1000); audio.sfx.click(world.fanAt); } else earn(name); },
 });
 function toast(text) {
   const t = $('toast'); if (!t) return;
@@ -263,7 +264,7 @@ screens.command('scene', (say, arg) => {
 });
 screens.command('lights', (say, arg) => { const r = lightsCommand(arg, lights.on); if (r.set !== null) lights.set(r.set); say(...r.lines); });
 screens.command('coolant', (say, arg) => say(world.coolant(arg) ? `coolant: ${arg}` : 'coolant colours: teal  purple  red  gold  white'));
-screens.command('fan', say => say(world.fan() ? 'fan on.' : 'fan off.'));
+screens.command('fan', say => say(deskBits.toggleFan(performance.now() / 1000) ? 'fan on.' : 'fan off.'));
 screens.command('print', (say, arg) => {
   const r = printer?.ask(arg);
   say(...(r ? [r.toLowerCase()] : ['print <shape or any word>: vase  star  heart  gear  spiral  tower  flower  cup', '  then: taller  wider  twist  more points  spikier  or a colour']));
@@ -307,7 +308,7 @@ const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
 me.root.rotation.set(0, facing, 0);
 phys?.place(pos);
-// The DEPLOY button.
+// The DEPLOY button and the desk fan.
 const deskBits = makeDeskBits({ scene, meta, world, screens, creatures, onDeploy: () => { audio.sfx.deploy(); earn('deploy'); } });
 things.items.push(deskBits.spot); window.__desk = deskBits;
 
@@ -872,7 +873,7 @@ function step() {
   screens.tick(now, dt, mode === 'desk', nearDesk);
   deskView.tick(mode === 'desk' && !desk.gliding);
   world.tick(dt, t, mode === 'desk', camera.position, pos, creatures.positions);
-  deskBits.tick(dt);
+  deskBits.tick(dt, t, cctx);
   cctx.mode = mode; cctx.facing = facing; cctx.stand = seat ? seat.at : null;
   // The page knows the mode, so the walking controls strip can step aside while a game or the desk has the screen.
   if (document.body.dataset.mode !== mode) document.body.dataset.mode = mode;

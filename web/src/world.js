@@ -6,7 +6,7 @@ import { onSwitch } from './pure/lamps.js';
 import { BANDS, settle, follow, kicked, fade, pulse, lively, goalStart, goalShows } from './pure/leds.js';
 import { stripViz } from './stripviz.js';
 import { swim, reach } from './pure/fish.js';
-import { pressDepth } from './pure/desk.js';
+import { fanSpin, pressDepth, FAN_FROM_DEPLOY } from './pure/desk.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
   E_led_green: [0.25, 1.0, 0.45, 3.5], E_led_blue: [0.25, 0.55, 1.0, 3.5], E_aria_eye: [0.25, 1.0, 0.85, 3.2], E_warm_soft: [1.0, 0.75, 0.45, 2.4], E_bias: [0.35, 0.45, 1.0, 2.6],
@@ -249,17 +249,20 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   const unlockParts = (meta.unlocks || []).map(u => ({ id: u.id, parts: named(u.parts).filter(o => o.material.color).map(o => [o, o.material.color.clone()]) }));
   function showUnlocks(ids) { for (const u of unlockParts) for (const [o, c] of u.parts) o.material.color.copy(c).multiplyScalar(ids.includes(u.id) ? 1 : 0.35); }
   showUnlocks([]);
-  // DEPLOY dips when pressed; the desk fan spins (the cage is baked, the blades are added here).
+  // DEPLOY dips when pressed; the desk fan spins. The fan's cage is baked into the desk, so the blades are added here, in
+  // it: where the studio's build puts it, beside the DEPLOY button.
   const deployBtn = named('deploy_btn')[0], deployBase = deployBtn?.material.color.clone();
-  const cage = named('fan_cage')[0];
-  let blades = null, fanOn = true;
-  if (cage) {
+  let cage = null, blades = null, fanOn = false, fanK = 0;
+  if (meta.points.deploy) {
+    const [dx, dy, dz] = FAN_FROM_DEPLOY, [x, y, z] = meta.points.deploy;
+    cage = new THREE.Group();
+    cage.position.copy(b2t(x + dx, y + dy, z + dz));
     blades = new THREE.Group();
-    const bm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.48, 0.5, 0.53), fog: true });
-    for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.055, 0.018), bm); b.position.y = 0.03; const arm = new THREE.Group(); arm.rotation.x = i * Math.PI * 2 / 3; arm.add(b); blades.add(arm); }
-    cage.updateMatrixWorld(true);
-    blades.position.setFromMatrixPosition(cage.matrixWorld);
-    scene.add(blades);
+    const bm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.52, 0.55), fog: true });
+    for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.055, 0.02), bm); b.position.y = 0.032; b.rotation.y = 0.45; const arm = new THREE.Group(); arm.rotation.x = i * Math.PI * 2 / 3; arm.add(b); blades.add(arm); }
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.014, 14).rotateZ(Math.PI / 2), bm);
+    cage.add(blades, hub);
+    scene.add(cage);
   }
   let ariaK = 0, spinning = false;
 
@@ -362,7 +365,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
         if (deployBtn) { deployBtn.position.y = -0.013 * pressDepth(3 - left); deployBtn.material.color.setRGB(0.2, 3, 0.6); }
       } else { deployUntil = 0; applyScene(); if (deployBtn) { deployBtn.position.y = 0; deployBtn.material.color.copy(deployBase); } }
     }
-    if (blades && fanOn) blades.rotation.x += dt * 22;
+    fanK = fanSpin(fanK, fanOn, dt);
+    if (blades && fanK) blades.rotation.x += dt * 22 * fanK;
     for (const l of lavas) l.material.uniforms.time.value = t;
     if (tea) {
       for (let i = 0; i < STEAM; i++) {
@@ -434,7 +438,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     // gate: how much of the records comes through, 0 with the sound off or faded for the piano.
     listen(music, gate) { records = music; through = gate; music.onBeat(b => { kick = kicked(kick, b.strength); }); },
     get leds() { return { music: mk, viz: viz ? viz.uViz.value : 0, bands: viz ? Array.from(viz.uBands.value) : null, goal: !!goalBeats && performance.now() / 1000 < goalBeats.until, deploy: deployUntil > 0 }; },
-    fan() { fanOn = !fanOn; return fanOn; },
+    // The desk fan on or off; it spins up and down by itself.
+    fan(on) { fanOn = !!on; return fanOn; },
+    get fanSpeed() { return fanK; },
+    fanAt: cage?.position.clone() || null,
     get deploying() { return deployUntil > 0; },
     setRecord(on) { spinning = on; },
     // The fleet (src/fleet.js) replaces the two baked ships.

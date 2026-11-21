@@ -55,7 +55,7 @@ function buildBH22() {
   // The glass of tea it carries on its head.
   const cup = mesh([piece(cyl(0.025, 0.02, 0.06, 14), '#c7902f', [0, 0.034, 0]), piece(cyl(0.038, 0.038, 0.005, 16), '#cdb77d')], PAINT, dome);
   cup.position.set(-0.03, 0.142, 0); cup.visible = false;
-  return { root, body, dome, eye: eyes, round: [...eyes.children], eyeMat, eyeLit: eyeMat.color.clone(), cup, wheels, rgb: rgbMat };
+  return { root, body, dome, eye: eyes, round: [...eyes.children], eyeMat, eyeLit: eyeMat.color.clone(), tip, cup, wheels, rgb: rgbMat };
 }
 
 // The mouse droid: a low black box on hidden wheels with a slanted nose, panelled sides, a ridged top deck, a small
@@ -203,7 +203,8 @@ const WORDS = ['beep', 'boop', 'bwee!', 'brrt', 'dweet', 'bip bip'];
 // `fx` is the audio module's effects (positioned in the room); without it the simple synth tones stand in.
 // `findPath(from, to)` resolves to a path or null (planned off the main thread); `clear(from, to)` says whether a straight
 // line between two points stays on walkable floor.
-export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {} }) {
+// `fan`: where BH-22 stands to switch the desk fan on (Blender axes) and the fan itself (three's).
+export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {}, fan = null }) {
   const P = meta.points, agents = [], waits = [], lastPlayer = new THREE.Vector3();
   const items = Object.fromEntries(['bh22', 'pishi', 'jessi'].map(id => [id, { id, r: 1.1, label: '', x: 0, y: 0, z: 0 }]));
   // Pressing E takes turns through each one's things to do, so a visit is never the same thing twice running.
@@ -339,6 +340,27 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     else if (r2.state !== 'petted' && r2.state !== 'play') r2.eyeMat.color.copy(r2.eyeLit);
     r2.eye.scale.y = 1;
   }
+
+  // While the PC is busy it goes over to the desk and switches the fan on with its antenna.
+  let fanMiss = -99;
+  function toFan() {
+    endR2Fun();
+    r2.state = 'fan'; r2.cup.visible = false; r2.speed = 1.2;
+    goTo(r2, fan.spot, ok => {
+      if (!ok) { r2.state = 'pause'; r2.timer = 1; r2.speed = r2.base; fanMiss = now; return; }
+      // The walk grid keeps clear of the desk, so it rolls the last bit straight on.
+      r2.route = [b2t(...fan.spot)]; r2.then = () => { Object.assign(r2, { state: 'fanOn', timer: 1.8, funT: 0, switched: false, speed: r2.base }); };
+    });
+  }
+  function tickFanOn(dt, ctx) {
+    faceTo(r2, fan.at, dt);
+    r2.funT += dt;
+    r2.tip.scale.setScalar(r2.funT > 0.55 && r2.funT < 0.95 ? 1.8 : 1);
+    if (r2.funT >= 0.7 && !r2.switched) { r2.switched = true; onEvent('fan'); r2.bub.say('fan on', now); blip(sfx.chirp, r2, ctx.player); feel('happy', 2); }
+    if ((r2.timer -= dt) > 0) return;
+    r2.tip.scale.setScalar(1);
+    r2.state = 'pause'; r2.timer = 2; r2.stops = Math.min(r2.stops, 1);
+  }
   const STOPS = [meta.spots.lounge, meta.spots.window, meta.spots.desk, [14.6, 9.4, 0], [16.0, 8.9, 0], [9.0, 3.6, 0], [2.6, 2.4, 0], [12.0, 12.0, 0]].filter(Boolean);
   function r2Next() {
     if (r2.stops-- <= 0) {
@@ -401,7 +423,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   // Ends a pet or a play early or on time: its eye colour, dome tilt and hop height go back to normal.
   function endR2Fun() {
     if (r2.eyeWas !== undefined) { r2.eyeMat.color.copy(r2.eyeLit); r2.eyeWas = undefined; }
-    r2.dome.rotation.z = 0;
+    r2.dome.rotation.z = 0; r2.tip.scale.setScalar(1);
     if ((r2.state === 'play' || r2.state === 'petted') && r2.baseY !== undefined) r2.pos.y = r2.baseY;
   }
   function r2Fun(kind) {
@@ -434,7 +456,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   function tickR2(dt, ctx) {
     if (storyEarn && r2.state !== 'story') { storyEarn = false; onEvent('bh22'); }
     r2.chaseCool -= dt;
-    const look = r2.moving ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
+    const look = r2.moving || r2.state === 'fanOn' ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
     if (look !== null) r2.dome.rotation.y += (look - r2.dome.rotation.y) * Math.min(1, dt * 3);
     r2.body.rotation.x += ((r2.moving ? 0.07 : 0) - r2.body.rotation.x) * Math.min(1, dt * 5);
     // Wheels roll with the ground covered; the body bobs a little on its legs; the LED eyes blink.
@@ -452,13 +474,15 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.body.rotation.z += ((k.dive ? Math.sign(k.dy) * 0.45 : 0) - r2.body.rotation.z) * Math.min(1, dt * 10);
       return;
     }
-    // It reels for a moment when walked into.
+    // It looks up at the fan while it switches it on, and reels for a moment when walked into.
+    r2.dome.rotation.x += ((r2.state === 'fanOn' ? -0.42 : 0) - r2.dome.rotation.x) * Math.min(1, dt * 5);
     const reel = now - bumpAt;
     r2.body.rotation.z = reel < 0.7 ? Math.sin(reel * 20) * 0.22 * (1 - reel / 0.7) : 0;
     if (r2.state === 'dock' && !r2.moving) turn(r2, 1, 0, dt, 3);
     if (r2.state === 'dock' && (r2.timer -= dt) < 0) { r2.stops = 2 + Math.floor(rnd(0, 3)); r2Next(); }
     else if (r2.state === 'pause' && (r2.timer -= dt) < 0) r2Next();
     else if (r2.state === 'petted' || r2.state === 'play') tickR2Fun(dt, ctx);
+    else if (r2.state === 'fanOn') tickFanOn(dt, ctx);
     else if (r2.state === 'story') {
       faceTo(r2, ctx.player, dt);
       // Walking off ends the story; the lines not yet told are dropped.
@@ -475,8 +499,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.state = 'chase'; r2.timer = 6; r2.repath = 0; r2.speed = 1.5; r2.chaseCool = 60; mouse.flee = 6;
       r2.bub.say('!!', now); blip(sfx.alert, r2, ctx.player);
     }
+    if (fan && ctx.fanCall && FREE.includes(r2.state) && now - fanMiss > 20) toFan();
     // Walked into at a run or a walk, it says so, x x.
-    if (playerSpeed > 1.3 && playerSpeed < 12 && now - bumpAt > 4 && [...FREE, 'talk', 'chase'].includes(r2.state)
+    if (playerSpeed > 1.3 && playerSpeed < 12 && now - bumpAt > 4 && [...FREE, 'talk', 'fan', 'chase'].includes(r2.state)
       && Math.hypot(ctx.player.x - r2.pos.x, ctx.player.z - r2.pos.z) < 0.3 && Math.abs(ctx.player.y - r2.pos.y) < 0.6) {
       bumpAt = now; feel('dizzy'); r2.bub.say('oof!', now); blip(p => (fx ? fx.bh22('sad', p) : sfx.chirp(p)), r2, ctx.player);
     }

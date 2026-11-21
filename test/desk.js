@@ -5,13 +5,14 @@
 //   deploy   the DEPLOY button on the desk: E, the terminal's lines, one at a time, confetti and a dance
 //   phone    a tap on DEPLOY walks over and presses it
 //   button   the button presses down into its base (failed before these changes)
+//   fan      BH-22 switches the desk fan on while the PC is busy, and it spins down after
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -50,6 +51,7 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
 
 (async () => {
   const W = require('../web/assets/world.json');
+  const { FAN_SPOT, COOL } = await import('../web/src/pure/desk.js');
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
     // ---------- the fish: they turn round in the water, about themselves ----------
@@ -231,6 +233,48 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       const down = await button(p);
       check('a deploy presses the button down into its base, on the desk', down.hi < rest.hi - 0.008 && down.hi > top && down.lo > top - 0.02, `rest ${rest.lo.toFixed(3)} to ${rest.hi.toFixed(3)}, pressed ${down.lo.toFixed(3)} to ${down.hi.toFixed(3)}, desk top ${top}`);
       check('button: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- the fan: BH-22 switches it on while the PC is busy; it spins down after ----------
+    if (want('fan')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      const idle = await p.evaluate(() => ({ speed: __loft.world.fanSpeed, at: __loft.world.fanAt?.toArray(), fan: __desk.fan }));
+      check('the fan stands still while the PC is quiet', idle.speed === 0 && !idle.fan.on && !idle.fan.busy, JSON.stringify(idle));
+      const fanAt = idle.at;
+      check('its blades sit in the cage on the desk', fanAt && Math.abs(fanAt[0] - 21.8) < 1e-6 && Math.abs(fanAt[1] - 1.37) < 1e-6 && Math.abs(fanAt[2] + 2.3) < 1e-6, JSON.stringify(fanAt));
+      await r2At(p, [19.0, 3.4, 0.45], 1);
+      await standAt(p, [19.3, 3.8, 0.45], yawTo([19.3, 3.8], FAN_SPOT));
+      await p.evaluate(() => __loft.screens.desktop.games.start('orbit'));
+      const busy = await p.evaluate(() => __desk.fan.busy);
+      check('a game playing on the PC makes it busy', busy);
+      await p.waitForFunction(() => __loft.creatures.bh22.state === 'fanOn', null, { timeout: 30000 }).catch(() => {});
+      const r2 = await p.evaluate(spot => { const r = __loft.creatures.bh22; return { state: r.state, d: Math.hypot(r.pos.x - spot.x, r.pos.z - spot.z) }; }, b2t(...FAN_SPOT));
+      await p.waitForTimeout(700);
+      await p.screenshot({ path: path.join(OUT, 'fan-switch.png') });
+      check('BH-22 rolls over to the fan', r2.state === 'fanOn' && r2.d < 0.1, JSON.stringify(r2));
+      await p.waitForTimeout(1500);
+      const on = await p.evaluate(() => ({ speed: __loft.world.fanSpeed, fan: __desk.fan, toast: document.getElementById('toast').textContent }));
+      check('and switches it on: the blades spin up', on.fan.on && on.speed > 0.9, JSON.stringify(on));
+      await p.evaluate(() => __loft.screens.desktop.games.stop());
+      await p.waitForTimeout((COOL - 3) * 1000);
+      check('it keeps running a while after the game stops', await p.evaluate(() => __desk.fan.on && __loft.world.fanSpeed === 1));
+      await p.waitForTimeout(4500);
+      const coast = await p.evaluate(() => ({ on: __desk.fan.on, speed: __loft.world.fanSpeed }));
+      check('then it is switched off and coasts down', !coast.on && coast.speed < 1, JSON.stringify(coast));
+      await p.waitForFunction(() => __loft.world.fanSpeed === 0, null, { timeout: 12000 }).catch(() => {});
+      check('to a stop', await p.evaluate(() => __loft.world.fanSpeed === 0));
+      // By hand: off while busy stays off, and BH-22 is not sent for.
+      await p.evaluate(() => __loft.screens.run('fan', () => {}));
+      const hand = await p.evaluate(() => ({ line: __loft.screens.desktop.term.lines.at(-1), on: __desk.fan.on }));
+      check('typed `fan`: on, by hand', hand.line === 'fan on.' && hand.on, JSON.stringify(hand));
+      await p.evaluate(() => __loft.screens.desktop.games.start('orbit'));
+      await p.waitForTimeout(300);
+      await p.evaluate(() => __loft.screens.run('fan', () => {}));
+      await p.waitForTimeout(1500);
+      const off = await p.evaluate(() => ({ line: __loft.screens.desktop.term.lines.at(-1), on: __desk.fan.on, r2: __loft.creatures.bh22.state }));
+      check('typed again while busy: off, and BH-22 leaves it off', off.line === 'fan off.' && !off.on && off.r2 !== 'fan' && off.r2 !== 'fanOn', JSON.stringify(off));
+      await p.evaluate(() => __loft.screens.desktop.games.stop());
+      check('fan: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
   } finally {

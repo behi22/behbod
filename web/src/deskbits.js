@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { makeConfetti } from './confetti.js';
-import { DEPLOY_SPOT } from './pure/desk.js';
+import { newFan, fanStep, fanSet, DEPLOY_SPOT } from './pure/desk.js';
+
+export { FAN_SPOT } from './pure/desk.js';
 
 // The desk's own goings-on. DEPLOY, from the terminal or the button (E, a tap or a click): the lines, the green sweep,
 // the fanfare and the achievement as before, plus confetti out of the button and a dance from BH-22; one at a time.
+// And the fan, which BH-22 switches on while the PC is busy: a game on its screen or a deploy.
 export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy }) {
   const btn = b2t(...meta.points.deploy);
   const desks = meta.colliders.filter(c => c.name === 'desk' || c.name === 'desk_return');
@@ -14,6 +17,8 @@ export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy 
   const at = DEPLOY_SPOT, spot = { id: 'deploy', at, r: 0.42, label: 'Press DEPLOY', x: at[0], y: at[2], z: -at[1] };
   const reach = new THREE.Sphere(btn.clone(), 0.06), hitAt = new THREE.Vector3();
   let confetti = null;
+  const fan = newFan();
+  const busy = () => { const g = screens.desktop.games.playing; return world.deploying || !!(g && !g.paused && !g.done); };
 
   // say(...lines): the terminal's, when the deploy was typed or the terminal is open to show it.
   function deploy(say) {
@@ -45,6 +50,17 @@ export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy 
       if (d === undefined) return false;
       return !blockers || !(ray.intersectObjects(blockers, true)[0]?.distance < d - 0.05);
     },
-    tick(dt) { confetti?.tick(dt); },
+    // ctx.fanCall tells BH-22 the fan wants switching on.
+    tick(dt, t, ctx) {
+      confetti?.tick(dt);
+      const did = fanStep(fan, busy(), t);
+      if (did === 'off') { fanSet(fan, false, t); world.fan(false); }
+      ctx.fanCall = did === 'call';
+    },
+    // BH-22 has switched it on.
+    fanOn(t) { fanSet(fan, true, t); world.fan(true); },
+    // The terminal's `fan`: the other way, and it stays as set until the PC next gets busy.
+    toggleFan(t) { const on = !fan.on; fanSet(fan, on, t, true); world.fan(on); return on; },
+    get fan() { return { ...fan, busy: busy() }; },
   };
 }
