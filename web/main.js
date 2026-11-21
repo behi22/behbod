@@ -302,7 +302,7 @@ const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
 things.items.push(...hello.spots);
 things.items.push(...lights.spots);
-const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, coarse }); things.items.push(...spots.items);
+const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, adopt: o => lights.adopt(o), coarse }); things.items.push(...spots.items);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
@@ -859,6 +859,7 @@ function step() {
   fleet.tick(dt, t, camera.position);
   printer?.tick(dt, camera.position);
   rubik?.tick(dt, camera.position);
+  spots.tick(out3d ? out3d.light.dayK : 0, pos);
   persia.tick(dt, t);
   tvMatch?.tick(dt, camera);
   pens?.tick(dt);

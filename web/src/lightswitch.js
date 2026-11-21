@@ -38,8 +38,8 @@ export function makeLights(scene, world, { sfx = null, skip = [] } = {}) {
     m.customProgramCacheKey = () => 'lamp';
     m.needsUpdate = true;
   }
-  // Pieces added later (a holiday table) are adopted when they arrive.
-  function adopt() {
+  // Pieces added later (a holiday table) are adopted when they arrive; `root` limits it to one piece.
+  function adopt(root = scene) {
     let n = 0;
     const walk = o => {
       if (skipped.has(o)) return;
@@ -54,7 +54,7 @@ export function makeLights(scene, world, { sfx = null, skip = [] } = {}) {
       }
       for (const c of o.children) walk(c);
     };
-    walk(scene);
+    walk(root);
     return n;
   }
 

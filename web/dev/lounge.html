@@ -17,9 +17,11 @@
 <body>
 <main id="m"></main>
 <script type="module">
-// The lounge's drawn pieces on their own: the khatam board from the balcony, a close crop of its corner, and khatam
-// strips at a few sizes.
+// The lounge's drawn pieces on their own: the khatam board from the balcony, a close crop of its corner, khatam
+// strips at a few sizes, and the game shelf's spines and covers.
 import { nardBoard, strip } from '../src/khatam.js';
+import { GAMES } from '../src/pure/shelf.js';
+import { paintCover, paintSpine } from '../src/covers.js';
 
 const m = document.getElementById('m');
 const section = (title, ...kids) => { const s = document.createElement('section'), h = document.createElement('h2'); h.textContent = title; const r = document.createElement('div'); r.className = 'row'; r.append(...kids); s.append(h, r); m.append(s); return s; };
@@ -38,6 +40,16 @@ section(`The balcony board, 2 px to the mm (${window.__boardMs} ms)`, board, cro
 const strips = [];
 for (const h of [12, 20, 32, 56]) { const c = canvas(600, h); strip(c.getContext('2d'), 600, h); strips.push(c); }
 section('Khatam strips', ...strips);
+const spines = [];
+let t1 = performance.now();
+GAMES.forEach((g, i) => { const c = canvas(48, 768); paintSpine(c.getContext('2d'), g, i + 1, 48, 768); spines.push(c); });
+const spineMs = performance.now() - t1;
+section(`The spines, 48 by 768 (${spineMs.toFixed(1)} ms for all)`, ...spines);
+const covers = [];
+t1 = performance.now();
+GAMES.forEach((g, i) => { const c = canvas(300, 372); paintCover(c.getContext('2d'), g, i + 1, 300, 372); covers.push(c); });
+const coverMs = performance.now() - t1;
+section(`The covers, 300 by 372 (${coverMs.toFixed(1)} ms for all)`, ...covers);
 window.__ready = true;
 </script>
 </body>

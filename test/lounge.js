@@ -1,13 +1,13 @@
-// The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards, the Shahnameh on the mezzanine
-// opening the reader, and the project frames up the stairs, at a desk and on phones.
+// The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards, the game shelf and its covers, the
+// Shahnameh on the mezzanine opening the reader, and the project frames up the stairs, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8823 node test/lounge.js [outdir] [parts]
-// Parts: khatam, game, reader, frames, phone.
+// Parts: khatam, game, shelf, reader, frames, phone.
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/lounge';
-const ONLY = process.argv[3] || 'khatam,game,reader,frames,phone';
+const ONLY = process.argv[3] || 'khatam,game,shelf,reader,frames,phone';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
@@ -18,6 +18,7 @@ const UPRIGHT = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouc
 const SIDEWAYS = { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true };
 const OUTSIDE = /youtube|google|gstatic|ytimg|ggpht|doubleclick|open-meteo/;
 const BOOK = { spot: [5.0, 2.05, 3.0], at: [5.02, 2.7, 3.48] };
+const SHELF = { spot: [1.08, 12.5, 0], at: [0.6, 12.47, 1.18] };
 
 function watch(p, errs) {
   p.on('pageerror', e => errs.push(e.message));
@@ -102,6 +103,71 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       await shot(p, 'board-close', [15.0, 16.12, 1.25], [15.0, 16.6, 0.8]);
       await shot(p, 'board-corner', [15.12, 16.44, 0.97], [15.2, 16.72, 0.8], 960, 600, 40);
       check('khatam: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
+
+    if (want('shelf')) {
+      const { p, errs } = await open(b, DESK);
+      check('the shelf is not built while the house loads', !(await p.evaluate(() => !!__loft.scene.getObjectByName('game_shelf'))));
+      await p.waitForFunction(() => { if (__loft.scene.getObjectByName('game_shelf')) { window.__shelfAt ||= performance.now(); return true; } return false; }, null, { timeout: 30000, polling: 50 });
+      const when = await p.evaluate(() => window.__shelfAt - window.__up);
+      check('it is built a few seconds after the house is up, a few spines at a time', when > 2500, `${Math.round(when)} ms after`);
+      {
+        const mesh = await p.evaluate(() => {
+          const m = __loft.scene.getObjectByName('game_shelf'), bb = m.geometry.boundingBox;
+          return { verts: m.geometry.attributes.position.count, min: bb.min.toArray(), max: bb.max.toArray(), lamp: m.material.customProgramCacheKey?.() === 'lamp' };
+        });
+        check('the shelf is one mesh: twenty cases and two bookends', mesh.verts === (20 + 2) * 36, `${mesh.verts} vertices`);
+        // The old cases: x 0.515 to 0.685, height 1.07 to 1.28, north 12.363 to 12.517.
+        check('the row stands over the old blank cases, covering them', mesh.min[0] <= 0.515 && mesh.max[0] >= 0.687 && mesh.max[1] >= 1.282 && -mesh.max[2] <= 12.363 && -mesh.min[2] >= 12.517, JSON.stringify(mesh));
+        check('it dims with the lamps like the rest of the room', mesh.lamp);
+        const spines = await p.evaluate(() => {
+          const c = __loft.scene.getObjectByName('game_shelf').material.map.image, g = c.getContext('2d'), out = [];
+          for (let i = 0; i < 20; i++) { const d = g.getImageData(i * 48, 0, 48, 768).data, seen = new Set(); for (let k = 0; k < d.length; k += 4) seen.add((d[k] >> 4) << 8 | (d[k + 1] >> 4) << 4 | (d[k + 2] >> 4)); out.push(seen.size); }
+          return out;
+        });
+        check('every spine is painted (title, sign and number on its colour)', spines.every(n => n > 30), spines.join(' '));
+        const ready = () => p.evaluate(async () => { const [c, s] = await Promise.all([import('./src/covers.js'), import('./src/pure/shelf.js')]); return s.GAMES.filter(g => c.coverReady(g)).length; });
+        check('far from the shelf, no cover is drawn yet', (await ready()) === 0, `${await ready()} drawn`);
+        await standAt(p, SHELF.spot);
+        await p.waitForFunction(async () => { const [c, s] = await Promise.all([import('./src/covers.js'), import('./src/pure/shelf.js')]); return s.GAMES.every(g => c.coverReady(g)); }, null, { timeout: 15000, polling: 250 }).catch(() => {});
+        check('walking up to it draws all twenty covers ahead, in quiet moments', (await ready()) === 20, `${await ready()} drawn`);
+        check('by the shelf: E offers the games', (await prompt(p)) === 'Look at my games', await prompt(p));
+        const before = await p.evaluate(() => __loft.pos.toArray());
+        await p.keyboard.press('KeyE'); await p.waitForTimeout(300);
+        const pn = await panel(p);
+        check('E opens my games', pn?.title === 'MY GAMES', JSON.stringify(pn));
+        await p.waitForTimeout(1200);
+        const covers = await p.evaluate(() => [...document.querySelectorAll('.pn .lp-cover')].map(card => { const c = card.querySelector('canvas'); if (!c) return { label: card.getAttribute('aria-label'), lit: 0, w: 0 }; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 16) if (d[i] + d[i + 1] + d[i + 2] > 90) lit++; return { label: card.getAttribute('aria-label'), lit, w: c.width, shown: card.getBoundingClientRect().width }; }));
+        check('twenty covers, each painted and named for a screen reader', covers.length === 20 && covers.every(c => c.lit > 100 && c.w === 160 && c.shown > 100 && / /.test(c.label)), covers.map(c => c.lit).join(' '));
+        await p.screenshot({ path: path.join(OUT, 'games-panel.png') });
+        await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+        const after = await p.evaluate(() => [__loft.pos.toArray(), __loft.mode, !!document.querySelector('.pn')]);
+        check('Esc closes it and I am still where I stood', !after[2] && after[1] === 'walk' && after[0].every((v, i) => Math.abs(v - before[i]) < 0.02), JSON.stringify(after));
+        check('the prompt comes back', (await prompt(p)) === 'Look at my games');
+        // Reopening costs nothing: the covers are kept.
+        await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
+        const kept = await p.evaluate(() => [...document.querySelectorAll('.pn .lp-cover')].filter(c => c.querySelector('canvas')).length);
+        check('opened again, the covers are already painted', kept === 20, `${kept} of 20`);
+        await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+        // A click on the cases from across the room walks over and opens them.
+        await standAt(p, [3.2, 12.2, 0], SHELF.at);
+        await p.waitForTimeout(1200);
+        const at = await onScreen(p, [0.69, 12.47, 1.18]);
+        await p.mouse.click(at.x, at.y);
+        await p.waitForFunction(() => document.querySelector('.pn h2')?.firstChild?.nodeValue === 'MY GAMES', null, { timeout: 15000 }).catch(() => {});
+        check('a click on the cases walks me over and opens them', (await panel(p))?.title === 'MY GAMES', JSON.stringify(at));
+        await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+        await shot(p, 'shelf-close', [1.25, 12.47, 1.3], [0.6, 12.47, 1.18], 960, 600, 45);
+        await shot(p, 'shelf-angle', [1.3, 12.95, 1.45], [0.6, 12.45, 1.17], 960, 600, 45);
+        await shot(p, 'shelf-room', [4.0, 12.3, 1.55], [0.6, 12.6, 1.1], 960, 600, 55);
+        await p.evaluate(() => __lights.set(false)); await p.waitForTimeout(2500);
+        const dim = await p.evaluate(() => __lights.uniforms.room.value.x);
+        check('with the lamps off the room light falls, and the shelf with it', dim < 0.8, dim.toFixed(2));
+        await shot(p, 'shelf-close-dark', [1.25, 12.47, 1.3], [0.6, 12.47, 1.18], 960, 600, 45);
+        await p.evaluate(() => __lights.set(true));
+      }
+      check('shelf: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
 
@@ -203,7 +269,7 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       for (const [name, opts] of [['upright', UPRIGHT], ['sideways', SIDEWAYS]]) {
         const { p, errs } = await open(b, opts);
         const use = async () => { const r = await p.evaluate(() => { const e = document.getElementById('use').getBoundingClientRect(); return [e.x + e.width / 2, e.y + e.height / 2]; }); await p.touchscreen.tap(...r); await p.waitForTimeout(500); };
-        for (const [spot, title] of [[BOOK.spot, 'SHAHNAMEH'], [[0.75, 6.42, 1.5], 'PROJECTS']]) {
+        for (const [spot, title] of [[BOOK.spot, 'SHAHNAMEH'], [[0.75, 6.42, 1.5], 'PROJECTS'], [SHELF.spot, 'MY GAMES']]) {
           await standAt(p, spot);
           await use();
           await p.waitForTimeout(900);

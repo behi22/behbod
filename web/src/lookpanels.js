@@ -1,9 +1,11 @@
 // Panels over the room for things you look at: the Shahnameh reader (the computer's reader app, from the book on the
-// mezzanine) and the projects (the computer's Projects app, from the frames up the stairs). Each opens through the
-// house's own panel, so Esc, Close and a click outside put you back where you stood.
+// mezzanine), the projects (the computer's Projects app, from the frames up the stairs) and the covers of the games on
+// the shelf. Each opens through the house's own panel, so Esc, Close and a click outside put you back where you stood.
 import { STORIES, storyById } from './pure/shahnameh.js';
 import { PROJECTS, GITHUB } from './pure/desktop.js';
+import { GAMES } from './pure/shelf.js';
 import { paintStory } from './shah/scenes.js';
+import { coverCanvas, coverReady } from './covers.js';
 
 const CSS = `
 .pn.pn-wide .pn-box { width: min(880px, 100%); }
@@ -21,8 +23,12 @@ const CSS = `
 .lp-links { display: flex; gap: 8px; flex-wrap: wrap; }
 .pn-box .lp-links a { font: 500 12px/1.3 ui-monospace, Menlo, Consolas, monospace; color: #e8edf5; text-decoration: none; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16); border-radius: 999px; padding: 6px 12px; }
 .pn-box .lp-links a:hover, .pn-box .lp-links a:focus-visible { border-color: #3ee6c4; color: #3ee6c4; }
+.lp-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 12px; margin-top: 10px; }
+.lp-cover { aspect-ratio: 172 / 213; border-radius: 4px; overflow: hidden; background: #11141a; box-shadow: 0 6px 16px rgba(0,0,0,.45); }
+.lp-cover canvas { display: block; width: 100%; height: 100%; }
 @media (max-width: 640px) {
   .lp-story { grid-template-columns: 1fr; gap: 14px; }
+  .lp-games { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
 }
 `;
 const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; };
@@ -86,6 +92,30 @@ export function makeLookPanels(panels, { coarse = false } = {}) {
         });
         return [el('p', { className: 'dim', textContent: 'Each link opens in a new tab.' }), list];
       }, 'look');
+    },
+    // The game covers: drawn ahead while you walk up to the shelf, so they are usually ready; any that are not are
+    // drawn a few a frame as the panel opens, so no frame waits on all twenty.
+    games() {
+      style();
+      panels.show('MY GAMES', () => {
+        const cards = GAMES.map((g, i) => {
+          const card = el('div', { className: 'lp-cover' });
+          card.setAttribute('role', 'img'); card.setAttribute('aria-label', `${g.title}: ${g.pic}`);
+          if (coverReady(g)) card.append(coverCanvas(g, i + 1));
+          return [card, g, i];
+        });
+        const step = () => {
+          const until = performance.now() + 6;
+          for (const [card, g, i] of cards) {
+            if (!card.isConnected) return;
+            if (card.firstChild) continue;
+            card.append(coverCanvas(g, i + 1));
+            if (performance.now() > until) { requestAnimationFrame(step); return; }
+          }
+        };
+        if (cards.some(([card]) => !card.firstChild)) requestAnimationFrame(step);
+        return [el('p', { className: 'dim', textContent: 'My favourite games. The covers were drawn for this house, not taken from the real ones.' }), el('div', { className: 'lp-games' }, ...cards.map(([c]) => c))];
+      }, 'wide');
     },
   };
 }
