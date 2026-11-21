@@ -85,6 +85,30 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
       check(`${part}: and what was on screen stays`, now.tier === 'ultra' && now.outside === 'high', JSON.stringify(now));
       await p.close();
     }
+    // The graphics context lost while the house loads, as a phone switched away from may lose it, and given back.
+    // Regression: the shaders' first use while loading read their compile logs, which a lost context does not have,
+    // and three threw, so the house never opened.
+    {
+      const p = await b.newPage({ viewport: { width: 1366, height: 768 } }), errs = [];
+      p.on('pageerror', e => errs.push(e.message));
+      await p.addInitScript(() => {
+        if (window.top !== window) return;
+        new MutationObserver((_, ob) => {
+          const note = document.getElementById('note');
+          if (note?.textContent !== 'Getting the room ready') return;
+          ob.disconnect();
+          const lose = document.getElementById('view').getContext('webgl2').getExtension('WEBGL_lose_context');
+          lose.loseContext();
+          setTimeout(() => lose.restoreContext(), 1500);
+        }).observe(document, { childList: true, subtree: true, characterData: true });
+      });
+      await p.goto(`${BASE}/?auto&q=ultra`);
+      const opened = await p.waitForFunction(() => window.__loft, null, { timeout: 60000 }).then(() => true, () => false);
+      const drawn = opened && await p.waitForFunction(() => !__loft.renderer.getContext().isContextLost() && __loft.renderer.info.render.calls > 0, null, { timeout: 30000 }).then(() => true, () => false);
+      check('the graphics context lost while the house loads, then given back: the house still opens and draws', opened && drawn, JSON.stringify({ opened, drawn }));
+      check('a context lost while loading: no page error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
     // A land worker that never answers. Regression: the outside's rebuild waited on it for good, and every later change
     // of tier waited behind it. Now the page works the land out itself, a slice at a time, and the land is the same.
     {
