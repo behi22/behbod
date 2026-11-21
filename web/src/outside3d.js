@@ -9,6 +9,10 @@ import { makeWater, makeStreaks } from './outside/water.js';
 import { facadeMaterial, makeTowers, makeLights, makeBridge, makeLines, bridgeExtras } from './outside/city.js';
 import { makeVessels, makeGulls, vesselLights, vesselStreaks } from './outside/life.js';
 import { makeRain, makeSnow, makeFireworks } from './outside/weather.js';
+import { terrainData, terrainSteps } from './pure/terrain.js';
+import { makeRebuilder, STALE } from './pure/rebuild.js';
+import { inSlices, stepsInSlices, breathe as breath } from './pure/slices.js';
+import { useAhead } from './useahead.js';
 
 const DEG = Math.PI / 180;
 const PALETTE = ['#ffcf6b', '#ff4d4d', '#5dff7a', '#5b8cff', '#cf6bff', '#fff4e6', '#5ef2ff', '#ff79c6'];
@@ -46,39 +50,113 @@ export function makeOutside3d(opts = {}) {
   scene.add(extras);
 
   let parts = null, quality = null;
+  // One quality's world is made a piece at a time, in this order, into `p`; `land` is the land's numbers (from the
+  // worker, or worked out here when it is null).
+  function pieces(p, q, land) {
+    let lightSpec = null;
+    return [
+      () => { p.sky = makeSky(U, q); },
+      () => { const t = makeTerrain(U, q, land || terrainData(q)); addTowersToSilhouette(t.sil, towers); p.terrain = t.mesh; p.sil = silhouetteTexture(t.sil); },
+      () => { p.facade = facadeMaterial(U, q); lightSpec = P.lightLayout(11, q === 'low' ? 2200 : q === 'high' ? 5200 : 4000, towers); },
+      () => { p.water = makeWater(U, q); },
+      () => { p.towers = makeTowers(U, q, towers, p.facade); },
+      () => { p.bridge = makeBridge(U, q); },
+      () => { p.lines = makeLines(U, q); },
+      () => { p.lights = makeLights(U, q, lightSpec, bridgeExtras(q).concat(vesselLights())); },
+      () => { p.streaks = makeStreaks(U, q, streakList(towers, lightSpec)); },
+      () => { p.vessels = makeVessels(U, q, p.facade); },
+      () => { p.trees = makeTrees(U, q); },
+      () => { p.gulls = makeGulls(U, q); },
+      () => { p.rain = makeRain(U, q); },
+      () => { p.snow = makeSnow(U, q); },
+      () => { p.fireworks = makeFireworks(U, q); },
+    ];
+  }
+  const roots = p => [p.sky?.group, p.terrain, p.water, p.towers, p.bridge, p.lines, p.lights, p.streaks, p.vessels?.mesh,
+    p.trees?.firs, p.trees?.leafy, p.gulls, p.rain, p.snow, p.fireworks?.sky, p.fireworks?.water].filter(Boolean);
+  function attach(p) { U.uSil.value = p.sil; scene.add(...roots(p)); }
+  // Lets go of one quality's world, whole or half made: out of the scene, and its shapes, materials and skyline freed.
+  function drop(p) {
+    const geos = new Set(), mats = new Set(p.facade ? [p.facade] : []);
+    for (const root of roots(p)) {
+      scene.remove(root);
+      root.traverse(o => { if (o.geometry) geos.add(o.geometry); if (o.material) mats.add(o.material); if (o.isInstancedMesh) o.dispose(); });
+    }
+    geos.forEach(g => g.dispose());
+    mats.forEach(m => m.dispose());
+    p.sil?.dispose();
+  }
   function build(q) {
-    const sky = makeSky(U, q);
-    const terrain = makeTerrain(U, q);
-    addTowersToSilhouette(terrain.sil, towers);
-    U.uSil.value = silhouetteTexture(terrain.sil);
-    const facade = facadeMaterial(U, q);
-    const lightSpec = P.lightLayout(11, q === 'low' ? 2200 : q === 'high' ? 5200 : 4000, towers);
-    const p = {
-      sky, terrain: terrain.mesh, facade, sil: U.uSil.value,
-      water: makeWater(U, q),
-      towers: makeTowers(U, q, towers, facade),
-      bridge: makeBridge(U, q), lines: makeLines(U, q),
-      lights: makeLights(U, q, lightSpec, bridgeExtras(q).concat(vesselLights())),
-      streaks: makeStreaks(U, q, streakList(towers, lightSpec)),
-      vessels: makeVessels(U, q, facade),
-      trees: makeTrees(U, q), gulls: makeGulls(U, q),
-      rain: makeRain(U, q), snow: makeSnow(U, q), fireworks: makeFireworks(U, q),
-    };
-    scene.add(sky.group, p.terrain, p.water, p.towers, p.bridge, p.lines, p.lights, p.streaks, p.vessels.mesh,
-      p.trees.firs, p.trees.leafy, p.gulls, p.rain, p.snow, p.fireworks.sky, p.fireworks.water);
+    const p = {};
+    for (const piece of pieces(p, q, null)) piece();
+    attach(p);
     return p;
   }
   function teardown() {
     if (!parts) return;
-    scene.remove(extras);
-    const geos = new Set(), mats = new Set();
-    scene.traverse(o => { if (o.geometry) geos.add(o.geometry); if (o.material) mats.add(o.material); if (o.isInstancedMesh) o.dispose(); });
-    geos.forEach(g => g.dispose());
-    mats.forEach(m => m.dispose());
-    parts.sil.dispose();
-    scene.clear();
-    scene.add(extras);
+    drop(parts);
     parts = null;
+  }
+  // A change of quality builds the new world in the background while the old one stays up, then swaps it in whole:
+  // built in one go it held a slowed phone for up to 0.6 s. The land comes from a worker, the other pieces one per
+  // breath, and every shader is built before the swap, both ways the outside is drawn. A worker that fails, is missing
+  // or has not answered in a few seconds gives null, and the page works the land out itself a slice at a time; one
+  // still working when the build is stopped is let go at once.
+  function landInWorker(q, gone) {
+    if (typeof Worker !== 'function') return Promise.resolve(null);
+    let w = null;
+    try { w = new Worker(new URL('./outside/terrainworker.js', import.meta.url), { type: 'module' }); } catch (e) { return Promise.resolve(null); }
+    return new Promise((resolve, reject) => {
+      const until = performance.now() + 5000;
+      let watch = 0;
+      const end = v => { if (!w) return; clearInterval(watch); w.terminate(); w = null; if (v === STALE) reject(STALE); else resolve(v); };
+      watch = setInterval(() => { if (gone()) end(STALE); else if (performance.now() > until) end(null); }, 100);
+      w.onmessage = ({ data }) => end(data.error ? null : data);
+      w.onerror = () => end(null);
+      w.postMessage({ q });
+    });
+  }
+  const landOnPage = (q, gone) => stepsInSlices(terrainSteps(q), { rest: async () => { await breath(); if (gone()) throw STALE; } });
+  // A piece at a time, a slice of a frame's time each, so asking for them holds no frame either.
+  async function shadersFor(p, gone) {
+    const r = opts.renderer;
+    if (!r?.compileAsync) return;
+    const picture = new THREE.WebGLRenderTarget(1, 1);
+    try {
+      for (const target of [null, picture]) {
+        const jobs = [];
+        // A build stopped part way still waits for the shaders it asked for: three's wait throws once their materials go.
+        try {
+          await inSlices(roots(p), root => {
+            if (gone()) throw STALE;
+            const was = r.getRenderTarget();
+            try { r.setRenderTarget(target); jobs.push(r.compileAsync(root, camera, scene)); } finally { r.setRenderTarget(was); }
+          }, { rest: breath });
+        } finally { await Promise.all(jobs); }
+      }
+    } finally { picture.dispose(); }
+    const mats = new Set();
+    for (const root of roots(p)) root.traverse(o => { for (const m of [].concat(o.material || [])) mats.add(m); });
+    await useAhead(r, mats, { rest: breath, stale: gone });
+  }
+  async function buildInBackground(q, { made, stale }) {
+    const gone = () => stale() || disposed;
+    const land = await landInWorker(q, gone) ?? await landOnPage(q, gone);
+    if (gone()) throw STALE;
+    const p = {};
+    made.push(p);
+    for (const piece of pieces(p, q, land)) { await breath(); if (gone()) throw STALE; piece(); }
+    await shadersFor(p, gone);
+    if (gone()) throw STALE;
+    return p;
+  }
+  let rebuilder = null;
+  function swapIn(p, q) {
+    const old = parts;
+    attach(p);
+    parts = p; quality = q;
+    month = 0; holId = undefined; slowLeft = 0;
+    if (old) drop(old);
   }
 
   const flags = { time: null, date: null, weather: null, fireworks: false, aurora: false };
@@ -173,7 +251,7 @@ export function makeOutside3d(opts = {}) {
     dt = Math.min(Math.max(dt || 0, 0), 0.25);
     tNow = t;
     const q = tier();
-    if (q !== quality) rebuild(q);
+    if (rebuilder) rebuilder.want(q); else if (q !== quality) rebuild(q);
     slowLeft -= dt;
     if (slowLeft <= 0) { slowLeft = 0.5; slow(); }
 
@@ -270,11 +348,13 @@ export function makeOutside3d(opts = {}) {
 
   function dispose() {
     disposed = true;
+    rebuilder?.stop();
     teardown();
     U.uNoise.value.dispose();
     U.uWave.value.dispose();
   }
 
   rebuild(tier());
+  rebuilder = makeRebuilder({ current: quality, build: buildInBackground, swap: swapIn, discard: made => made.forEach(drop), onError: e => console.warn('[outside] the new quality could not be built', e) });
   return { scene, camera, tick, light, deathStar, dispose, U, extras, clock, towers, vessels: VS, get parts() { return parts; }, get quality() { return quality; } };
 }

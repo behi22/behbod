@@ -394,7 +394,7 @@ export function makeKnight(scene, meta, roots, { renderer }) {
   root.add(base);
 
   const [w, h, d] = CASE, gl = 0.008;
-  const tint = new THREE.MeshBasicMaterial({ color: 0x9fb6d8, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide });
+  const tint = new THREE.MeshBasicMaterial({ color: 0x9fb6d8, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
   const shine = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.05, metalness: 0, envMap: env, envMapIntensity: 0.55, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const glass = new THREE.Group(), lid = new THREE.Group();
   // A plain tint plus an additive reflection: three dims the reflections of transparent materials.

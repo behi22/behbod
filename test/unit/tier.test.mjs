@@ -1,0 +1,327 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { TIERS, tierStep, refreshFrom, effectsOf } from '../../web/src/pure/tier.js';
+
+// Regression: ultra and high share every effect, yet each switch between them rebuilt and recompiled the whole effects
+// chain, a 75 to 165 ms freeze at 1440x900 on a 2x screen, the switch this automatic quality makes most.
+test('a switch between ultra and high only changes the sharpness', () => {
+  assert.equal(effectsOf('ultra'), effectsOf('high'));
+  assert.notEqual(TIERS.ultra.ratio, TIERS.high.ratio);
+});
+
+test('a switch that adds or drops an effect needs another effects chain', () => {
+  for (const [a, b] of [['high', 'medium'], ['medium', 'low'], ['ultra', 'low']]) assert.notEqual(effectsOf(a), effectsOf(b), `${a} and ${b}`);
+});
+
+const slow = Array(60).fill(30), fast = Array(60).fill(16.7);
+// Runs stretches through the judge, one every 2.5 s from `start`, and returns the tier after each.
+function run(tier, stretches, start, state = { top: tier }) {
+  const seen = [];
+  stretches.forEach((times, k) => { state = tierStep(tier, times, start + k * 2500, state); tier = state.tier; seen.push(tier); });
+  return { seen, state };
+}
+
+// Regression: the six quiet seconds were counted from the page's first byte, so on a slow phone (the house opens about
+// 11 s in) they were over before the first frame, and its first busy seconds dropped the quality.
+test('the quiet seconds run from when the judge starts, not from page load', () => {
+  const { seen } = run('medium', [slow, slow, slow, slow], 14000, { top: 'medium', from: 11500 });
+  assert.deepEqual(seen, ['medium', 'medium', 'medium', 'low']);
+});
+
+test('a switch starts the quiet seconds again, so its own freeze and new shaders are not judged', () => {
+  const { seen } = run('ultra', [slow, slow, slow, slow, fast, fast], 7000);
+  assert.deepEqual(seen, ['ultra', 'high', 'high', 'high', 'high', 'high']);
+});
+
+test('the quiet seconds forget a slow stretch from before them, and keep the good ones', () => {
+  let state = tierStep('ultra', slow, 7000, { top: 'ultra' });
+  state = tierStep('ultra', slow, 9500, { ...state, from: 8000 });
+  assert.equal(state.tier, 'ultra');
+  assert.equal(state.slowRuns, 0);
+  state = tierStep('high', fast, 20000, { top: 'ultra', goodRuns: 1 });
+  state = tierStep('high', fast, 22500, { ...state, from: 21000 });
+  assert.equal(state.goodRuns, 2);
+});
+
+// His laptop at 1440x900 on a 2x screen (the b2 run): a stretch on ultra was slow 7 times in 15, on high 4 in 60.
+function replay(seed, minutes) {
+  let s = seed;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647, odds = { ultra: 7 / 15, high: 4 / 60, medium: 0.02, low: 0 };
+  let tier = 'ultra', state = { top: 'ultra', from: 6300 }, switches = 0;
+  for (let now = 8800; now < 6300 + minutes * 60000; now += 2500) {
+    state = tierStep(tier, Array(100).fill(rnd() < odds[tier] ? 30 : 9), now, state);
+    if (state.tier !== tier) switches++;
+    tier = state.tier;
+  }
+  return switches;
+}
+
+// Regression: it tried ultra again after 10 s, 30 s, 90 s and then every 6 minutes for good, two switches and a
+// stutter each time: 5 switches in 3 minutes on his laptop, 9 in 30. A rare unlucky run (two slow stretches in its
+// first seconds on high) still costs one more try down and up.
+test('on his laptop the quality settles: 3 switches in 30 minutes in at least 97 visits in 100, never more than 5', () => {
+  const runs = Array.from({ length: 300 }, (_, k) => replay(k + 1, 30));
+  assert.ok(runs.filter(n => n <= 3).length >= 0.97 * runs.length, `${runs.filter(n => n > 3).length} of 300 over 3`);
+  assert.ok(Math.max(...runs) <= 5, `${Math.max(...runs)} switches`);
+});
+
+test('a tier that fails twice, at the start or after a try back up, is left for the rest of the visit', () => {
+  const { seen, state } = run('ultra', [slow, slow, ...Array(8).fill(fast), slow, slow, ...Array(200).fill(fast)], 7000);
+  assert.deepEqual(seen.slice(0, 12), ['ultra', 'high', 'high', 'high', 'high', 'high', 'high', 'ultra', 'ultra', 'ultra', 'ultra', 'high']);
+  assert.ok(seen.slice(12).every(t => t === 'high'), 'stays on high');
+  assert.equal(state.top, 'high');
+});
+
+test('a tier that holds rides out a short slow patch without a switch', () => {
+  const { seen } = run('ultra', [...Array(40).fill(fast), slow, slow, slow, slow, ...Array(20).fill(fast)], 7000);
+  assert.ok(seen.every(t => t === 'ultra'));
+});
+
+test('a capable machine with a long slow patch steps down but is not held lower: it keeps coming back', () => {
+  const patch = [...Array(40).fill(fast), ...Array(5).fill(slow)];
+  const { seen, state } = run('ultra', [...patch, ...patch, ...patch, ...Array(80).fill(fast)], 7000);
+  assert.equal(seen.at(-1), 'ultra');
+  assert.equal(seen.filter((t, k) => k > 0 && t !== seen[k - 1]).length, 6, 'down and back up after each patch');
+  assert.equal(state.top, 'ultra');
+});
+
+// Frames on every tier as the screen or the browser hands them out, whatever the quality.
+const capped = ms => () => Array(60).fill(ms);
+// Runs a machine whose frame intervals depend on the tier it is on, and returns the tiers seen and the state.
+function machine(frames, stretches, tier = 'ultra') {
+  let state = { top: tier }, now = 7000;
+  const seen = [];
+  for (let k = 0; k < stretches; k++) { state = tierStep(tier, frames(tier), now, state); tier = state.tier; seen.push(tier); now += 2500; }
+  return { seen, state, switches: seen.filter((t, k) => t !== (k ? seen[k - 1] : 'ultra')).length };
+}
+
+// Regression: with frames held to 30 a second (a battery saver) or to a 50 Hz screen, an idle machine walked from ultra
+// down to low within seconds and stayed there, though no tier was any faster. Then it walked down to low and back up
+// (4 switches) and never stepped down again. Now one step down shows the cap: straight back, and nothing fixed.
+test('frames held to 30 a second: one step down shows the cap, so it goes straight back to ultra and stays', () => {
+  const { seen, state, switches } = machine(capped(33.3), 200);
+  assert.equal(seen.at(-1), 'ultra');
+  assert.ok(seen.slice(20).every(t => t === 'ultra'), seen.slice(0, 20).join(' '));
+  assert.ok(switches <= 2, `${switches} switches`);
+  assert.equal(state.floor, 'low', 'no floor fixed');
+  assert.ok(Math.abs(state.held - 33.3) < 0.01, 'judged by the cap pace');
+});
+
+test('a 50 Hz screen: never a step down, the line follows the screen', () => {
+  const { seen, switches } = machine(capped(20.4), 200);
+  assert.ok(seen.every(t => t === 'ultra'));
+  assert.equal(switches, 0);
+});
+
+test('a machine held to 30 fps on ultra by its graphics card and faster on high still steps down, and stays down', () => {
+  const { seen, state } = machine(t => Array(60).fill(t === 'ultra' ? 33.3 : 16.7), 200);
+  assert.ok(seen.slice(30).every(t => t === 'high'), seen.slice(0, 30).join(' '));
+  assert.equal(state.floor, 'low');
+});
+
+// A graphics card held to two refreshes on most frames: it still makes a frame in one refresh now and then, as a card
+// does where some views are lighter, which a frame cap never does.
+const mostly30 = () => [...Array(88).fill(33.3), ...Array(12).fill(16.7)];
+test('on a 60 Hz screen, a graphics card too slow for one frame per refresh on ultra and high, but not on medium, gets to medium', () => {
+  const { seen } = machine(t => (t === 'ultra' ? Array(60).fill(33.3) : t === 'high' ? mostly30() : Array(60).fill(16.7)), 200);
+  assert.ok(seen.slice(60).every(t => t === 'medium'), seen.slice(0, 60).join(' '));
+});
+
+test('a graphics card that only gets faster with no effects at all is followed down to low', () => {
+  const { seen } = machine(t => (t === 'low' ? Array(60).fill(16.7) : t === 'ultra' ? Array(60).fill(33.3) : mostly30()), 200);
+  assert.ok(seen.slice(40).every(t => t === 'low'), seen.slice(0, 40).join(' '));
+});
+
+// The price of telling a cap in one step: a machine whose every frame on ultra and on high comes at exactly two
+// refreshes, never one, looks just like a 30 fps cap, so it stays on ultra rather than walking down to find a tier
+// that helps.
+test('frames held at exactly two refreshes on ultra and high alike are taken for a cap', () => {
+  const { seen, switches } = machine(t => Array(60).fill(t === 'low' ? 16.7 : 33.3), 200);
+  assert.equal(seen.at(-1), 'ultra');
+  assert.ok(switches <= 2, `${switches} switches`);
+});
+
+// One stretch of frames from a screen refreshing every `r` ms, nine in ten taking `fast` refreshes and one in ten `slow`,
+// each measured a little late, as a page measures them.
+const stretch = (r, fast, slow) => [...Array(90).fill(r * fast + 0.4), ...Array(10).fill(r * slow + 0.4)];
+// Whether the judge calls a stretch slow: on a shaky tier with one slow stretch already, a second steps it down.
+const judged = (times, state = {}) => tierStep('ultra', times, 30000, { top: 'ultra', slowRuns: 1, record: { ultra: [10, 10] }, ...state }).tier !== 'ultra';
+
+// Regression: the line was a fixed 20 ms. On a 50 Hz screen every frame is 20 ms, so an idle machine stepped down to
+// low; on 144 Hz a frame of three refreshes (20.8 ms, 48 fps) counted as slow while 60 Hz forgave anything under 33 ms.
+// Now the line is about 50 fps on every screen: 20 ms plus half the screen's refresh.
+for (const [hz, ok, bad] of [[60, 1, 2], [120, 2, 3], [144, 3, 4], [165, 3, 4], [50, 1, 2], [30, 1, 2]]) {
+  test(`on a ${hz} Hz screen, frames of ${ok} refresh(es) are fine and frames of ${bad} are slow`, () => {
+    const r = 1000 / hz;
+    assert.equal(judged(stretch(r, 1, ok), { refresh: r }), false);
+    assert.equal(judged(stretch(r, 1, bad), { refresh: r }), true);
+  });
+}
+
+test('the screen is also learned from the frames themselves: the quickest stretch seen sets the refresh', () => {
+  // No estimate from loading: a 144 Hz screen shows itself in its quick frames and three-refresh frames are forgiven.
+  const r = 1000 / 144;
+  assert.equal(judged(stretch(r, 1, 3)), false);
+  // A screen read as slower while loading than the frames now show is corrected by the frames.
+  assert.equal(judged(stretch(r, 1, 3), { refresh: 1000 / 60 }), false);
+});
+
+test('a slow machine is not taken for a slow screen: frames held to 30 a second by the card still step down on a 60 Hz screen', () => {
+  const steady = Array(100).fill(33.3);
+  assert.equal(judged(steady, { refresh: 1000 / 60 }), true, 'the screen read while loading');
+  assert.equal(judged(steady), true, 'no reading at all: a 60 Hz screen is assumed, never a slow one');
+});
+
+test('the refresh read while loading: the quick frames between the busy ones, or nothing if there were too few', () => {
+  const busy = [...Array(80).fill(0).map((_, i) => 40 + (i % 7) * 30), ...Array(20).fill(8.33)];
+  assert.ok(Math.abs(refreshFrom(busy) - 8.33) < 0.01);
+  assert.ok(Math.abs(refreshFrom([...Array(60).fill(20), ...Array(20).fill(140)]) - 20) < 0.01, 'a 50 Hz screen');
+  assert.equal(refreshFrom(Array(10).fill(16.7)), null);
+  assert.equal(refreshFrom([]), null);
+  assert.ok(Math.abs(refreshFrom([0, 0, 0.1, ...Array(40).fill(16.67)]) - 16.67) < 0.01, 'gaps too short to be frames are left out');
+  assert.equal(refreshFrom(Array(50).fill(0.2)), null);
+  assert.equal(refreshFrom(Array(50).fill(3.2)), 4, 'never quicker than a 240 Hz screen');
+});
+
+// Regression: a battery cap that started mid visit walked down to low and back up (4 switches), then fixed the floor at
+// ultra, so a machine that later really struggled could never step down again.
+test('a battery cap that starts mid visit (the screen read at 120 Hz) costs one step down and back, and fixes nothing', () => {
+  let tier = 'ultra', state = { top: 'ultra', refresh: 1000 / 120 }, now = 7000;
+  const seen = [];
+  for (let k = 0; k < 120; k++) { state = tierStep(tier, k < 20 ? Array(100).fill(8.33) : Array(100).fill(1000 / 30), now, state); tier = state.tier; seen.push(tier); now += 2500; }
+  assert.ok(seen.slice(40).every(t => t === 'ultra'), seen.join(' '));
+  assert.ok(switchesOf(seen) <= 2, `${switchesOf(seen)} switches: ${seen.join(' ')}`);
+  assert.equal(state.floor, 'low');
+});
+
+// Regression: a cap was told by frames held at a whole number of refreshes of the screen as learned so far. On a 144 Hz
+// screen a 30 fps cap is 4.8 refreshes, and a shaky ultra steps down before the line has learned the cap's pace, so the
+// cap was missed: down to low and back (4 switches) and the floor fixed at ultra. A cap whose frames keep to the
+// screen's own refreshes (34.7 ms on 144 Hz, 36.4 ms on 165 Hz) was missed on a steady ultra too.
+test('a 30 fps battery cap mid visit costs one step down and back on every common screen, on a shaky ultra too', () => {
+  for (const hz of [60, 75, 90, 100, 120, 144, 165, 240]) {
+    const r = 1000 / hz;
+    for (const cap of new Set([1000 / 30, Math.round(1000 / 30 / r) * r].filter(c => c > 28.4 && c < 38))) {
+      for (const record of [null, { ultra: [8, 5] }]) {
+        const { seen, state } = visit([[record ? 3 : 20, () => Array(100).fill(r)], [60, () => Array(100).fill(cap)]], { top: 'ultra', refresh: r, ...(record && { record }) });
+        const what = `${hz} Hz, frames every ${cap.toFixed(1)} ms, ${record ? 'shaky' : 'steady'}: ${seen.join(' ')}`;
+        assert.ok(switchesOf(seen) <= 2, what);
+        assert.equal(seen.at(-1), 'ultra', what);
+        assert.equal(state.floor, 'low', what);
+      }
+    }
+  }
+});
+
+// Regression: each cap that caught a shaky ultra counted as a failed try of it, though the step down was undone, so after
+// two caps one real stutter was its third failure and ultra was not tried again for the rest of the visit.
+test('a step down undone by a cap is no failed try: after two caps, one real stutter still lets ultra be tried again', () => {
+  const r = 1000 / 120, smooth = () => Array(100).fill(r), capped = () => Array(100).fill(1000 / 30);
+  const stutter = t => (t === 'ultra' ? [...Array(80).fill(r), ...Array(20).fill(1000 / 30)] : smooth());
+  const { seen, state } = visit([[3, smooth], [12, capped], [8, smooth], [12, capped], [8, smooth], [6, stutter], [40, smooth]], { top: 'ultra', refresh: r, record: { ultra: [10, 10] } });
+  const after = seen.slice(43), down = after.indexOf('high');
+  assert.ok(down >= 0 && down < 6, `the stutter steps down: ${after.join(' ')}`);
+  assert.ok(after.slice(down).includes('ultra'), `and ultra is tried again: ${after.join(' ')}`);
+  assert.equal(state.top, 'ultra');
+});
+
+const held30 = () => Array(100).fill(1000 / 30);
+test('a cap that catches a shaky ultra on its second failed try still goes back to ultra, and ultra stays its top', () => {
+  const { seen, state } = visit([[60, held30]], { top: 'ultra', refresh: 1000 / 120, record: { ultra: [8, 4] }, fails: { ultra: 1 } });
+  assert.equal(seen.at(-1), 'ultra', seen.join(' '));
+  assert.equal(state.top, 'ultra');
+});
+test('under a battery cap, a machine that then really struggles on ultra still steps down to a tier that keeps the cap pace', () => {
+  const struggle = t => (t === 'ultra' ? [...Array(70).fill(1000 / 30), ...Array(30).fill(2000 / 30)] : held30());
+  const { seen } = visit([[20, () => Array(100).fill(8.33)], [30, held30], [80, struggle]], { top: 'ultra', refresh: 1000 / 120 });
+  assert.ok(seen.slice(-40).every(t => t === 'high'), seen.slice(50).join(' '));
+});
+
+test('once the cap lifts it is forgotten: later frames held at two refreshes on ultra, quicker on high, step down', () => {
+  const gpu = t => (t === 'ultra' ? held30() : Array(100).fill(1000 / 60));
+  const { seen, state, now: end } = visit([[20, () => Array(100).fill(8.33)], [30, held30], [10, () => Array(100).fill(8.33)]], { top: 'ultra', refresh: 1000 / 120 });
+  assert.equal(state.held, null);
+  const after = visit([[60, gpu]], state, end);
+  assert.ok(after.seen.slice(-20).every(t => t === 'high'), after.seen.join(' '));
+  assert.equal(seen.at(-1), 'ultra');
+});
+
+// Regression: when no step down helped, the floor was fixed for the rest of the visit, so a machine that later got much
+// slower on ultra and was smooth on high could never step down.
+test('a floor set when no step down helped lifts once frames are clearly worse than they were then', () => {
+  const ragged = late => [...Array(100 - late).fill(1000 / 60), ...Array(late).fill(50)];
+  const worse = t => (t === 'ultra' ? ragged(80) : Array(100).fill(1000 / 60));
+  const first = visit([[60, () => ragged(50)]], { top: 'ultra', refresh: 1000 / 60 });
+  assert.equal(first.state.floor, 'ultra', 'no tier helped, so the floor is set');
+  const later = visit([[60, worse]], first.state, first.now);
+  assert.ok(later.seen.slice(-20).every(t => t === 'high'), later.seen.join(' '));
+});
+
+// Stretches from a list of [count, frames] pairs, run through the judge from ultra; returns the tiers seen.
+function visit(plan, state = { top: 'ultra' }, now = 7000) {
+  let tier = state.tier || 'ultra';
+  const seen = [];
+  for (const [count, frames] of plan) for (let k = 0; k < count; k++) { state = tierStep(tier, frames(tier), now, state); tier = state.tier; seen.push(tier); now += 2500; }
+  return { seen, state, now };
+}
+// A 60 Hz screen where a few frames are drawn a little late (another task ran first), as a page measures them.
+const lateAt60 = () => [...Array(85).fill(1000 / 60 + 0.4), ...Array(15).fill(25)];
+
+// Regression: the quickest frames ever seen set the screen for the rest of the visit, so a window moved from a 144 Hz
+// screen to a 60 Hz one kept the 144 Hz line (23.5 ms) and a few late frames of 25 ms walked a smooth machine down.
+test('a window moved from a 144 Hz screen to a 60 Hz one is judged by the 60 Hz line within a few stretches', () => {
+  const at144 = () => Array(100).fill(1000 / 144 + 0.4);
+  const { seen } = visit([[10, at144], [60, lateAt60]], { top: 'ultra', refresh: 1000 / 144 });
+  assert.ok(seen.every(t => t === 'ultra'), seen.join(' '));
+});
+
+test('a window moved from a 60 Hz screen to a 144 Hz one is judged by the 144 Hz line: four-refresh frames are slow', () => {
+  const r = 1000 / 144, stutter = () => [...Array(85).fill(r + 0.4), ...Array(15).fill(r * 4)];
+  const { seen } = visit([[10, () => Array(100).fill(1000 / 60 + 0.4)], [40, stutter]], { top: 'ultra', refresh: 1000 / 60 });
+  assert.ok(seen.includes('high'), seen.join(' '));
+});
+
+// Regression: one stretch with catch-up frames (a short gap after a late one) set the screen to 240 Hz for good.
+test('one odd stretch of very short gaps does not tighten the line for the rest of the visit', () => {
+  const odd = () => [...Array(80).fill(1000 / 60 + 0.4), ...Array(20).fill(5)];
+  const { seen } = visit([[5, lateAt60], [1, odd], [60, lateAt60]], { top: 'ultra', refresh: 1000 / 60 });
+  assert.ok(seen.every(t => t === 'ultra'), seen.join(' '));
+});
+
+test('frames alone never make the screen slower than 60 Hz: a 30 fps battery cap mid visit is still slow', () => {
+  const { seen } = visit([[20, () => Array(100).fill(8.33)], [20, () => Array(100).fill(1000 / 30)]], { top: 'ultra', refresh: 1000 / 120 });
+  assert.ok(seen.includes('high'), seen.join(' '));
+});
+
+// On a 60 Hz screen frames come in whole refreshes: a stretch of 100 frames with `late` of them two refreshes long.
+const at60 = late => [...Array(100 - late).fill(1000 / 60), ...Array(late).fill(2000 / 60)];
+const switchesOf = seen => seen.filter((t, k) => k > 0 && t !== seen[k - 1]).length;
+// Regression: a step down had to make frames 10% quicker on average, but on 60 Hz a tier that was slow with 11 late
+// frames in 100 has an average only 11% over a smooth one, so a smooth tier below did not count. Ultra stuttering with
+// 11 late frames in 100 walked down to low and back, then stayed on ultra, stuttering, for the rest of the visit.
+test('on 60 Hz, a tier below that is no longer slow has bought something, though its average is about the same', () => {
+  const { seen, state } = machine(t => at60(t === 'ultra' ? 11 : 0), 200);
+  assert.ok(!seen.includes('medium') && !seen.includes('low'), seen.slice(0, 20).join(' '));
+  assert.ok(seen.slice(60).every(t => t === 'high'), seen.slice(0, 60).join(' '));
+  assert.notEqual(state.floor, 'ultra');
+});
+
+// Regression: ultra with 20 late frames in 100 and high with 8 (smooth by the line) went on to medium, since high's
+// average was not 10% better, and the visit saw 7 switches instead of 3.
+test('on 60 Hz, a step down stops at the first tier that is smooth', () => {
+  const { seen } = machine(t => at60({ ultra: 20, high: 8, medium: 2, low: 0 }[t]), 200);
+  assert.ok(!seen.includes('medium'), seen.slice(0, 40).join(' '));
+  assert.ok(switchesOf(seen) <= 3, `${switchesOf(seen)} switches: ${seen.slice(0, 40).join(' ')}`);
+  assert.ok(seen.slice(60).every(t => t === 'high'));
+});
+
+// Regression: a switch that adds or drops an effect built the new effects chain and compiled its shaders inside one
+// frame: 150 to 310 ms on his laptop at 2x, 80 to 230 ms on a slowed phone. Now it is built in the background, one
+// chain per set of effects, and ultra and high share theirs.
+test('each tier names its set of effects; ultra and high share one, every other pair differs', () => {
+  assert.equal(effectsOf('ultra'), effectsOf('high'));
+  const sets = ['low', 'medium', 'high'].map(effectsOf);
+  assert.equal(new Set(sets).size, 3);
+  assert.equal(effectsOf('low'), 'none');
+  assert.equal(effectsOf('nope'), null);
+});
