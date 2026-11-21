@@ -26,13 +26,15 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
     for (const q of ['ultra', 'low']) {
       const { p, errs } = await open(b, q);
       const before = await p.evaluate(() => __loft.renderer.info.programs.length);
+      let hole = false;
       for (const [x, y, z, yaw] of TOUR) {
         await p.evaluate(([v, yw]) => { __loft.pos.set(v.x, v.y + 0.05, v.z); __loft.yaw = yw; }, [b2t(x, y, z), yaw]);
         await p.waitForTimeout(1200);
+        hole = (await p.evaluate(() => __loft.scene.getObjectByName('screen_video0')?.material.opacity === 0)) || hole;
       }
       const built = await p.evaluate(() => __loft.renderer.info.programs.length) - before;
-      // The screening wall's screen changes its own material when its video starts: that one is built when it plays.
-      check(`${q}: shaders built on a walk round the house, after the page opened`, built <= 1, `${built}`);
+      check(`${q}: the walk passes the screening wall while its video plays through the see-through hole`, hole);
+      check(`${q}: shaders built on a walk round the house, after the page opened`, built === 0, `${built}`);
       check(`${q}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
