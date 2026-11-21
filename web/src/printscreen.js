@@ -14,9 +14,9 @@ export const CSS = `
 .ps-status .ps-pic { width: 44px; height: 44px; flex: none; }
 .ps-status .ps-what { flex: 1; min-width: 0; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
 .ps-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,.1); margin-top: 6px; overflow: hidden; }
-.ps-bar i { display: block; height: 100%; width: 0; background: #3ee6c4; border-radius: 2px; transition: width .25s linear; }
-.ps-bar.ps-warm i { width: 30%; animation: ps-warm 1.1s ease-in-out infinite alternate; background: #f2b630; }
-@keyframes ps-warm { from { margin-left: 0; } to { margin-left: 70%; } }
+.ps-bar i { display: block; height: 100%; width: 100%; background: #3ee6c4; border-radius: 2px; transform-origin: left center; transform: scaleX(0); transition: transform .25s linear; }
+.ps-bar.ps-warm i { width: 30%; transform: none; animation: ps-warm 1.1s ease-in-out infinite alternate; background: #f2b630; }
+@keyframes ps-warm { from { transform: translateX(0); } to { transform: translateX(233.33%); } }
 .ps-label { font: 700 11px/1.2 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; letter-spacing: .12em; color: #8a93a6; margin: 12px 2px 6px; display: flex; justify-content: space-between; }
 .ps-grid { flex: 1 1 auto; min-height: 96px; overflow-y: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; align-content: start; padding: 2px; overscroll-behavior: contain; }
 .pn-box .ps-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px 5px; border-radius: 12px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.07);
@@ -174,8 +174,9 @@ export function printScreen(pr, { touch = false } = {}) {
     if (p.model !== shown) { shown = p.model; picture(p.model, pic); }
     // The line under the button said it was printing; once it could not, only the status says so.
     if (pr.failed !== failed) { failed = pr.failed; if (failed) { said = ''; show(); } }
+    // The bar moves by transform only, so a slow phone's page is not laid out again every frame while it prints.
     bar.classList.toggle('ps-warm', pr.mine && pr.heating);
-    bar.firstChild.style.width = pr.mine && pr.heating ? '' : `${Math.round(k * 100)}%`;
+    bar.firstChild.style.transform = pr.mine && pr.heating ? '' : `scaleX(${Math.round(k * 100) / 100})`;
     const text = pr.failed ? 'That one could not be printed. Press Print to try again, or pick another.'
       : !pr.mine ? `On the bed: ${d}, part way through. Pick one to print your own.`
         : pr.heating ? `Warming up the nozzle for ${d}.`

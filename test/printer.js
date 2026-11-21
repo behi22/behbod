@@ -93,6 +93,10 @@ async function frameGaps(p, run) {
   await run();
   return p.evaluate(() => { const a = __gaps.slice(2); window.__gaps = null; a.sort((x, y) => x - y); return { n: a.length, median: +a[a.length >> 1].toFixed(1), worst: +a[a.length - 1].toFixed(1) }; });
 }
+// The first selector a page sees puts Playwright's own code into it: a 30 to 60 ms task on a 4x slower phone, the test's and
+// not the house's. It goes in before the processor is slowed.
+const warmSelectors = async p => { await p.$('#snd'); await p.locator('#snd').count(); await p.waitForSelector('#snd', { state: 'attached' }); };
+const centre = (p, sel) => p.$eval(sel, el => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
 const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice());
 const sit = async p => { await p.evaluate(() => __loft.useDesk()); await p.waitForFunction(() => document.querySelector('.dt.on'), null, { timeout: 15000 }); await p.waitForTimeout(700); };
 const type = async (p, text) => { await p.keyboard.type(text); await p.keyboard.press('Enter'); await p.waitForTimeout(150); };
@@ -357,14 +361,14 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       await p.click('.ps-tile >> text=rubber duck'); await p.click('.ps-print');
       const seen = () => p.evaluate(() => {
         const bar = document.querySelector('.ps-bar'), r = __loft.printer;
-        return { failed: r.failed, heating: r.heating, k: r.progress, sounding: r.sounding, warm: bar.classList.contains('ps-warm'), moving: getComputedStyle(bar.firstChild).animationName, width: bar.firstChild.style.width, status: document.querySelector('.ps-what').textContent, said: document.querySelector('.pn-said').textContent };
+        return { failed: r.failed, heating: r.heating, k: r.progress, sounding: r.sounding, warm: bar.classList.contains('ps-warm'), moving: getComputedStyle(bar.firstChild).animationName, fill: bar.firstChild.style.transform, status: document.querySelector('.ps-what').textContent, said: document.querySelector('.pn-said').textContent };
       });
       await p.waitForTimeout(800);
       const first = await seen();
       // Longer than the nozzle's warm-up, so a bar that only waited for it would have moved on by now.
       await p.waitForTimeout(2500);
       const later = await seen();
-      const stopped = s => s.failed && !s.heating && s.k === 0 && !s.sounding && !s.warm && s.moving === 'none' && s.width === '0%' && /could not be printed/.test(s.status) && s.said === '';
+      const stopped = s => s.failed && !s.heating && s.k === 0 && !s.sounding && !s.warm && s.moving === 'none' && s.fill === 'scaleX(0)' && /could not be printed/.test(s.status) && s.said === '';
       check('a print that fails: the bar stops, nothing hums, and the screen says it could not print', stopped(first) && stopped(later), JSON.stringify({ first, later }));
       await p.click('.ps-print');
       await untilDone(p); await p.waitForTimeout(400);
@@ -430,23 +434,26 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
     if (want('smooth')) {
       const { ctx, p, errs } = await open(b, UPRIGHT, { save: null });
       await standAt(p, SPOT); await untilBuilt(p);
+      await warmSelectors(p);
       const cdp = await ctx.newCDPSession(p);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-      const gaps = async run => {
-        await p.evaluate(() => { const gaps = window.__gaps = []; let last = performance.now(); const f = t => { if (window.__gaps !== gaps) return; gaps.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); });
-        await run();
-        const g = await p.evaluate(() => { const a = __gaps.slice(2); window.__gaps = null; a.sort((x, y) => x - y); return { n: a.length, median: +a[a.length >> 1].toFixed(1), worst: +a[a.length - 1].toFixed(1) }; });
-        return g;
-      };
-      const base = await gaps(() => p.waitForTimeout(2500));
-      const opening = await gaps(async () => { await p.evaluate(() => __loft.act('printer')); await p.waitForTimeout(2500); });
-      const building = await gaps(async () => { await p.tap('.ps-tile >> text=chess knight'); await p.tap('.ps-print'); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000 }).catch(() => {}); await p.waitForTimeout(500); });
-      const keyring = await gaps(async () => { await p.evaluate(() => __loft.printer.ask('a keychain to build')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000 }).catch(() => {}); await p.waitForTimeout(500); });
+      const base = await frameGaps(p, () => p.waitForTimeout(2500));
+      const opening = await frameGaps(p, async () => { await p.evaluate(() => __loft.act('printer')); await p.waitForTimeout(2500); });
+      // The builds happen with the screen open, after taps on it, so the house is timed that way too: the same taps (a model,
+      // a colour) without a build, for longer than either build. Taps go where a finger would, by position.
+      const tile = await centre(p, '.ps-tile >> text=chess knight'), gold = await centre(p, '.ps-sw[aria-label="gold"]'), go = await centre(p, '.ps-print');
+      const still = await frameGaps(p, async () => { await p.touchscreen.tap(tile.x, tile.y); await p.waitForTimeout(700); await p.touchscreen.tap(gold.x, gold.y); await p.waitForTimeout(4300); });
+      const building = await frameGaps(p, async () => { await p.touchscreen.tap(go.x, go.y); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000, polling: 100 }).catch(() => {}); await p.waitForTimeout(500); });
+      const knight = await state(p);
+      const keyring = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('a keychain to build')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000, polling: 100 }).catch(() => {}); await p.waitForTimeout(500); });
+      const word = await state(p);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-      console.log('frame gaps with the processor 4x slower, phone size (ms):', JSON.stringify({ base, opening, building, keyring }));
+      console.log('frame gaps with the processor 4x slower, phone size (ms):', JSON.stringify({ base, opening, still, building, keyring }));
       // A plain turn of the camera costs the house about 110 ms on such a phone, so opening (which moves it) is held to that.
       check('4x slower phone: opening the screen costs no more than turning the camera', opening.worst < 140, `worst ${opening.worst} ms, idle worst ${base.worst} ms`);
-      check('4x slower phone: building a model or a keychain keeps frames coming', building.worst < base.worst + 25 && keyring.worst < base.worst + 25, `model worst ${building.worst} ms, keychain worst ${keyring.worst} ms, idle worst ${base.worst} ms`);
+      // Held to the house idle both as it was timed before (screen shut) and as the builds are (screen open, tapped), whichever is stricter.
+      const limit = Math.min(base.worst, still.worst) + 25;
+      check('4x slower phone: building a model or a keychain keeps frames coming', knight.print.model === 'knight' && !!knight.built && word.print.model === 'word' && !!word.built && building.worst < limit && keyring.worst < limit, `model worst ${building.worst} ms, keychain worst ${keyring.worst} ms, idle worst ${base.worst} ms shut and ${still.worst} ms open, so under ${limit} ms`);
       check('smooth: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
