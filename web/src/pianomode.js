@@ -1,7 +1,7 @@
 // Sitting at the piano: the keyboard plays it (A W S E D F T G Y H U J K O L P ;, Z and X shift the octave), the
 // keys on screen light up and can be tapped. Each song has two ways: Learn (the next keys glow gold and wait for you)
 // and Play for me (it plays on, with BH-22 on the duet, even after you stand up and walk off). N shows the note names
-// on the keys.
+// on the keys, M starts the metronome, - and = set its tempo.
 const CSS = `
 .pm { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; width: min(760px, calc(100vw - 32px));
   box-sizing: border-box; padding: 12px; border-radius: 14px; background: rgba(10, 12, 18, .86); border: 1px solid rgba(255,255,255,.14);
@@ -23,6 +23,8 @@ const CSS = `
 .pm-keys.names .pm-n { display: block; }
 .pm-w .pm-n { bottom: 19px; color: #2a2e36; font-size: 11px; }
 .pm-b .pm-n { bottom: 5px; color: #d8dee9; font-size: 9px; font-weight: 600; }
+.pm-tempo { min-width: 7ch; text-align: center; color: #e8edf5; }
+.pm-tempo.on { color: #3ee6c4; }
 @media (max-width: 560px) { .pm-keys.names .pm-b .pm-n { display: none; } .pm-w .pm-n { font-size: 10px; bottom: 18px; } }
 `;
 const LO = 48, HI = 84, BLACK = new Set([1, 3, 6, 8, 10]);
@@ -31,15 +33,22 @@ const NAMES = ['C', 'C\u266f', 'D', 'D\u266f', 'E', 'F', 'F\u266f', 'G', 'G\u266
 // The Cs carry their octave (C4 is middle C), so the names also say where you are on the keyboard.
 export const noteName = m => NAMES[m % 12] + (m % 12 === 0 ? Math.floor(m / 12) - 1 : '');
 
-export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }) {
+export function makePianoMode(piano, { onExit, onPlay, onLearned, metronome = null, store = null }) {
   if (!document.getElementById('pm-css')) { const s = document.createElement('style'); s.id = 'pm-css'; s.textContent = CSS; document.head.append(s); }
   let el = null, keys = {}, duet = true, active = false, lesson = null, hint = null, board = null, struck = -1e9;
-  let names = store?.get('loft.notenames') === '1', namesBtn = null;
+  let names = store?.get('loft.notenames') === '1', namesBtn = null, metBtn = null, tempo = null;
   function showNames() {
     board?.classList.toggle('names', names);
     namesBtn?.setAttribute('aria-pressed', String(names));
   }
   function toggleNames() { names = !names; store?.set('loft.notenames', names ? '1' : '0'); showNames(); }
+  function showMetronome() {
+    if (!metBtn) return;
+    metBtn.setAttribute('aria-pressed', String(metronome.on));
+    tempo.textContent = `${metronome.bpm} bpm`;
+    tempo.classList.toggle('on', metronome.on);
+  }
+  metronome?.listen(showMetronome);
   const light = (m, on, who) => { const k = keys[m]; if (!k) return; k.classList.toggle('on', on && who !== 'bh22'); k.classList.toggle('duet', on && who === 'bh22'); };
   function labels() {
     for (const k of Object.values(keys)) k.querySelector('span')?.remove();
@@ -69,6 +78,13 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }
     const tools = document.createElement('div'); tools.className = 'pm-row';
     namesBtn = button('Note names', toggleNames); namesBtn.title = 'Show the note names on the keys (N)'; namesBtn.setAttribute('aria-keyshortcuts', 'N');
     tools.append(namesBtn);
+    if (metronome) {
+      metBtn = button('Metronome', () => metronome.toggle()); metBtn.title = 'Start or stop the metronome (M)'; metBtn.setAttribute('aria-keyshortcuts', 'M');
+      const slower = button('\u2212', () => metronome.slower()); slower.ariaLabel = 'Slower'; slower.title = 'Slower (-)';
+      const faster = button('+', () => metronome.faster()); faster.ariaLabel = 'Faster'; faster.title = 'Faster (=)';
+      tempo = document.createElement('span'); tempo.className = 'pm-tempo'; tempo.setAttribute('aria-live', 'polite');
+      tools.append(metBtn, slower, tempo, faster);
+    }
     board = document.createElement('div'); board.className = 'pm-keys';
     const whites = []; for (let m = LO; m <= HI; m++) if (!BLACK.has(m % 12)) whites.push(m);
     const w = 100 / whites.length;
@@ -95,6 +111,7 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }
     document.body.append(el);
     labels();
     showNames();
+    showMetronome();
     if (lesson) showStep();
   }
   // Learn: the melody, a step at a time (notes struck together are one step), moved by octaves onto the keys on
@@ -144,8 +161,8 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }
   return {
     get active() { return active; },
     enter() { if (active) return; active = true; build(); },
-    // A song set playing keeps going after you stand up; a lesson ends with you.
-    exit() { if (!active) return; active = false; lesson = null; el?.remove(); el = board = namesBtn = null; },
+    // A song set playing keeps going after you stand up; a lesson and the metronome end with you.
+    exit() { if (!active) return; active = false; lesson = null; metronome?.stop(); el?.remove(); el = board = namesBtn = metBtn = tempo = null; },
     // When you last struck a key yourself (performance.now()), played or tapped.
     get struck() { return struck; },
     // Returns true when the key belonged to the piano.
@@ -154,6 +171,9 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }
       // With Ctrl, Cmd or Alt held the key is the browser's (its zoom, a new window), not the piano's.
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         if (e.code === 'KeyN') { if (!e.repeat) toggleNames(); return true; }
+        if (metronome && e.code === 'KeyM') { if (!e.repeat) metronome.toggle(); return true; }
+        if (metronome && (e.code === 'Minus' || e.code === 'NumpadSubtract')) { metronome.slower(); return true; }
+        if (metronome && (e.code === 'Equal' || e.code === 'NumpadAdd')) { metronome.faster(); return true; }
       }
       const m = piano.keyToMidi(e);
       if (m === null) return false;

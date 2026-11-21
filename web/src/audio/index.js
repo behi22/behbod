@@ -5,6 +5,7 @@ import { makeSfx } from './sfx.js';
 import { makeAmbience } from './ambience.js';
 import { makeSaberAudio } from './saber.js';
 import { makeRunMusic } from './runmusic.js';
+import { makeMetronomeSound } from './metronome.js';
 
 // Rides on the Sound's own context and master gain, and stays silent until sound.start() has made them.
 export function makeAudio(sound) {
@@ -28,9 +29,10 @@ export function makeAudio(sound) {
   };
   const ducks = { house: 1, run: 1 };
   const music = makeMusic(env), piano = makePiano(env), sfx = makeSfx(env), amb = makeAmbience(env), saber = makeSaberAudio(env), runMusic = makeRunMusic(env);
+  const metronome = makeMetronomeSound(env);
 
   return {
-    music, piano, sfx, saber, runMusic,
+    music, piano, sfx, saber, runMusic, metronome,
     ambience: { set: amb.set },
     setListener(pos, forward) {
       const e = env.eng(), p = vec(pos);

@@ -230,8 +230,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   const gull = meta.points.gull ? gather(scene, named('gull_'), b2t(...meta.points.gull)) : null;
   // The 3D printer's moving parts, which the printer module drives.
   const printParts = { head: named('printer_head')[0], gantry: named('printer_gantry')[0], bed: named('printer_bed')[0] };
-  // The piano lamp's bulb marks where its warm glow goes, so it is kept out of the merge.
-  const pianoParts = { lamp: named('pianolamp_glow')[0] };
+  // The piano lamp's bulb (where its warm glow goes) and the metronome's arm (it swings) are kept out of the merge.
+  const pianoParts = { lamp: named('pianolamp_glow')[0], arm: named('metronome_arm')[0] };
   const wardrobeDoors = named('wardrobe_door').concat(named('wardrobe_handle')).map(o => ({ o, x: o.position.x, side: o.name.endsWith('-1') ? -1 : 1 }));
   let wardrobeOpen = 0, wardrobeK = 0;
   const fish = named('fish').map((o, i) => ({ o, x: o.position.x, ph: i * 1.7 }));
