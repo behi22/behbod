@@ -368,22 +368,24 @@ function gear(o) {
   const disc = inflate(extrude(face, 0.75, 0, 'z'), 0.2), f = (x, y, z) => disc(x, y - R - 0.2, z);
   return { f: onBed(blend(0.4, (x, y, z) => f(x, y + 0.35, z), box([2.2, 0.5, 1.4], [0, 0.5, 0], 0.3))), bounds: [-6.4, 0, -1.6, 6.4, 11, 1.6], lip: 1.6 };
 }
+// A flower's petals round the middle, in the plane facing the visitor; an even number is turned half a petal, so none points down the stem.
+export function petalRing(n) {
+  const petal = ellipsoid([0.95, 2.0, 0.42], [0, 2.0, 0]), s = (2 * PI) / n, half = n % 2 ? 0 : s / 2;
+  return (x, y, z) => {
+    const px = x, py = y - 12, pz = z - 0.6;
+    let a = atan2(px, py) - half;
+    const r = hypot(px, py);
+    a -= s * Math.round(a / s);
+    return petal(r * sin(a), r * cos(a), pz + 0.12 * r);
+  };
+}
 function flower(o) {
-  const n = o.sides;
   const pot = lathe([[2.2, 0], [2.8, 3.6], [3.2, 3.7], [3.2, 4.4], [0.01, 4.4]]);
   // The head sits high enough that its lowest petals clear the leaves.
   const stem = rod([0, 4, 0], [0, 10.8, 0.4], 0.36);
   const leaf = mirrorX(turn(ellipsoid([1.7, 0.5, 0.25], [1.5, 6.4, 0.3]), 'z', 0.5, [0.2, 6.0, 0.3]));
-  const petal = ellipsoid([0.95, 2.0, 0.42], [0, 2.0, 0]);
-  // Petals round the middle, in the plane facing the visitor.
-  const petals = (x, y, z) => {
-    const px = x, py = y - 12, pz = z - 0.6, s = (2 * PI) / n;
-    let a = atan2(px, py), r = hypot(px, py);
-    a -= s * Math.round(a / s);
-    return petal(r * sin(a), r * cos(a), pz + 0.12 * r);
-  };
   let f = blend(0.3, pot, stem, leaf);
-  f = blend(0.4, f, petals, sphere(1.25, [0, 12, 0.9]));
+  f = blend(0.4, f, petalRing(o.sides), sphere(1.25, [0, 12, 0.9]));
   return { f: onBed(f), bounds: B(5.2, 16.6, 3.6), lip: 2 };
 }
 function vase(o) { return ringShape({ edge: o.depth > 0 ? 'petal' : 'round', sides: o.sides, depth: o.depth * 0.6, twist: 0, bulge: 0.45, taper: 0.35, lip: 0.35, height: 13, radius: 3.6, hollow: 0.7 }); }

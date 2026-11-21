@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parsePrint, cleanPrint, cleanText, describe, DEFAULT, SHOWN, SWATCHES, COLOURS, MAX_TEXT, sidesOf, printColour } from '../../web/src/pure/printer.js';
-import { MODELS, MODEL } from '../../web/src/pure/models.js';
+import { MODELS, MODEL, petalRing } from '../../web/src/pure/models.js';
 import { buildPrint, slice, REACH, TALLEST, PATH } from '../../web/src/pure/printbuild.js';
 import { meshSdf, finish } from '../../web/src/pure/mesher.js';
 import { letterField, keychain } from '../../web/src/pure/keychain.js';
@@ -361,4 +361,17 @@ test('a black print shows its shape in the dim room: a sheen on the faces the li
   assert.ok(hi - lo > 1.6 * (phi - plo), `lit against shadow: ${(hi - lo).toFixed(0)} with the sheen, ${(phi - plo).toFixed(0)} without`);
   assert.ok(lo < 40, `its shadows stay black (${lo.toFixed(0)})`);
   for (const c of SWATCHES) assert.equal(printColour(c).sheen > 0, c === 'black', c);
+});
+
+test('an even number of petals is turned half a petal, so none points down the stem; every petal is there', () => {
+  for (let n = 5; n <= 12; n++) {
+    const ring = petalRing(n), at = (t, r) => ring(r * Math.sin(t), 12 + r * Math.cos(t), 0.6 - 0.12 * r);
+    // Straight down from the middle of the head, where the stem comes in.
+    assert.ok(at(Math.PI, 3.5) > 0, `${n} petals: one points down the stem`);
+    let petals = 0, was = at(-0.01, 3.5) < 0;
+    for (let t = 0; t < 2 * Math.PI; t += 0.01) { const now = at(t, 3.5) < 0; if (now && !was) petals++; was = now; }
+    assert.equal(petals, n);
+    // The head is the same either side of the stem.
+    for (let t = 0.05; t < Math.PI; t += 0.05) assert.equal(at(t, 3) < 0, at(-t, 3) < 0, `${n} petals at ${t.toFixed(2)}`);
+  }
 });
