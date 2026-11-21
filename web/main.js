@@ -28,6 +28,8 @@ import { makeAria } from './src/aria.js';
 import { makeShahnameh } from './src/shah/index.js';
 import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
+import { makeDeskBits, FAN_SPOT } from './src/deskbits.js';
+import { makeTreatJar } from './src/treatjar.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
@@ -142,7 +144,8 @@ const keyboard = () => {
 };
 const creatures = makeCreatures(scene, meta, {
   findPath, clear: (a, b) => nav.clear(a, b), groundAt: col.groundAt, sound, fx: audio.sfx, keyboard, toast,
-  onEvent: (name, data) => { if (name === 'pishi_keys') { if (mode === 'desk') screens.type(data); } else earn(name); },
+  fan: world.fanAt && { spot: FAN_SPOT, at: world.fanAt }, holo: params.has('holo'),
+  onEvent: (name, data) => { if (name === 'pishi_keys') { if (mode === 'desk') screens.type(data); } else if (name === 'fan') { deskBits.fanOn(performance.now() / 1000); audio.sfx.click(world.fanAt); } else earn(name); },
 });
 function toast(text) {
   const t = $('toast'); if (!t) return;
@@ -263,14 +266,14 @@ screens.command('achievements', say => {
 });
 screens.command('hood', say => { me.toggleHood(); say(me.hoodUp ? 'hood up.' : 'hood down.'); });
 screens.command('shoo', say => say(creatures.shoo() ? 'pishi hops off the keyboard.' : 'nobody is on the keyboard.'));
-screens.command('deploy', say => { say('deploying...', 'build passed. shipped.'); world.deploy(performance.now() / 1000); audio.sfx.deploy(); earn('deploy'); });
+screens.command('deploy', say => deskBits.deploy(say));
 screens.command('scene', (say, arg) => {
   if (!world.scene(arg)) return say('scenes: ' + world.scenes.join('  '));
   say(`lights: ${arg}`, ...(arg === 'visualizer' && !(sound.on && audio.music.current) ? ['play a record and it moves with the music.'] : []));
 });
 screens.command('lights', (say, arg) => { const r = lightsCommand(arg, lights.on); if (r.set !== null) lights.set(r.set); say(...r.lines); });
 screens.command('coolant', (say, arg) => say(world.coolant(arg) ? `coolant: ${arg}` : 'coolant colours: teal  purple  red  gold  white'));
-screens.command('fan', say => say(world.fan() ? 'fan on.' : 'fan off.'));
+screens.command('fan', say => say(deskBits.toggleFan(performance.now() / 1000) ? 'fan on.' : 'fan off.'));
 screens.command('print', (say, arg) => {
   const r = printer?.ask(arg);
   say(...(r ? [r.toLowerCase()] : ['print <shape or any word>: vase  star  heart  gear  spiral  tower  flower  cup', '  then: taller  wider  twist  more points  spikier  or a colour']));
@@ -314,6 +317,10 @@ const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
 me.root.rotation.set(0, facing, 0);
 phys?.place(pos);
+// The DEPLOY button and the desk fan; the pets' treat jar.
+const deskBits = makeDeskBits({ scene, meta, world, screens, creatures, onDeploy: () => { audio.sfx.deploy(); earn('deploy'); } });
+const jar = makeTreatJar(scene, { creatures, sfx: audio.sfx });
+things.items.push(deskBits.spot, jar.spot); window.__desk = deskBits; window.__jar = jar;
 
 const followPose = makeFollowCam(col, meta.regions);
 const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
@@ -450,8 +457,8 @@ function playGame(name, actions) {
   openGame(name, {
     actions,
     onEvent: (type, d) => {
-      if (type === 'win' && GAME_WIN[d.game]) earn(GAME_WIN[d.game]);
-      if (type === 'goal' && d.by === 'you') { earn('goal'); world.goal(performance.now() / 1000); audio.sfx.goalHorn(); }
+      if (type === 'win' && GAME_WIN[d.game]) { earn(GAME_WIN[d.game]); creatures.feel('happy'); }
+      if (type === 'goal' && d.by === 'you') { earn('goal'); world.goal(performance.now() / 1000); audio.sfx.goalHorn(); creatures.feel('happy'); }
     },
   });
 }
@@ -481,6 +488,8 @@ function act(it) {
   if (it.id === 'penalties') return enterPens();
   if (GAME_AT[it.id]) return playGame(GAME_AT[it.id]);
   if (it.id === 'records') return playRecord();
+  if (it.id === 'deploy') return deskBits.press();
+  if (it.id === 'treats') return toast(jar.shake());
   if (it.id === 'telescope') return enterScope();
   if (it.id === 'vader' && saber) return enterSaber();
   if (it.id === 'range') return enterRange();
@@ -681,6 +690,7 @@ function tapMove(e) {
   if (aria?.hit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(aria.say()); }); return; }
   if (shah.noteHit(ray, walkable)) { walkTo(SPOTS.desk, () => { useDesk(); toast(shah.noteSay); }); return; }
   { const it = hello.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
+  { const it = deskBits.hit(ray, walkable) ? deskBits.spot : jar.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   { const it = lights.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
   // Clicking a resident walks me over to them and says hello on arrival.
@@ -874,6 +884,7 @@ function step() {
   screens.tick(now, dt, mode === 'desk', nearDesk);
   deskView.tick(mode === 'desk' && !desk.gliding);
   world.tick(dt, t, mode === 'desk', camera.position, pos, creatures.positions);
+  deskBits.tick(dt, t, cctx); jar.tick(t);
   cctx.mode = mode; cctx.facing = facing; cctx.stand = seat ? seat.at : null;
   // The page knows the mode, so the walking controls strip can step aside while a game or the desk has the screen.
   if (document.body.dataset.mode !== mode) document.body.dataset.mode = mode;

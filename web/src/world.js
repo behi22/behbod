@@ -5,6 +5,8 @@ import { b2t } from './engine.js';
 import { onSwitch } from './pure/lamps.js';
 import { BANDS, settle, follow, kicked, fade, pulse, lively, goalStart, goalShows } from './pure/leds.js';
 import { stripViz } from './stripviz.js';
+import { swim, reach } from './pure/fish.js';
+import { fanSpin, pressDepth, FAN_FROM_DEPLOY } from './pure/desk.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
   E_led_green: [0.25, 1.0, 0.45, 3.5], E_led_blue: [0.25, 0.55, 1.0, 3.5], E_aria_eye: [0.25, 1.0, 0.85, 3.2], E_warm_soft: [1.0, 0.75, 0.45, 2.4], E_bias: [0.35, 0.45, 1.0, 2.6],
@@ -235,23 +237,35 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   const pianoParts = { lamp: named('pianolamp_glow')[0], arm: named('metronome_arm')[0], sheet: named('screen_sheet')[0] };
   const wardrobeDoors = named('wardrobe_door').concat(named('wardrobe_handle')).map(o => ({ o, x: o.position.x, side: o.name.endsWith('-1') ? -1 : 1 }));
   let wardrobeOpen = 0, wardrobeK = 0;
-  const fish = named('fish').map((o, i) => ({ o, x: o.position.x, ph: i * 1.7 }));
+  // Each fish turns about its own middle (its pieces come placed in the room, about the room's origin), and swims only
+  // as far as keeps it inside the water.
+  const water = named('aqua_water')[0];
+  const tank = water ? new THREE.Box3().setFromObject(water) : null;
+  const fish = named('fish').map((o, i) => {
+    o.geometry.computeBoundingBox();
+    const c = o.geometry.boundingBox.getCenter(new THREE.Vector3()), half = (o.geometry.boundingBox.max.x - o.geometry.boundingBox.min.x) / 2;
+    o.geometry.translate(-c.x, -c.y, -c.z); o.position.add(c);
+    return { o, x: o.position.x, z: o.position.z, ph: i * 1.7, amp: tank ? reach(o.position.x, half, tank.min.x, tank.max.x) : 0.25 };
+  });
   const fire = emits.E_fire || [];
   // Unlocks wait dimmed on their stands until earned.
   const unlockParts = (meta.unlocks || []).map(u => ({ id: u.id, parts: named(u.parts).filter(o => o.material.color).map(o => [o, o.material.color.clone()]) }));
   function showUnlocks(ids) { for (const u of unlockParts) for (const [o, c] of u.parts) o.material.color.copy(c).multiplyScalar(ids.includes(u.id) ? 1 : 0.35); }
   showUnlocks([]);
-  // DEPLOY dips when pressed; the desk fan spins (the cage is baked, the blades are added here).
+  // DEPLOY dips when pressed; the desk fan spins. The fan's cage is baked into the desk, so the blades are added here, in
+  // it: where the studio's build puts it, beside the DEPLOY button.
   const deployBtn = named('deploy_btn')[0], deployBase = deployBtn?.material.color.clone();
-  const cage = named('fan_cage')[0];
-  let blades = null, fanOn = true;
-  if (cage) {
+  let cage = null, blades = null, fanOn = false, fanK = 0;
+  if (meta.points.deploy) {
+    const [dx, dy, dz] = FAN_FROM_DEPLOY, [x, y, z] = meta.points.deploy;
+    cage = new THREE.Group();
+    cage.position.copy(b2t(x + dx, y + dy, z + dz));
     blades = new THREE.Group();
-    const bm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.48, 0.5, 0.53), fog: true });
-    for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.055, 0.018), bm); b.position.y = 0.03; const arm = new THREE.Group(); arm.rotation.x = i * Math.PI * 2 / 3; arm.add(b); blades.add(arm); }
-    cage.updateMatrixWorld(true);
-    blades.position.setFromMatrixPosition(cage.matrixWorld);
-    scene.add(blades);
+    const bm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.52, 0.55), fog: true });
+    for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.055, 0.02), bm); b.position.y = 0.032; b.rotation.y = 0.45; const arm = new THREE.Group(); arm.rotation.x = i * Math.PI * 2 / 3; arm.add(b); blades.add(arm); }
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.014, 14).rotateZ(Math.PI / 2), bm);
+    cage.add(blades, hub);
+    scene.add(cage);
   }
   let ariaK = 0, spinning = false;
 
@@ -351,10 +365,11 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       if (left > 0) {
         const g = new THREE.Color(0.1, 1.0, 0.3).multiplyScalar(0.6 + 0.4 * Math.sin(t * 14));
         paintRGB(g, g);
-        if (deployBtn) { deployBtn.scale.y = left > 2.7 ? 0.5 : 1; deployBtn.material.color.setRGB(0.2, 3, 0.6); }
-      } else { deployUntil = 0; applyScene(); if (deployBtn) { deployBtn.scale.y = 1; deployBtn.material.color.copy(deployBase); } }
+        if (deployBtn) { deployBtn.position.y = -0.013 * pressDepth(3 - left); deployBtn.material.color.setRGB(0.2, 3, 0.6); }
+      } else { deployUntil = 0; applyScene(); if (deployBtn) { deployBtn.position.y = 0; deployBtn.material.color.copy(deployBase); } }
     }
-    if (blades && fanOn) blades.rotation.x += dt * 22;
+    fanK = fanSpin(fanK, fanOn, dt);
+    if (blades && fanK) blades.rotation.x += dt * 22 * fanK;
     for (const l of lavas) l.material.uniforms.time.value = t;
     if (tea) {
       for (let i = 0; i < STEAM; i++) {
@@ -384,7 +399,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     if (gull) { gull.rotation.y = Math.sin(t * 0.3) * 0.6; gull.position.y = b2t(...meta.points.gull).y + Math.abs(Math.sin(t * 0.8)) * 0.01; }
     wardrobeK += ((wardrobeOpen > t ? 1 : 0) - wardrobeK) * Math.min(1, dt * 3);
     for (const w of wardrobeDoors) w.o.position.x = w.x + w.side * wardrobeK * 0.45;
-    for (const q of fish) { q.o.position.x = q.x + Math.sin(t * 0.4 + q.ph) * 0.25; q.o.rotation.y = Math.cos(t * 0.4 + q.ph) > 0 ? 0 : Math.PI; }
+    for (const q of fish) { const f = swim(t, q.ph, q.amp); q.o.position.x = q.x + f.dx; q.o.position.z = q.z + f.dz; q.o.rotation.y = f.yaw; }
     for (const d of Object.values(doors)) {
       // An automatic door opens for me and for the residents (BH-22 on a tea run, Jessi following me out).
       if (d.auto && player) d.open = player.distanceTo(d.home) < d.auto || others.some(p => p.distanceTo(d.home) < d.auto);
@@ -426,7 +441,11 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     // gate: how much of the records comes through, 0 with the sound off or faded for the piano.
     listen(music, gate) { records = music; through = gate; music.onBeat(b => { kick = kicked(kick, b.strength); }); },
     get leds() { return { music: mk, viz: viz ? viz.uViz.value : 0, bands: viz ? Array.from(viz.uBands.value) : null, goal: !!goalBeats && performance.now() / 1000 < goalBeats.until, deploy: deployUntil > 0 }; },
-    fan() { fanOn = !fanOn; return fanOn; },
+    // The desk fan on or off; it spins up and down by itself.
+    fan(on) { fanOn = !!on; return fanOn; },
+    get fanSpeed() { return fanK; },
+    fanAt: cage?.position.clone() || null,
+    get deploying() { return deployUntil > 0; },
     setRecord(on) { spinning = on; },
     // The fleet (src/fleet.js) replaces the two baked ships.
     retireFighters() { if (fighters) { fighters.x.visible = false; fighters.t.visible = false; fighters = null; } },

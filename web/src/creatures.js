@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { piece, mesh, glow, sph, cyl, box, rbox, torus, PAINT } from './shapes.js';
 import { b2t } from './engine.js';
 import { firesideAt, byFire } from './pure/shahnameh.js';
+import { MOODS, heart, arch, cross, holoNow, HOLO_TIME, HOLO_TEXT } from './pure/bh22.js';
 
 // The loft's residents, built from simple shapes: BH-22 the droid, the mouse droid it chases, Pishi the grey tabby
 // and Jessi the white Shih Tzu. They walk the same path grid I do and run small daily routines.
@@ -53,7 +55,7 @@ function buildBH22() {
   // The glass of tea it carries on its head.
   const cup = mesh([piece(cyl(0.025, 0.02, 0.06, 14), '#c7902f', [0, 0.034, 0]), piece(cyl(0.038, 0.038, 0.005, 16), '#cdb77d')], PAINT, dome);
   cup.position.set(-0.03, 0.142, 0); cup.visible = false;
-  return { root, body, dome, eye: eyes, eyeMat, cup, wheels, rgb: rgbMat };
+  return { root, body, dome, eye: eyes, round: [...eyes.children], eyeMat, eyeLit: eyeMat.color.clone(), tip, cup, wheels, rgb: rgbMat };
 }
 
 // The mouse droid: a low black box on hidden wheels with a slanted nose, panelled sides, a ridged top deck, a small
@@ -181,6 +183,7 @@ function bubble(parent, y) {
       tex.needsUpdate = true; until = t + dur; sp.visible = true;
     },
     tick(t) { const left = until - t; sp.visible = left > 0; if (sp.visible) sp.material.opacity = Math.min(1, left * 2.5); },
+    hide() { until = 0; sp.visible = false; },
   };
 }
 
@@ -201,7 +204,9 @@ const WORDS = ['beep', 'boop', 'bwee!', 'brrt', 'dweet', 'bip bip'];
 // `fx` is the audio module's effects (positioned in the room); without it the simple synth tones stand in.
 // `findPath(from, to)` resolves to a path or null (planned off the main thread); `clear(from, to)` says whether a straight
 // line between two points stays on walkable floor.
-export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {} }) {
+// `fan`: where BH-22 stands to switch the desk fan on (Blender axes) and the fan itself (three's); `holo` shows its rare
+// hologram on the first chat (?holo).
+export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {}, fan = null, holo = false }) {
   const P = meta.points, agents = [], waits = [], lastPlayer = new THREE.Vector3();
   const items = Object.fromEntries(['bh22', 'pishi', 'jessi'].map(id => [id, { id, r: 1.1, label: '', x: 0, y: 0, z: 0 }]));
   // Pressing E takes turns through each one's things to do, so a visit is never the same thing twice running.
@@ -214,7 +219,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   const turnAt = { pishi: 0, jessi: 0, bh22: 0 };
   // Up on the sill or the tree, Pishi can only be petted.
   const actionFor = id => (id === 'pishi' && !pishi.onFloor ? 'pet' : TURNS[id][turnAt[id] % TURNS[id].length]);
-  let now = 0, lastMode = 'walk';
+  let now = 0, lastMode = 'walk', lastCtx = null, playerSpeed = 0;
   const blip = (fn, a, player) => { if (!player || a.pos.distanceTo(player) < 9) fn(a.pos); };
   let purring = 0;
   const sfx = {
@@ -303,6 +308,120 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   const dock = b2t(...P.bh22_dock);
   place(r2, dock); r2.facing = Math.PI / 2; r2.state = 'dock'; r2.timer = rnd(12, 22); r2.chaseCool = 20; r2.stops = 0;
   let tipAt = 0;
+
+  // Its moods show in its eyes. Each mood's eyes are made the first time they are needed: flat shapes in the eyes' own
+  // glow, where the round eyes were.
+  const moodEyes = {};
+  function eyesFor(kind) {
+    if (moodEyes[kind]) return moodEyes[kind];
+    const outlines = kind === 'hearts' ? [heart()] : kind === 'arcs' ? [arch()] : cross(), geos = [];
+    for (const s of [-1, 1]) for (const o of outlines) geos.push(new THREE.ShapeGeometry(new THREE.Shape(o.map(([x, y]) => new THREE.Vector2(x, y)))).translate(s * 0.03, 0, 0.0025));
+    const m = new THREE.Mesh(mergeGeometries(geos), r2.eyeMat);
+    for (const g of geos) g.dispose();
+    m.visible = false; r2.eye.add(m);
+    return (moodEyes[kind] = m);
+  }
+  let mood = null, moodUntil = 0, bumpAt = -99, touchAt = 0, fondAt = -99;
+  // Resting or on its rounds: free to drop what it is doing for something new.
+  const FREE = ['dock', 'pause', 'patrol', 'home'];
+  function feel(name, time) {
+    if (!MOODS[name]) return;
+    mood = name; moodUntil = now + (time ?? MOODS[name].time);
+  }
+  function tickMood() {
+    if (mood && now >= moodUntil) {
+      mood = null;
+      if (r2.state !== 'petted' && r2.state !== 'play') r2.eyeMat.color.copy(r2.eyeLit);
+    }
+    const m = mood && MOODS[mood];
+    for (const e of r2.round) e.visible = !m;
+    for (const [k, e] of Object.entries(moodEyes)) e.visible = !!m && k === m.eyes;
+    if (!m) return;
+    eyesFor(m.eyes).visible = true;
+    if (m.colour) r2.eyeMat.color.setRGB(...m.colour);
+    else if (r2.state !== 'petted' && r2.state !== 'play') r2.eyeMat.color.copy(r2.eyeLit);
+    r2.eye.scale.y = 1;
+  }
+
+  // Now and then, instead of a tip, it plays a recorded message as a small hologram over its head (see pure/bh22.js).
+  let holoSp = null, holoT = -1, holoShown = false, talks = 0;
+  const later = typeof requestIdleCallback === 'function' ? f => requestIdleCallback(f, { timeout: 2500 }) : f => setTimeout(f, 1200);
+  function holoSprite() {
+    const c = document.createElement('canvas'), W = 512, H = 384;
+    c.width = W; c.height = H;
+    const g = c.getContext('2d'), ink = a => `rgba(150,225,255,${a})`;
+    // The beam up from its head, then the picture: a panel with scan lines, the heading and the message.
+    const beam = g.createLinearGradient(0, H, 0, 250);
+    beam.addColorStop(0, ink(0.35)); beam.addColorStop(1, ink(0.05));
+    g.fillStyle = beam; g.beginPath(); g.moveTo(W / 2 - 5, H); g.lineTo(W / 2 + 5, H); g.lineTo(W - 44, 250); g.lineTo(44, 250); g.closePath(); g.fill();
+    g.beginPath();
+    if (g.roundRect) g.roundRect(24, 24, W - 48, 226, 18); else g.rect(24, 24, W - 48, 226);
+    g.fillStyle = ink(0.14); g.fill();
+    g.strokeStyle = ink(0.85); g.lineWidth = 3; g.stroke();
+    g.fillStyle = ink(0.08);
+    for (let y = 30; y < 246; y += 5) g.fillRect(28, y, W - 56, 2);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = ink(0.9); g.font = "600 25px 'JetBrains Mono', ui-monospace, monospace";
+    g.fillText(HOLO_TEXT.head, W / 2, 66, W - 80);
+    g.fillStyle = '#e4f7ff'; g.font = '600 36px system-ui, sans-serif';
+    HOLO_TEXT.lines.forEach((l, i) => g.fillText(l, W / 2, 130 + i * 52, W - 80));
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    mat.userData.lamp = 'glow';
+    const sp = new THREE.Sprite(mat);
+    sp.name = 'bh22_hologram';
+    sp.scale.set(0.6, 0.45, 1); sp.position.y = 0.62; sp.renderOrder = 7; sp.visible = false;
+    r2.root.add(sp);
+    return sp;
+  }
+  function hologram() {
+    holoShown = true;
+    holoSp ||= holoSprite();
+    holoT = 0;
+    r2.bub.hide();
+    feel('love', HOLO_TIME);
+    sfx.word('hello', r2.pos);
+    toast(`BH-22 plays a message: ${HOLO_TEXT.lines.join(' ')}`);
+  }
+  function tickHolo(dt) {
+    if (holoT < 0) return;
+    holoT += dt;
+    const left = HOLO_TIME - holoT;
+    if (left <= 0) { holoT = -1; holoSp.visible = false; return; }
+    holoSp.visible = true;
+    // It grows out of the beam, flickers now and then like an old recording, and fades at the end.
+    const grow = Math.min(1, holoT / 0.35), flick = Math.sin(now * 47) * Math.sin(now * 13.3) > 0.92 ? 0.45 : 1;
+    holoSp.material.opacity = Math.min(grow, left / 0.5) * flick * (0.9 + 0.1 * Math.sin(now * 9));
+    holoSp.scale.x = 0.6 * (0.6 + 0.4 * grow);
+    holoSp.position.y = 0.62 + Math.sin(now * 2.2) * 0.006;
+  }
+
+  // While the PC is busy it goes over to the desk and switches the fan on with its antenna.
+  let fanMiss = -99;
+  function toFan() {
+    endR2Fun();
+    r2.state = 'fan'; r2.cup.visible = false; r2.speed = 1.2;
+    goTo(r2, fan.spot, ok => {
+      if (!ok) { r2.state = 'pause'; r2.timer = 1; r2.speed = r2.base; fanMiss = now; return; }
+      // The walk grid keeps clear of the desk, so it rolls the last bit straight on.
+      r2.route = [b2t(...fan.spot)]; r2.then = () => { Object.assign(r2, { state: 'fanOn', timer: 1.8, funT: 0, switched: false, speed: r2.base }); };
+    });
+  }
+  function tickFanOn(dt, ctx) {
+    faceTo(r2, fan.at, dt);
+    r2.funT += dt;
+    r2.tip.scale.setScalar(r2.funT > 0.55 && r2.funT < 0.95 ? 1.8 : 1);
+    if (r2.funT >= 0.7 && !r2.switched) {
+      r2.switched = true;
+      // Switched off by hand while it was on its way, or the PC long quiet by now: it leaves the fan as it is.
+      if (ctx.fanCall) { onEvent('fan'); r2.bub.say('fan on', now); feel('happy', 2); } else r2.bub.say('all cool', now);
+      blip(sfx.chirp, r2, ctx.player);
+    }
+    if ((r2.timer -= dt) > 0) return;
+    r2.tip.scale.setScalar(1);
+    r2.state = 'pause'; r2.timer = 2; r2.stops = Math.min(r2.stops, 1);
+  }
   const STOPS = [meta.spots.lounge, meta.spots.window, meta.spots.desk, [14.6, 9.4, 0], [16.0, 8.9, 0], [9.0, 3.6, 0], [2.6, 2.4, 0], [12.0, 12.0, 0]].filter(Boolean);
   function r2Next() {
     if (r2.stops-- <= 0) {
@@ -317,6 +436,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.state = 'pause'; r2.timer = ok ? rnd(3, 6) : 0.5;
       if (!ok) return;
       r2.bub.say(visit ? 'hi Jessi' : pick(WORDS), now); blip(sfx.chirp, r2, lastPlayer);
+      if (visit) feel('love');
       if (visit && jessi.state !== 'nap') wait(jessi, 0.7, () => { jessi.bub.say('woof!', now); blip(sfx.bark, jessi, lastPlayer); });
     });
   }
@@ -363,15 +483,16 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
   // Ends a pet or a play early or on time: its eye colour, dome tilt and hop height go back to normal.
   function endR2Fun() {
-    if (r2.eyeWas !== undefined) { r2.eyeMat.color.setHex(r2.eyeWas); r2.eyeWas = undefined; }
-    r2.dome.rotation.z = 0;
+    if (r2.eyeWas !== undefined) { r2.eyeMat.color.copy(r2.eyeLit); r2.eyeWas = undefined; }
+    r2.dome.rotation.z = 0; r2.tip.scale.setScalar(1);
     if ((r2.state === 'play' || r2.state === 'petted') && r2.baseY !== undefined) r2.pos.y = r2.baseY;
   }
   function r2Fun(kind) {
     endR2Fun();
     r2.route = []; r2.pending = null; r2.epoch++;
     r2.cup.visible = false; r2.speed = r2.base;
-    Object.assign(r2, { state: kind === 'pet' ? 'petted' : 'play', timer: kind === 'pet' ? 2.6 : 3.6, funT: 0, baseY: r2.pos.y, eyeWas: r2.eyeWas ?? r2.eyeMat.color.getHex() });
+    Object.assign(r2, { state: kind === 'pet' ? 'petted' : 'play', timer: kind === 'pet' ? 2.6 : 3.6, funT: 0, baseY: r2.pos.y, eyeWas: true });
+    feel(kind === 'pet' ? 'love' : 'happy', r2.timer);
     r2.bub.say(kind === 'pet' ? '<3' : 'dance!', now);
     sfx.word(kind === 'pet' ? 'yay' : pick(['yay', 'behbod']), r2.pos);
     if (kind === 'pet') love(r2.pos.clone().add(new THREE.Vector3(0, 0.45, 0)));
@@ -396,7 +517,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   function tickR2(dt, ctx) {
     if (storyEarn && r2.state !== 'story') { storyEarn = false; onEvent('bh22'); }
     r2.chaseCool -= dt;
-    const look = r2.moving ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
+    const look = r2.moving || r2.state === 'fanOn' ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
     if (look !== null) r2.dome.rotation.y += (look - r2.dome.rotation.y) * Math.min(1, dt * 3);
     r2.body.rotation.x += ((r2.moving ? 0.07 : 0) - r2.body.rotation.x) * Math.min(1, dt * 5);
     // Wheels roll with the ground covered; the body bobs a little on its legs; the LED eyes blink.
@@ -414,10 +535,15 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.body.rotation.z += ((k.dive ? Math.sign(k.dy) * 0.45 : 0) - r2.body.rotation.z) * Math.min(1, dt * 10);
       return;
     }
+    // It looks up at the fan while it switches it on, and reels for a moment when walked into.
+    r2.dome.rotation.x += ((r2.state === 'fanOn' ? -0.42 : 0) - r2.dome.rotation.x) * Math.min(1, dt * 5);
+    const reel = now - bumpAt;
+    r2.body.rotation.z = reel < 0.7 ? Math.sin(reel * 20) * 0.22 * (1 - reel / 0.7) : 0;
     if (r2.state === 'dock' && !r2.moving) turn(r2, 1, 0, dt, 3);
     if (r2.state === 'dock' && (r2.timer -= dt) < 0) { r2.stops = 2 + Math.floor(rnd(0, 3)); r2Next(); }
     else if (r2.state === 'pause' && (r2.timer -= dt) < 0) r2Next();
     else if (r2.state === 'petted' || r2.state === 'play') tickR2Fun(dt, ctx);
+    else if (r2.state === 'fanOn') tickFanOn(dt, ctx);
     else if (r2.state === 'story') {
       faceTo(r2, ctx.player, dt);
       // Walking off ends the story; the lines not yet told are dropped.
@@ -426,13 +552,26 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       faceTo(r2, ctx.player, dt);
       if ((r2.timer -= dt) < 0) { r2.state = 'pause'; r2.timer = 1; }
     } else if (r2.state === 'chase') {
-      if ((r2.timer -= dt) < 0) { r2.state = 'pause'; r2.timer = 2; r2.speed = r2.base; r2.bub.say('next time', now); }
+      if ((r2.timer -= dt) < 0) { r2.state = 'pause'; r2.timer = 2; r2.speed = r2.base; r2.bub.say('next time', now); feel('dizzy'); }
       else if ((r2.repath -= dt) < 0) { r2.repath = 0.9; goTo(r2, tb(mouse.pos), null); }
     }
     // It goes after the mouse droid whenever it gets close.
     if ((r2.state === 'pause' || r2.state === 'patrol') && r2.chaseCool < 0 && r2.pos.distanceTo(mouse.pos) < 2.5 && Math.abs(r2.pos.y - mouse.pos.y) < 0.3) {
       r2.state = 'chase'; r2.timer = 6; r2.repath = 0; r2.speed = 1.5; r2.chaseCool = 60; mouse.flee = 6;
       r2.bub.say('!!', now); blip(sfx.alert, r2, ctx.player);
+    }
+    if (fan && ctx.fanCall && FREE.includes(r2.state) && now - fanMiss > 20) toFan();
+    // Walked into, it says so, x x; only if I am still moving a moment after the touch, so walking up to say hello is none.
+    const moving = playerSpeed > 1.3 && playerSpeed < 12;
+    if (!touchAt && moving && now - bumpAt > 4 && Math.hypot(ctx.player.x - r2.pos.x, ctx.player.z - r2.pos.z) < 0.3 && Math.abs(ctx.player.y - r2.pos.y) < 0.6) touchAt = now;
+    if (touchAt && now - touchAt > 0.25) {
+      touchAt = 0;
+      if (moving && [...FREE, 'talk', 'fan', 'chase'].includes(r2.state)) { bumpAt = now; feel('dizzy'); r2.bub.say('oof!', now); blip(p => (fx ? fx.bh22('sad', p) : sfx.chirp(p)), r2, ctx.player); }
+    }
+    // Resting, it is glad of Pishi or Jessi coming by.
+    if ((r2.state === 'dock' || r2.state === 'pause') && now - fondAt > 40) {
+      const who = pishi.onFloor && r2.pos.distanceTo(pishi.pos) < 0.7 ? 'Pishi' : jessi.onFloor && r2.pos.distanceTo(jessi.pos) < 0.8 ? 'Jessi' : null;
+      if (who) { fondAt = now; feel('love'); r2.bub.say(`hi ${who}`, now); blip(sfx.chirp, r2, ctx.player); }
     }
   }
 
@@ -540,6 +679,25 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     love(pishi.pos.clone().add(new THREE.Vector3(0, 0.4, 0)));
     pishi.bub.say('mrow!', now); blip(sfx.meow, pishi);
   }
+  // Called by the treat jar: down from wherever she is, then a trot over to `spot` (Blender axes) and a treat there.
+  function pishiCome(spot) {
+    if (pishi.hop || ['keys', 'todesk', 'flee', 'down', 'totreat', 'treat'].includes(pishi.state)) return false;
+    const from = pishi.state;
+    stopPishi(); freshPishi();
+    pishi.bub.say('!', now);
+    const go = () => {
+      pishi.state = 'totreat'; pishi.speed = 1.3;
+      goTo(pishi, spot, ok => { pishi.speed = pishi.base; if (ok && lastCtx) pishiTreat(lastCtx); else pishiNext(); });
+    };
+    const land = () => { pishi.onFloor = true; go(); };
+    // The jump down is part of her way to the treat.
+    pishi.state = 'totreat';
+    if (from === 'window') hop(pishi, b2t(...windowFloor), land);
+    else if (from === 'perch') hops(pishi, [...walkUp].reverse().slice(1).concat(b2t(...treeFloor)), land);
+    else if (from === 'treesit') hops(pishi, [climbUp[0], b2t(...treeFloor)], land);
+    else go();
+    return true;
+  }
   function pishiShoo() {
     if (pishi.state !== 'keys') return false;
     pishi.bub.say('mrrow', now); blip(sfx.meow, pishi);
@@ -587,7 +745,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (st === 'treat') tickPishiTreat(dt);
     if (st === 'treesit' && (pishi.timer -= dt) < 0) pishiDown([climbUp[0], b2t(...treeFloor)], () => { pishi.onFloor = true; pishiNext(); });
     // She runs up the cat tree when Jessi comes too close.
-    if (pishi.onFloor && !pishi.hop && jessi.onFloor && !['flee', 'keys', 'todesk', 'play', 'treat'].includes(pishi.state) && pishi.pos.distanceTo(jessi.pos) < 0.9) {
+    if (pishi.onFloor && !pishi.hop && jessi.onFloor && !['flee', 'keys', 'todesk', 'play', 'treat', 'totreat'].includes(pishi.state) && pishi.pos.distanceTo(jessi.pos) < 0.9) {
       pishi.state = 'flee'; pishi.speed = 2.2;
       pishi.bub.say('hss!', now); blip(sfx.hiss, pishi, ctx.player);
       goTo(pishi, treeFloor, ok => {
@@ -608,9 +766,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   ball.visible = false; scene.add(ball);
   let flight = null, ballGone = 0, roll = null;
   const JESSI_GO = [[11.5, 12.6, 0], [14.6, 9.4, 0], [10.4, 7.0, 0], [3.0, 13.0, 0], [16.5, 12.0, 0], meta.spots.lounge].filter(Boolean);
-  function jessiWake(then) {
+  function jessiWake(then, as = 'waking') {
     if (jessi.onFloor) { then(); return; }
-    jessi.state = 'waking';
+    jessi.state = as;
     jessi.bub.say('*yawn*', now);
     hop(jessi, b2t(...bedFloor), () => { jessi.onFloor = true; jessi.pos.y = groundAt(jessi.pos.x, jessi.pos.z, 0.1); then(); }, 0.4, 0.15);
   }
@@ -730,6 +888,43 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     love(jessi.pos.clone().add(new THREE.Vector3(0, 0.5, 0)));
     jessi.bub.say('woof!', now); blip(sfx.bark, jessi);
   }
+  // Called by the treat jar: up from her bed if she is napping, then a run over to `spot` (Blender axes) and a treat.
+  let biscuit = null;
+  const JESSI_TREAT = 3.2;
+  function jessiCome(spot) {
+    if (jessi.hop || jessi.carry || ['fetch', 'waking', 'totreat', 'treat'].includes(jessi.state)) return false;
+    jessi.route = []; jessi.pending = null; jessi.epoch++;
+    for (const k of POSES) jessi.want[k] = 0;
+    jessi.bub.say('!', now); blip(sfx.bark, jessi, lastPlayer);
+    jessiWake(() => {
+      jessi.state = 'totreat'; jessi.speed = 1.6;
+      goTo(jessi, spot, ok => { jessi.speed = jessi.base; if (ok) jessiTreat(); else jessiNext(lastCtx); });
+    }, 'totreat');
+    return true;
+  }
+  function jessiTreat() {
+    Object.assign(jessi, { state: 'treat', timer: JESSI_TREAT });
+    faceTo(jessi, lastPlayer, 1);
+    // A little bone-shaped biscuit, made the first time she has one.
+    if (!biscuit) {
+      biscuit = mesh([piece(cyl(0.007, 0.007, 0.04, 8), '#d9b277', [0, 0, 0], [0, 0, Math.PI / 2]), ...[-1, 1].flatMap(s => [-1, 1].map(k => piece(sph(0.007, 8, 6), '#d9b277', [s * 0.021, 0, k * 0.006])))], PAINT);
+      scene.add(biscuit);
+    }
+    biscuit.position.copy(jessi.pos).add(new THREE.Vector3(Math.sin(jessi.facing) * 0.2, 0.008, Math.cos(jessi.facing) * 0.2));
+    biscuit.rotation.y = jessi.facing; biscuit.visible = true;
+    jessi.bub.say('?', now);
+  }
+  function tickJessiTreat(dt) {
+    const t = JESSI_TREAT - jessi.timer;
+    // A sniff, head down to crunch it, then a happy bark and a wag.
+    jessi.want.bow = t > 0.5 && t < 2.2 ? 0.6 : 0;
+    if (t > 1.9 && biscuit) biscuit.visible = false;
+    if ((jessi.timer -= dt) > 0) return;
+    jessi.want.bow = 0;
+    jessi.state = 'happy'; jessi.timer = 2.5;
+    love(jessi.pos.clone().add(new THREE.Vector3(0, 0.5, 0)));
+    jessi.bub.say('woof!', now); blip(sfx.bark, jessi);
+  }
   function tickJessi(dt, ctx) {
     if (jessi.carry) ball.position.copy(jessi.head.getWorldPosition(V)).add(new THREE.Vector3(Math.sin(jessi.facing) * 0.11, -0.05, Math.cos(jessi.facing) * 0.11));
     else stepBall(dt);
@@ -743,6 +938,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (st === 'happy' && (jessi.timer -= dt) < 0) { jessi.state = 'follow'; jessi.timer = rnd(10, 18); jessi.repath = 0; jessi.want.bow = 0; }
     if (st === 'petted' && (jessi.timer -= dt) < 0) { jessi.state = 'follow'; jessi.timer = rnd(8, 14); jessi.repath = 0; Object.assign(jessi.want, { lean: 0, roll: 0, blink: 0 }); }
     if (st === 'trick') tickTrick(dt, ctx);
+    if (st === 'treat') tickJessiTreat(dt);
+    else if (biscuit?.visible) biscuit.visible = false;
     if (st === 'fetch') tickFetch(dt);
     if (st === 'follow') {
       const d = jessi.pos.distanceTo(ctx.player);
@@ -753,10 +950,10 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         goTo(jessi, tb(behind), null);
       } else if (d < 1.4 && !jessi.moving) faceTo(jessi, ctx.player, dt);
     }
-    const sit = (st === 'happy' || st === 'petted' || (st === 'trick' && jessi.trick !== 'spin') || (st === 'follow' && !jessi.moving)) && !jessi.hop;
+    const sit = (st === 'happy' || st === 'petted' || st === 'treat' || (st === 'trick' && jessi.trick !== 'spin') || (st === 'follow' && !jessi.moving)) && !jessi.hop;
     jessi.sitK += ((sit ? 1 : 0) - jessi.sitK) * Math.min(1, dt * 4);
     jessi.sleepK += ((st === 'nap' ? 1 : 0) - jessi.sleepK) * Math.min(1, dt * 2);
-    jessi.wag = st === 'happy' || st === 'fetch' || st === 'petted' || st === 'trick' || (st === 'follow' && jessi.pos.distanceTo(ctx.player) < 2) ? 1 : 0.25;
+    jessi.wag = st === 'happy' || st === 'fetch' || st === 'petted' || st === 'trick' || st === 'totreat' || st === 'treat' || (st === 'follow' && jessi.pos.distanceTo(ctx.player) < 2) ? 1 : 0.25;
   }
 
   // ---------- poses ----------
@@ -812,16 +1009,36 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.route = []; r2.then = null; r2.pending = null; r2.epoch++; r2.speed = r2.base;
       if (r2.state.startsWith('keeper')) { r2.state = 'pause'; r2.timer = 1.5; r2.stops = 2; r2.bub.say('good game', now); }
     },
+    // The DEPLOY dance, wherever it is, unless it is out on an errand or playing its message.
+    celebrate() {
+      if (holoT >= 0 || ![...FREE, 'talk', 'chase'].includes(r2.state)) return false;
+      r2Fun('play'); r2.bub.say('shipped!', now);
+      return true;
+    },
+    // How BH-22 feels about something that just happened elsewhere: 'love', 'happy' or 'dizzy'.
+    feel: name => feel(name),
+    get mood() { return mood; },
+    get holo() { return holoT >= 0; },
+    // The treat jar was shaken: whoever is free comes. spots: where each eats, { pishi, jessi } in Blender axes.
+    treats(spots) {
+      const came = [];
+      if (pishiCome(spots.pishi)) came.push('Pishi');
+      if (jessiCome(spots.jessi)) came.push('Jessi');
+      return came;
+    },
+    // Whether either of them is still on the way to the jar.
+    get coming() { return pishi.state === 'totreat' || jessi.state === 'totreat'; },
     // BH-22 and Jessi go through the balcony door, so it opens for them too (the mouse droid would keep it busy).
     positions: [r2.pos, jessi.pos],
     tick(dt, t, ctx) {
-      now = t;
+      now = t; lastCtx = ctx;
       if (purring && now > purring) { fx?.purr(false); purring = 0; }
+      playerSpeed = dt > 0 ? ctx.player.distanceTo(lastPlayer) / dt : 0;
       lastPlayer.copy(ctx.player);
       for (let i = waits.length - 1; i >= 0; i--) { const w = waits[i]; if (w.at > t) continue; waits.splice(i, 1); if (w.a.epoch === w.epoch) w.fn(); }
       if (ctx.mode === 'sit' && lastMode !== 'sit' && ctx.stand) { if (Math.random() < 0.6) bringTea(ctx.stand); else if (byFire(...ctx.stand)) comeTell(ctx.stand); }
       lastMode = ctx.mode;
-      tickR2(dt, ctx); tickMouse(dt, ctx); tickPishi(dt, ctx); tickJessi(dt, ctx);
+      tickR2(dt, ctx); tickMood(); tickHolo(dt); tickMouse(dt, ctx); tickPishi(dt, ctx); tickJessi(dt, ctx);
       for (const a of agents) {
         move(a, dt);
         a.root.position.copy(a.pos);
@@ -847,7 +1064,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       let best = null, bd = Infinity;
       for (const [a, id] of [[r2, 'bh22'], [pishi, 'pishi'], [jessi, 'jessi']]) {
         if (a.hop || Math.abs(p.y - a.pos.y) > 1.0 || (id === 'jessi' && a.state === 'fetch')) continue;
-        if (id === 'bh22' && r2.state.startsWith('keeper')) continue;
+        // In goal, or while its message plays (the prompt would cover it), it is not offered.
+        if (id === 'bh22' && (r2.state.startsWith('keeper') || holoT >= 0)) continue;
         const label = id === 'jessi' && jessi.state === 'nap' ? 'Wake Jessi' : id === 'bh22' && actionFor(id) === 'talk' && nearFire(p) ? 'Ask BH-22 for a story' : LABELS[id][actionFor(id)];
         const d = Math.hypot(p.x - a.pos.x, p.z - a.pos.z);
         if (d <= 1.1 && d < bd) { bd = d; best = items[id]; Object.assign(best, { label, x: a.pos.x, y: a.pos.y, z: a.pos.z }); }
@@ -859,7 +1077,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       const what = actionFor(id);
       if (id === 'bh22') {
         if (r2.pos.distanceTo(ctx.player) > 2.5) { toast('BH-22 is out on patrol somewhere in the house.'); return null; }
-        if (r2.state.startsWith('keeper')) return null;
+        if (r2.state.startsWith('keeper') || holoT >= 0) return null;
         turnAt.bh22++;
         if (what !== 'talk') { r2Fun(what); return { crouch: what === 'pet' }; }
         if (nearFire(ctx.player)) { tellStory(true); return null; }
@@ -867,9 +1085,13 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         endR2Fun();
         r2.state = 'talk'; r2.timer = 3.5; r2.route = []; r2.pending = null; r2.epoch++;
         r2.cup.visible = false; r2.speed = r2.base;
+        onEvent('bh22');
+        if (holoNow({ talks: ++talks, shown: holoShown, roll: Math.random(), force: holo })) { r2.timer = HOLO_TIME; hologram(); return null; }
+        // From the next chat on it may play its message, so the picture is drawn now, in spare time.
+        if (!holoSp && !holoShown) later(() => { holoSp ||= holoSprite(); });
         r2.bub.say(pick(WORDS), now); sfx.word(tipAt === 0 ? 'hello' : pick(['yay', 'behbod', 'hello']), r2.pos);
         toast('BH-22: ' + TIPS[tipAt++ % TIPS.length]);
-        onEvent('bh22');
+        feel('love', 2.5);
         return null;
       }
       if (id === 'pishi') {

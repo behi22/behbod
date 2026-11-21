@@ -399,5 +399,13 @@ export function makeSfx(env) {
       noisy(S, 'bandpass', 700, 0.7, 0.08, 0.005, 0.25, t + 0.42);
       S.play(t, t + 2.3);
     },
+    // The treat jar shaken: dry little treats ticking against the glass, softly.
+    rattle(pos) {
+      const S = go(pos);
+      if (!S) return;
+      const t = S.t;
+      for (let k = 0; k < 9; k++) noisy(S, 'bandpass', 2400 + Math.random() * 1800, 2, 0.12 + Math.random() * 0.1, 0.0005, 0.012 + Math.random() * 0.012, t + k * 0.06 + Math.random() * 0.03);
+      S.play(t, t + 0.7);
+    },
   };
 }
