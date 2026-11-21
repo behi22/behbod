@@ -142,6 +142,25 @@ function pishi() {
     return hypot(r - 3.3, y - 0.65) - 0.62;
   };
   let f = blend(0.6, body, legs, head, ear, tail);
+  // She is a grey tabby: shallow stripes down her back and flanks, an M on her brow, rings round her tail; her chest stays plain.
+  const back = mirrorX((x, y, z) => {
+    const pz = z + 0.4;
+    let d = 9;
+    for (const t of [0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.35]) if (x * sin(t) - pz * cos(t) > 0) d = min(d, abs(x * cos(t) + pz * sin(t)) - 0.22);
+    return max(d, abs(y - 4.7) - 2.6);
+  });
+  // The M: a short line up the middle of her brow and one each side, leaning out.
+  const brow = mirrorX((x, y, z) => max(min(x - 0.07, abs(x - 0.42 - (y - 9.75) * 0.3) * 0.96 - 0.07), abs(y - 10.1) - 0.35, 1.4 - z));
+  // Bars across the fronts of her legs.
+  const bars = mirrorX((x, y, z) => max(min(abs(y - 1.7), abs(y - 2.6), abs(y - 3.5)) - 0.13, abs(x - 0.9) - 0.6, 0.9 - z));
+  const rings = (x, y, z) => {
+    const a = atan2(z + 0.2, x), r = hypot(x, z + 0.2);
+    let d = 9;
+    for (let k = -2.3; k <= 1.0; k += 0.55) if (cos(a - k) > 0) d = min(d, abs(r * sin(a - k)) - 0.12);
+    return max(d, y - 1.6);
+  };
+  const fur = f;
+  f = carve(0.06, fur, union(meet(union(back, rings, bars), (x, y, z) => -(fur(x, y, z) + 0.18)), meet(brow, (x, y, z) => -(fur(x, y, z) + 0.1))));
   f = cut(f, ellipsoid([0.34, 0.42, 0.28], [-0.88, 9.3, 2.62]), ellipsoid([0.34, 0.42, 0.28], [0.88, 9.3, 2.62]));
   f = blend(0.2, f, sphere(0.5, [-0.42, 8.3, 2.95]), sphere(0.5, [0.42, 8.3, 2.95]));
   f = blend(0.1, f, sphere(0.3, [0, 8.78, 3.32]));

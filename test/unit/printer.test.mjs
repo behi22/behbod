@@ -319,3 +319,27 @@ test("the duck's eyes are round dimples with soft rims, not holes with knife-thi
   // One each side, where the head would otherwise be solid.
   for (const z of [1.5, -1.5]) assert.ok(f(3.46, 7.55, z) > 0 && Math.abs(z) < head(7.55), 'an eye is open');
 });
+
+test('the little Pishi is a tabby: shallow stripes on her back and flanks, a plain chest, the same both sides', () => {
+  const { f } = MODEL.pishi.make({ sides: 8, depth: 0 });
+  // How far out her body reaches at a height, at an angle from her back (0) round to her chest (pi).
+  const reach = (t, y) => { for (let r = 5; r > 0; r -= 0.004) if (f(Math.sin(t) * r, y, -0.4 - Math.cos(t) * r) < 0) return r; return 0; };
+  const flank = [], chest = [];
+  for (let t = 0; t <= 1.5; t += 0.025) flank.push(reach(t, 4.7));
+  for (let t = 2.6; t <= Math.PI; t += 0.025) chest.push(reach(t, 4.7));
+  const dips = flank.filter((r, i) => i > 0 && i < flank.length - 1 && r < flank[i - 1] - 0.1).length;
+  assert.ok(dips >= 3, `${dips} stripes down her flank`);
+  assert.ok(Math.max(...flank) - Math.min(...flank) < 0.32, 'the stripes are shallow');
+  for (let i = 1; i < chest.length; i++) assert.ok(Math.abs(chest[i] - chest[i - 1]) < 0.05, 'her chest is plain');
+  // An M on her brow: three grooves across the front of her head.
+  let m = 0;
+  for (const x of [0, 0.54, -0.54]) {
+    const z = d => { for (let zz = 4; zz > 0; zz -= 0.002) if (f(x + d, 10.15, zz) < 0) return zz; return 0; };
+    if (z(0) < (z(-0.17) + z(0.17)) / 2 - 0.04) m++;
+  }
+  assert.equal(m, 3);
+  // Left and right alike above her tail, which curls round one side.
+  for (let x = 0.05; x < 4.6; x += 0.15) for (let y = 2.2; y < 12.7; y += 0.15) for (let z = -4.2; z < 4.2; z += 0.15) {
+    assert.equal(f(x, y, z) < 0, f(-x, y, z) < 0, `at ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}`);
+  }
+});
