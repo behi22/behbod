@@ -1,7 +1,7 @@
 // The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards, the game shelf and its covers, the
 // Shahnameh on the mezzanine opening the reader, and the project frames up the stairs, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8823 node test/lounge.js [outdir] [parts]
-// Parts: khatam, game, shelf, reader, frames, phone.
+// Parts: khatam, game, shelf, reader, frames, phone, smooth (smooth measures frames: run it alone, under `timing`).
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -283,6 +283,51 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
         check(`${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
         await p.close();
       }
+    }
+
+    if (want('smooth')) {
+      // Frame times while the shelf and the board are built behind the scenes, and while each thing opens. A computer
+      // fetches the range 12 s after you come in and builds it behind the scenes, with long frames of its own, so the
+      // openings are timed once it is built, after the house's own story book has opened twice (a visit's first panel
+      // costs extra wherever it is). With a slowed processor (SMOOTH_CPU=4) the house alone has long frames, so the
+      // numbers are printed beside the book's for reading, not judged.
+      const { p, errs } = await open(b, DESK);
+      const cpu = Number(process.env.SMOOTH_CPU || 1), slow = cpu > 1 ? ` (processor ${cpu}x slower)` : '';
+      if (cpu > 1) await (await p.context().newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: cpu });
+      await p.evaluate(() => { window.__frames = []; let last = performance.now(); const f = t => { window.__frames.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); });
+      await p.waitForFunction(() => { const d = __loft.screens.textures.backgammon.image.getContext('2d').getImageData(0, 0, 920, 26).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 47) + Math.abs(d[i + 1] - 106) + Math.abs(d[i + 2] - 76) < 40) n++; return n > 200 && !!__loft.scene.getObjectByName('game_shelf'); }, null, { timeout: 60000, polling: 250 });
+      await p.waitForTimeout(1500);
+      const build = await p.evaluate(() => { const f = window.__frames.slice(5); window.__frames = []; return [Math.max(...f), f.filter(x => x > 33).length, f.length]; });
+      const said = `worst ${build[0].toFixed(1)} ms, ${build[1]} of ${build[2]} over 33 ms`;
+      if (cpu > 1) console.log(`building the shelf and the board behind the scenes${slow}: ${said}`);
+      else check('building the shelf and the board behind the scenes: no frame over 50 ms', build[0] < 50, said);
+      // The khatam's own cost in the game: its four strips at the board's sizes, drawn on a scratch canvas.
+      const strips = await p.evaluate(async () => {
+        const K = await import('./src/khatam.js'), c = document.createElement('canvas');
+        c.width = 900; c.height = 660;
+        const g = c.getContext('2d'), t0 = performance.now();
+        for (const x of [0, 400, 820]) K.bar(g, x, 0, 18, 660);
+        K.bar(g, 380, 20, 26, 620);
+        return performance.now() - t0;
+      });
+      if (cpu > 1) console.log(`the game board's khatam strips${slow}: ${strips.toFixed(1)} ms`);
+      else check('the four khatam strips of the game board cost under 8 ms to draw', strips < 8, `${strips.toFixed(1)} ms`);
+      await p.evaluate(() => __loft.range.load());
+      await p.waitForFunction(() => __loft.range.ready, null, { timeout: 90000 });
+      await p.waitForTimeout(3000);
+      const opening = async act => { await p.evaluate(() => { window.__frames = []; }); await act(); await p.waitForTimeout(1500); const w = await p.evaluate(() => Math.max(...window.__frames)); await p.keyboard.press('Escape'); await p.waitForTimeout(400); return w; };
+      await opening(() => p.evaluate(() => __loft.act('book')));
+      const book = await opening(() => p.evaluate(() => __loft.act('book')));
+      if (cpu > 1) console.log(`the story book opening${slow}: ${book.toFixed(1)} ms`);
+      for (const [spot, key] of [[SHELF.spot, 'games'], [BOOK.spot, 'reader'], [[0.75, 6.42, 1.5], 'projects'], [[15, 15.65, 0], 'the backgammon game']]) {
+        await standAt(p, spot); await p.waitForTimeout(2500);
+        const worst = await opening(() => p.keyboard.press('KeyE'));
+        // The game itself costs about 100 ms to open on main too, so only its khatam strips are judged, above.
+        if (cpu > 1 || key === 'the backgammon game') console.log(`opening ${key}${slow}: worst frame ${worst.toFixed(1)} ms`);
+        else check(`opening ${key}: no frame over 50 ms`, worst < 50, `${worst.toFixed(1)} ms`);
+      }
+      check(`smooth${slow}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
     }
   } finally {
     await b.close();
