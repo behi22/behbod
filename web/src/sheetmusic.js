@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { score, spreadAt, spreadOfBar, barAt, onDesk, TURN } from './pure/sheet.js';
-import { drawSheet, drawSide, sheetState, PAGE } from './sheetdraw.js';
+import { drawSide, sheetState, PAGE } from './sheetdraw.js';
+import { SONGS } from './audio/pure/songs.js';
 
 const COLS = 14;
 const FACING = { '-Y': [0, 0, 1], '+Y': [0, 0, -1], '-X': [-1, 0, 0], '+X': [1, 0, 0] };
@@ -53,6 +54,41 @@ export function makeSheetMusic({ scene, meta, sheet, texture, leaf: leafTex }) {
   scene.add(leaf);
 
   let sc = score(sheetState.song), shown = 0, run = null, turn = null;
+  // Pages are drawn ahead, in spare time, so a new song or a turn only copies them: the next two pages of the song under
+  // way and, while you sit at the piano, the first two of every song. A page not ready when it is needed is drawn then.
+  const ready = new Map(), pool = [], queue = [], planned = { playing: false, seated: false, shown: -1, song: '' };
+  let drawn = 0, waiting = false;
+  const later = typeof requestIdleCallback === 'function' ? f => requestIdleCallback(f, { timeout: 1000 }) : f => setTimeout(f, 50);
+  const keyOf = (id, n) => (n === null ? 'blank' : `${id}:${n}`);
+  function page(id, n) {
+    const k = keyOf(id, n);
+    let c = ready.get(k);
+    if (!c) {
+      c = pool.pop() || Object.assign(document.createElement('canvas'), { width: PAGE.w, height: PAGE.h });
+      drawSide(c.getContext('2d'), score(id), n, n === null || n % 2 ? 'right' : 'left', 0);
+      ready.set(k, c);
+      drawn++;
+    }
+    return c;
+  }
+  function plan(playing, seated) {
+    Object.assign(planned, { playing, seated, shown, song: sc.id });
+    const want = new Map(), add = (id, left, right) => { want.set(keyOf(id, left), [id, left]); want.set(keyOf(id, right), [id, right]); };
+    const next = sc.spreads[shown + 1];
+    if (playing && next) add(sc.id, next.left, next.right);
+    // Every song opens at its first two pages.
+    if (seated) for (const s of SONGS) add(s.id, 0, 1);
+    for (const [k, c] of ready) if (!want.has(k)) { ready.delete(k); if (pool.length < 2) pool.push(c); }
+    queue.length = 0;
+    for (const [k, v] of want) if (!ready.has(k)) queue.push(v);
+    if (queue.length && !waiting) { waiting = true; later(work); }
+  }
+  function work() {
+    waiting = false;
+    const next = queue.shift();
+    if (next) page(...next);
+    if (queue.length) { waiting = true; later(work); }
+  }
   function bend(s) {
     const e = s * s * (3 - 2 * s), th = Math.PI * e, lead = 0.6 * Math.sin(Math.PI * s), du = W / COLS;
     let x = 0, z = 0.0015;
@@ -68,7 +104,8 @@ export function makeSheetMusic({ scene, meta, sheet, texture, leaf: leafTex }) {
   }
   function open(left, right) {
     sheetState.left = left; sheetState.right = right;
-    drawSheet(base);
+    base.drawImage(page(sc.id, left), 0, 0);
+    base.drawImage(page(sc.id, right), PAGE.w, 0);
     texture.needsUpdate = true;
   }
   function show(id) {
@@ -76,16 +113,16 @@ export function makeSheetMusic({ scene, meta, sheet, texture, leaf: leafTex }) {
     sheetState.song = id; sc = score(id); shown = 0;
     open(sc.spreads[0].left, sc.spreads[0].right);
   }
-  // Each page is drawn once: the page being turned is copied onto the leaf, the next left page is drawn on the leaf
-  // and copied back to the desk when it lands, and only the next right page is drawn on the desk itself.
+  // The page being turned is copied onto the leaf with the next left page behind it, which is copied back to the desk
+  // when it lands; the next right page goes straight onto the desk.
   const half = (from, fromX, to, toX) => to.drawImage(from, fromX, 0, PAGE.w, PAGE.h, toX, 0, PAGE.w, PAGE.h);
   function begin(to, synced) {
     const next = sc.spreads[to];
     half(desk, PAGE.w, lg, PAGE.w);
-    drawSide(lg, sc, next.left, 'left');
+    lg.drawImage(page(sc.id, next.left), 0, 0);
     leafTex.needsUpdate = true;
     // Under the lifting page the next right page is already there; the left page stays until the leaf lands on it.
-    drawSide(base, sc, next.right, 'right');
+    base.drawImage(page(sc.id, next.right), PAGE.w, 0);
     sheetState.right = next.right;
     texture.needsUpdate = true;
     turn = { to, synced, p: 0 };
@@ -101,11 +138,14 @@ export function makeSheetMusic({ scene, meta, sheet, texture, leaf: leafTex }) {
   }
   return {
     // Where the sheet is: the song, the pages open, and how far a turn has gone (null when none).
-    get state() { return { song: sc.id, spread: shown, left: sheetState.left, right: sheetState.right, turn: turn ? { to: turn.to, p: turn.p } : null }; },
+    // `ready`: the pages drawn ahead; `drawn`: how many pages it has drawn in all.
+    get state() { return { song: sc.id, spread: shown, left: sheetState.left, right: sheetState.right, turn: turn ? { to: turn.to, p: turn.p } : null, ready: [...ready.keys()], drawn }; },
     get leaf() { return leaf; },
-    // src: the song playing ({ id, run, at, live: true }) or the lesson ({ id, run, at, live: false }), or null.
-    tick(dt, src) {
+    // src: the song playing ({ id, run, at, live: true }) or the lesson ({ id, run, at, live: false }), or null;
+    // seated: someone is at the piano, so a song may start.
+    tick(dt, src, seated = false) {
       if (src && (src.id !== sc.id || src.run !== run)) { run = src.run; show(src.id); }
+      if (!!src !== planned.playing || seated !== planned.seated || shown !== planned.shown || sc.id !== planned.song) plan(!!src, seated);
       if (!turn && src) {
         const target = src.live ? spreadAt(sc, src.at) : spreadOfBar(sc, barAt(sc, src.at));
         if (target <= shown) return;

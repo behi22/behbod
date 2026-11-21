@@ -165,3 +165,10 @@ test('the sheet lies along the music desk as the house builds it, clear of the d
   // Only the sheet's own leaning: it moves less than a centimetre, not sideways, and its top leans back.
   assert.ok(Math.hypot(...move) < 0.01 && Math.abs(move[0]) < 1e-12 && tilt < 0);
 });
+
+test('every song opens at its first two pages, which the piano draws ahead while you sit at it', () => {
+  for (const s of SONGS) {
+    const sp = score(s.id).spreads[0];
+    assert.deepEqual([sp.left, sp.right], [0, 1], s.id);
+  }
+});

@@ -217,11 +217,12 @@ export function drawPage(g, sc, n, ox, side) {
   g.restore();
 }
 
-// One side of the open book (page `n`, or null for a blank page), with its half of the fold.
-export function drawSide(g, sc, n, side) {
-  drawPage(g, sc, n, side === 'left' ? 0 : PAGE.w, side);
+// One side of the open book (page `n`, or null for a blank page), with its half of the fold, at `ox` (by default where
+// that side sits on a canvas of both pages).
+export function drawSide(g, sc, n, side, ox = side === 'left' ? 0 : PAGE.w) {
+  drawPage(g, sc, n, ox, side);
   g.fillStyle = 'rgba(60, 50, 35, 0.35)';
-  g.fillRect(side === 'left' ? PAGE.w - 1 : PAGE.w, 0, 1, PAGE.h);
+  g.fillRect(side === 'left' ? ox + PAGE.w - 1 : ox, 0, 1, PAGE.h);
 }
 export function drawSpread(g, sc, left, right) {
   drawSide(g, sc, left, 'left');

@@ -888,7 +888,7 @@ function step() {
   }
   hello.tick();
   lights.tick(dt, out3d ? out3d.light.dayK : 0, pos);
-  metronome.tick(dt); pianoLamp.tick(dt, audio.piano.playing, pianoMode.struck); sheetMusic.tick(dt, audio.piano.song || pianoMode.lesson);
+  metronome.tick(dt); pianoLamp.tick(dt, audio.piano.playing, pianoMode.struck); sheetMusic.tick(dt, audio.piano.song || pianoMode.lesson, pianoMode.active);
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
   ambience(dt);

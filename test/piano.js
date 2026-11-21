@@ -283,10 +283,15 @@ const SHEET_VIEW = [[18.35, 9.95, 1.62], [18.35, 10.62, 1.26]];
       const st0 = await p.evaluate(() => ({ ...__piano.sheet.state, w: __loft.screens.textures.sheet.image.width, h: __loft.screens.textures.sheet.image.height, leaf: __piano.sheet.leaf.visible }));
       check('the desk opens at the first song\'s first two pages, nothing turning', st0.song === 'gymnopedie' && st0.spread === 0 && st0.left === 0 && st0.right === 1 && !st0.turn && !st0.leaf && st0.w === 840 && st0.h === 560, JSON.stringify(st0));
       await sit(p);
+      // Sitting at the piano, the first two pages of every song are drawn ahead in spare time, so starting one draws none.
+      const firsts = ['gymnopedie', 'fur-elise', 'ode-to-joy'].flatMap(id => [id + ':0', id + ':1']);
+      await p.waitForFunction(f => f.every(k => __piano.sheet.state.ready?.includes(k)), firsts, { timeout: 8000 }).catch(() => {});
+      const pre = await p.evaluate(() => __piano.sheet.state);
       await p.locator('.pm-song', { hasText: 'Fur Elise' }).locator('button', { hasText: 'Play for me' }).click();
       await p.waitForTimeout(200);
       const st1 = await p.evaluate(() => __piano.sheet.state);
       check('a new song opens the sheet at its first page', st1.song === 'fur-elise' && st1.spread === 0 && st1.left === 0 && st1.right === 1, JSON.stringify(st1));
+      check('seated, the first pages of every song are drawn ahead, and starting one draws no page', firsts.every(k => pre.ready?.includes(k)) && st1.drawn === pre.drawn, JSON.stringify({ ready: pre.ready, drawn: [pre.drawn, st1.drawn] }));
       const sc = SH.score('fur-elise');
       const log = await p.evaluate(async until => {
         const out = [];
@@ -297,7 +302,7 @@ const SHEET_VIEW = [[18.35, 9.95, 1.62], [18.35, 10.62, 1.26]];
           const pos = leaf.children[0].geometry.attributes.position;
           let xs = [Infinity, -Infinity], zMin = Infinity;
           for (let i = 0; i < pos.count; i++) { xs = [Math.min(xs[0], pos.getX(i)), Math.max(xs[1], pos.getX(i))]; zMin = Math.min(zMin, pos.getZ(i)); }
-          out.push({ at: s.at, spread: st.spread, p: st.turn ? st.turn.p : null, leaf: leaf.visible, left: st.left, right: st.right, xs, zMin });
+          out.push({ at: s.at, spread: st.spread, p: st.turn ? st.turn.p : null, leaf: leaf.visible, left: st.left, right: st.right, xs, zMin, ready: st.ready, drawn: st.drawn });
           if (s.at > until) break;
         }
         return out;
@@ -311,6 +316,9 @@ const SHEET_VIEW = [[18.35, 9.95, 1.62], [18.35, 10.62, 1.26]];
       check('the page lifts off the desk and lands on the left, staying within the open book', turning.every(r => r.leaf && r.xs[0] >= -W - 1e-3 && r.xs[1] <= W + 1e-3 && r.zMin >= 0.001) && turning.some(r => r.xs[0] < -W * 0.5),
         JSON.stringify(turning.filter((_, i) => i % 6 === 0).map(r => [+r.xs[0].toFixed(3), +r.xs[1].toFixed(3)])));
       check('while it turns, the next right page is already under it; after, both new pages show', turning.every(r => r.left === 0 && r.right === 3) && log.at(-1).left === 2 && log.at(-1).right === 3 && !log.at(-1).leaf, JSON.stringify(log.at(-1)));
+      // The two pages the turn shows were drawn in spare time before it, so the turn itself draws none.
+      const before = log[log.indexOf(turning[0]) - 1];
+      check('the next two pages are drawn ahead of the turn, and the turn draws none', before?.ready?.includes('fur-elise:2') && before.ready.includes('fur-elise:3') && turning[0].drawn === before.drawn, JSON.stringify({ before: before && { ready: before.ready, drawn: before.drawn }, at: turning[0]?.drawn }));
       // The leaf is drawn with the desk sheet's own shader: nothing new to build when a page first turns.
       const shared = await p.evaluate(() => { const P = m => __loft.renderer.properties.get(m).currentProgram; const leaf = P(__piano.sheet.leaf.children[0].material), desk = P(__loft.world.pianoParts.sheet.material); return [!!leaf, leaf === desk]; });
       check('the turning page needs no shader of its own', shared[0] && shared[1], JSON.stringify(shared));
