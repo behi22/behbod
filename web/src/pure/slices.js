@@ -1,5 +1,7 @@
 // A breath: long enough for a frame or two to be drawn.
 export const breathe = () => new Promise(done => setTimeout(done, 30));
+// A breath taken in the page's spare time, or after `wait` ms at the latest: for building nobody is waiting on.
+export const whenIdle = (wait = 300) => new Promise(done => (typeof requestIdleCallback === 'function' ? requestIdleCallback(() => done(), { timeout: wait }) : setTimeout(done, 30)));
 
 // Runs `work` on each item in turn, and after every `budget` ms of it waits on `rest()` (the next frame or so), so a
 // long job is spread over many frames instead of freezing one. The work may be asynchronous; it is waited for.

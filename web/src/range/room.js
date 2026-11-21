@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from '../engine.js';
 import { U, lit, makeDetail } from './lit.js';
 import { MOODS } from '../pure/moods.js';
-import { inSlices } from '../pure/slices.js';
+import { inSlices, whenIdle } from '../pure/slices.js';
 import { useAhead } from '../useahead.js';
 
 // The range's rooms. Unlike the house, whose zones are baked pictures, these are real materials: each surface's own
@@ -32,8 +32,9 @@ export function pulsing(material, P) {
 }
 
 // The rooms are made ready while the visitor is walking about the house, so the work is done a piece at a time with
-// a breath between the pieces: a frame or two gets drawn, and nothing is felt.
-export const breathe = () => new Promise(done => setTimeout(done, 30));
+// a breath between the pieces, taken in the page's spare time: on a slow machine a fixed pause put the pieces inside
+// frames.
+export const breathe = () => whenIdle();
 
 // Builds a scene's shaders ahead of its first frame. The graphics card needs a different program for drawing
 // straight to the screen (the lowest quality) than for drawing into a picture (every other quality, and the look

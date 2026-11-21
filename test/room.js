@@ -218,10 +218,27 @@ async function blurGuard(b) {
   await p.close();
 }
 
+// The range is built behind the scenes while the visitor walks the house, its pieces in the page's spare time.
+// Regression: each breath was a fixed 30 ms, so on a slowed machine the pieces landed inside frames and the walk got
+// more frames over 33 ms than on main.
+async function idleBuild(b) {
+  const p = await b.newPage({ viewport: { width: 1280, height: 800 } }), errs = [];
+  watch(p, errs);
+  await p.addInitScript(() => { const ric = window.requestIdleCallback; window.__idle = 0; if (ric) window.requestIdleCallback = (f, o) => { window.__idle++; return ric(f, o); }; });
+  await p.goto(`${BASE}/?q=ultra`);
+  await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
+  await p.waitForTimeout(1000);
+  const got = await p.evaluate(async () => { const before = window.__idle; await __loft.range.load(); return { idle: window.__idle - before, ready: __loft.range.ready }; });
+  check('the range builds behind the scenes in the page\'s spare time', got.ready && got.idle >= 20, JSON.stringify(got));
+  check('and nothing went wrong', errs.length === 0, errs.slice(0, 3).join(' | '));
+  await p.close();
+}
+
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--autoplay-policy=user-gesture-required'] });
   try {
     await blurGuard(b);
+    await idleBuild(b);
     await desktop(b);
     await low(b);
     await phone(b);

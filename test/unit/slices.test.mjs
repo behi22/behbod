@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inSlices, stepsInSlices } from '../../web/src/pure/slices.js';
+import { inSlices, stepsInSlices, whenIdle } from '../../web/src/pure/slices.js';
 
 // A clock the work moves on by hand, and a log of what ran and where the frame was handed back.
 function bench(costs) {
@@ -44,4 +44,18 @@ test('a rest that throws stops the job there', async () => {
   function* job() { for (;;) { t += 10; ran++; yield; } }
   await assert.rejects(stepsInSlices(job(), { rest: async () => { throw new Error('stop'); }, budget: 8, now: () => t }), /stop/);
   assert.equal(ran, 1);
+});
+
+// The range is built behind the scenes in the page's spare time; a browser without idle callbacks takes a short pause.
+test('a breath for building nobody waits on is taken in idle time, at the latest after its wait', async () => {
+  const asked = [];
+  globalThis.requestIdleCallback = (f, o) => { asked.push(o.timeout); setTimeout(f, 0); return 1; };
+  try {
+    await whenIdle();
+    await whenIdle(120);
+    assert.deepEqual(asked, [300, 120]);
+  } finally { delete globalThis.requestIdleCallback; }
+  const t = Date.now();
+  await whenIdle();
+  assert.ok(Date.now() - t >= 25, 'without idle callbacks, a short pause');
 });
