@@ -33,7 +33,7 @@ export const noteName = m => NAMES[m % 12] + (m % 12 === 0 ? Math.floor(m / 12) 
 
 export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }) {
   if (!document.getElementById('pm-css')) { const s = document.createElement('style'); s.id = 'pm-css'; s.textContent = CSS; document.head.append(s); }
-  let el = null, keys = {}, duet = true, active = false, lesson = null, hint = null, board = null;
+  let el = null, keys = {}, duet = true, active = false, lesson = null, hint = null, board = null, struck = -1e9;
   let names = store?.get('loft.notenames') === '1', namesBtn = null;
   function showNames() {
     board?.classList.toggle('names', names);
@@ -86,7 +86,7 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }
       const m = +e.target.closest('[data-m]')?.dataset.m;
       if (!m) return;
       board.setPointerCapture(e.pointerId);
-      held.set(e.pointerId, m); piano.noteOn(m, 0.75); light(m, true); onPlay(); pressed(m);
+      held.set(e.pointerId, m); piano.noteOn(m, 0.75); light(m, true); onPlay(); pressed(m); struck = performance.now();
     });
     const release = e => { const m = held.get(e.pointerId); if (m) { piano.noteOff(m); light(m, false); held.delete(e.pointerId); } };
     board.addEventListener('pointerup', release);
@@ -146,6 +146,8 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }
     enter() { if (active) return; active = true; build(); },
     // A song set playing keeps going after you stand up; a lesson ends with you.
     exit() { if (!active) return; active = false; lesson = null; el?.remove(); el = board = namesBtn = null; },
+    // When you last struck a key yourself (performance.now()), played or tapped.
+    get struck() { return struck; },
     // Returns true when the key belonged to the piano.
     key(e) {
       if (e.code === 'KeyZ' || e.code === 'KeyX') { piano.keyToMidi(e); labels(); return true; }
@@ -155,7 +157,7 @@ export function makePianoMode(piano, { onExit, onPlay, onLearned, store = null }
       }
       const m = piano.keyToMidi(e);
       if (m === null) return false;
-      if (!e.repeat) { piano.noteOn(m, 0.75); light(m, true); onPlay(); pressed(m); }
+      if (!e.repeat) { piano.noteOn(m, 0.75); light(m, true); onPlay(); pressed(m); struck = performance.now(); }
       return true;
     },
     keyup(e) { const m = piano.keyToMidi(e); if (m !== null) { piano.noteOff(m); light(m, false); } },

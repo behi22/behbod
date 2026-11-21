@@ -16,6 +16,7 @@ import { makeOutside3d } from './src/outside3d.js';
 import { makeRange } from './src/range/index.js';
 import { makeTelescope } from './src/telescope.js';
 import { makePianoMode } from './src/pianomode.js';
+import { makePianoLamp } from './src/pianolamp.js';
 import { makePanels } from './src/panel.js';
 import { makeLiveVideo } from './src/livevideo.js';
 import { makeFleet } from './src/fleet.js';
@@ -174,7 +175,10 @@ const scope = makeTelescope(scene, camera, meta, {
   onSpot: () => { toast('That is no moon.'); earn('telescope'); },
   onExit: () => { mode = 'walk'; me.root.visible = true; },
 });
+// The piano lamp that warms while it plays.
+const pianoLamp = makePianoLamp({ scene, bulb: world.pianoParts.lamp });
 const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano'), onLearned: title => toast(`You played ${title} all the way through.`), store });
+window.__piano = { lamp: pianoLamp };
 const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
@@ -880,6 +884,7 @@ function step() {
   }
   hello.tick();
   lights.tick(dt, out3d ? out3d.light.dayK : 0, pos);
+  pianoLamp.tick(dt, audio.piano.playing, pianoMode.struck);
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
   ambience(dt);
