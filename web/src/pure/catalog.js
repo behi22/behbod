@@ -4,7 +4,7 @@ export const MODELS = [
   { id: 'knight', name: 'chess knight', words: ['knight', 'horse', 'chess', 'chessknight', 'pony'], colour: 'white' },
   { id: 'rocket', name: 'rocket', words: ['rocket', 'spaceship', 'rocketship'], colour: 'red', sides: [3, 8, 4, 'fins'] },
   { id: 'pishi', name: 'little Pishi', words: ['pishi', 'cat', 'kitty', 'kitten', 'pishy'], colour: 'grey' },
-  { id: 'bh22', name: 'mini BH-22', words: ['bh22', 'bh', 'robot', 'droid', 'bot'], colour: 'silver' },
+  { id: 'bh22', name: 'mini BH-22', words: ['bh22', 'bh', 'robot', 'droid', 'bot'], colour: 'black' },
   { id: 'controller', name: 'game controller', words: ['controller', 'gamepad', 'joystick', 'pad', 'gamecontroller'], colour: 'purple' },
   { id: 'trophy', name: 'trophy', words: ['trophy', 'award', 'prize', 'winner', 'champion'], colour: 'gold' },
   { id: 'skull', name: 'skull', words: ['skull', 'skeleton', 'bones'], colour: 'white' },

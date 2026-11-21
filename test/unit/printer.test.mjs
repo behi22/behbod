@@ -282,3 +282,9 @@ test('the page only hands on what the build made: its colours and bounding spher
   for (let i = 0; i < n; i++) r2 = Math.max(r2, (c[0] - b.pos[i * 3]) ** 2 + (c[1] - b.pos[i * 3 + 1]) ** 2 + (c[2] - b.pos[i * 3 + 2]) ** 2);
   assert.deepEqual(b.sphere, [...c, Math.sqrt(r2)]);
 });
+
+test('the mini BH-22 prints black, like the robot in the house', () => {
+  assert.equal(MODEL.bh22.colour, 'black');
+  assert.equal(parsePrint('bh22').said, 'Printing a black mini BH-22.');
+  assert.equal(cleanPrint({ model: 'bh22' }).colour, 'black');
+});
