@@ -863,6 +863,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.route = []; r2.then = null; r2.pending = null; r2.epoch++; r2.speed = r2.base;
       if (r2.state.startsWith('keeper')) { r2.state = 'pause'; r2.timer = 1.5; r2.stops = 2; r2.bub.say('good game', now); }
     },
+    // The DEPLOY dance, wherever it is, unless it is out on an errand.
+    celebrate() {
+      if (![...FREE, 'talk', 'chase'].includes(r2.state)) return false;
+      r2Fun('play'); r2.bub.say('shipped!', now);
+      return true;
+    },
     // How BH-22 feels about something that just happened elsewhere: 'love', 'happy' or 'dizzy'.
     feel: name => feel(name),
     get mood() { return mood; },

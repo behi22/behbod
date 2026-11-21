@@ -418,6 +418,8 @@ export function makeCanvases(meta, opts = {}) {
     },
     // Letters typed by something other than me (Pishi on the keyboard), on their own line so mine stay intact.
     type(text) { keepOpen(desk.st, 'terminal'); say('$ ' + text.slice(0, 40), `command not found: ${text.slice(0, 40)}  (that was Pishi)`); },
+    // Lines from the house into the terminal as it stands (the DEPLOY button's, while the terminal is open).
+    print: (...lines) => say(...lines),
     // Commands the rest of the loft adds: fn(say, argument).
     command(name, fn) { EXTRA[name] = fn; },
     run(text, exit) {

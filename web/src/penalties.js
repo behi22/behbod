@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { penaltyResult, keeperGuess, landing } from './pure/penalties.js';
+import { makeConfetti } from './confetti.js';
 
 // Penalties at the mini goal in the keeper's corner, with BH-22 in goal. Five kicks: aim with the pointer or the
 // arrows, shoot with a click, a tap or Space. BH-22 guesses a side and hops for it; the net or the droid gets the ball.
@@ -32,13 +33,8 @@ export function makePenalties(scene, meta, { creatures, sfx, toast, onGoal, onDo
   mouth.constant = -mouth.normal.dot(lineT);
   const across = new THREE.Vector3(0, 0, -1);
   // Drawn at zero size until the first frame, so its shader is built with the house's, not at the first goal.
-  const BITS = 40, bits = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.04, 0.024), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, fog: true }), BITS);
-  const flying = Array.from({ length: BITS }, () => ({ p: new THREE.Vector3(), v: new THREE.Vector3(), r: new THREE.Euler(), w: new THREE.Vector3() }));
-  const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s4 = new THREE.Vector3();
-  for (let i = 0; i < BITS; i++) { bits.setColorAt(i, new THREE.Color(['#3ee6c4', '#b49cff', '#f3f4f8', '#7d4fe0'][i % 4])); bits.setMatrixAt(i, m4.makeScale(0, 0, 0)); }
-  bits.name = 'goal_confetti'; bits.frustumCulled = false;
-  scene.add(bits);
-  let burstT = -1;
+  const confetti = makeConfetti(scene, { name: 'goal_confetti', colours: ['#3ee6c4', '#b49cff', '#f3f4f8', '#7d4fe0'] });
+  const settle = () => lineT.y + 0.004;
 
   let active = false, state = 'idle', kicks = [], aim = { y: 0, z: GH * 0.45 }, flight = null, wait = 0, hud = null;
   const keeperAt = lineT.clone().add(mouth.normal.clone().multiplyScalar(0.16));
@@ -82,30 +78,10 @@ export function makePenalties(scene, meta, { creatures, sfx, toast, onGoal, onDo
     sfx?.kick?.(ball.position);
   }
   function burst() {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    burstT = 0; bits.visible = true;
-    for (const b of flying) {
-      b.p.copy(lineT).addScaledVector(across, (Math.random() - 0.5) * GW * 0.8).setY(lineT.y + GH * (0.25 + Math.random() * 0.55));
-      b.v.copy(mouth.normal).multiplyScalar(0.5 + Math.random() * 0.9).addScaledVector(across, (Math.random() - 0.5) * 1.4).setY(1.1 + Math.random() * 1.3);
-      b.r.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
-      b.w.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
-    }
-  }
-  function tickBurst(dt) {
-    if (burstT < 0) { bits.visible = false; return; }
-    burstT += dt;
-    if (burstT > 1.8) { burstT = -1; bits.visible = false; return; }
-    const size = Math.min(1, (1.8 - burstT) / 0.4);
-    for (let i = 0; i < BITS; i++) {
-      const b = flying[i];
-      b.v.y -= 2.6 * dt;
-      b.v.multiplyScalar(1 - Math.min(1, dt * 1.4));
-      b.p.addScaledVector(b.v, dt);
-      if (b.p.y < lineT.y + 0.004) { b.p.y = lineT.y + 0.004; b.v.set(0, 0, 0); b.w.set(0, 0, 0); }
-      b.r.set(b.r.x + b.w.x * dt, b.r.y + b.w.y * dt, b.r.z + b.w.z * dt);
-      bits.setMatrixAt(i, m4.compose(b.p, q4.setFromEuler(b.r), s4.setScalar(size)));
-    }
-    bits.instanceMatrix.needsUpdate = true;
+    confetti.burst((p, v) => {
+      p.copy(lineT).addScaledVector(across, (Math.random() - 0.5) * GW * 0.8).setY(lineT.y + GH * (0.25 + Math.random() * 0.55));
+      v.copy(mouth.normal).multiplyScalar(0.5 + Math.random() * 0.9).addScaledVector(across, (Math.random() - 0.5) * 1.4).setY(1.1 + Math.random() * 1.3);
+    }, settle);
   }
   function start() {
     kicks = []; state = 'calling';
@@ -118,12 +94,12 @@ export function makePenalties(scene, meta, { creatures, sfx, toast, onGoal, onDo
     get active() { return active; },
     get state() { return state; },
     get kicks() { return kicks.slice(); },
-    get bursting() { return burstT >= 0; },
+    get bursting() { return confetti.active; },
     enter() { active = true; aim = { y: 0, z: GH * 0.45 }; start(); },
     exit() {
       if (!active) return;
       active = false; state = 'idle'; ring.visible = false; flight = null; rest();
-      burstT = -1; bits.visible = false;
+      confetti.stop();
       hud?.remove(); hud = null;
       creatures.keeperRelease();
       onExit?.();
@@ -151,7 +127,7 @@ export function makePenalties(scene, meta, { creatures, sfx, toast, onGoal, onDo
       look.copy(lineT).setY(lineT.y + GH * 0.4);
     },
     tick(dt) {
-      tickBurst(dt);
+      confetti.tick(dt);
       if (!active || state !== 'flight' || !flight) {
         if (active && state === 'result' && (wait -= dt) <= 0) nextKick();
         return;
