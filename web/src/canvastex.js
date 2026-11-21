@@ -28,6 +28,26 @@ export function livePicture(canvas) {
   return t;
 }
 
+// A big picture (flipY off) goes to the graphics card a band of rows at a time with `rest` between bands, so no frame
+// waits for the whole of it: the range's 4096 px lightmap held the page about 100 ms in one go.
+export async function sendInBands(renderer, t, rest, rows = 512) {
+  const image = t.image, mips = t.generateMipmaps;
+  // Room made for it, nothing copied yet.
+  t.source.dataReady = false;
+  t.needsUpdate = true;
+  renderer.initTexture(t);
+  t.source.dataReady = true;
+  const from = new THREE.Texture(image), band = new THREE.Box2(), at = new THREE.Vector2();
+  try {
+    for (let y = 0; y < image.height; y += rows) {
+      await rest();
+      t.generateMipmaps = mips && y + rows >= image.height;
+      band.min.set(0, y); band.max.set(image.width, Math.min(image.height, y + rows)); at.set(0, y);
+      renderer.copyTextureToTexture(from, t, band, at);
+    }
+  } finally { t.generateMipmaps = mips; }
+}
+
 function send(pic) {
   const { plain, target, t } = pic;
   pic.sent = true;

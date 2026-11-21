@@ -18,6 +18,15 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
     p.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200)); });
     await p.goto(`${BASE}/?auto&q=ultra`);
     await p.waitForFunction(() => window.__loft, null, { timeout: 120000 });
+    // From here, before the range is built behind the scenes: every send of a big decoded picture (2048 px or more), timed.
+    await p.evaluate(() => {
+      const gl = __loft.renderer.getContext(), sub = gl.texSubImage2D;
+      window.__big = [];
+      gl.texSubImage2D = function (...a) {
+        const src = a.at(-1), t = performance.now();
+        try { return sub.apply(this, a); } finally { if ((src instanceof ImageBitmap || src instanceof HTMLImageElement) && src.width >= 2048) __big.push(performance.now() - t); }
+      };
+    });
     await p.waitForFunction(() => __loft.range.ready && !__loft.range.building, null, { timeout: 120000, polling: 250 });
     const at = b2t(2.55, 1.2, 0);
     await p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); __loft.yaw = 0.15; }, at);
@@ -67,7 +76,7 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
       const THREE = await import('three');
       const r = __loft.renderer, gl = r.getContext(), out = [];
       for (const name of names) {
-        const live = __loft.screens.textures[name], c = live.image;
+        const live = name === 'range light' ? __loft.range.room.light : __loft.screens.textures[name], c = live.image;
         const ref = new THREE.CanvasTexture(c);
         Object.assign(ref, { colorSpace: THREE.SRGBColorSpace, flipY: live.flipY, anisotropy: live.anisotropy });
         if (send) live.needsUpdate = true;
@@ -88,6 +97,10 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
       }
       return out;
     }, [names, send]);
+    const big = await p.evaluate(() => __big);
+    check('the range lightmap goes to the card in bands, none holding the page 20 ms (sends, longest ms)', big.length > 1 && Math.max(...big) < 20, `${big.length}, ${big.length ? Math.max(...big).toFixed(1) : '-'}`);
+    const banded = await compare(['range light'], false);
+    check('and it holds the same bytes as when sent whole (bytes that differ, full size/half size)', / 0\/0$/.test(banded[0]), banded[0]);
     const same = await compare(['tv', 'code'], true);
     check('the TV and a desk screen hold the same bytes as when sent the old way (bytes that differ, full size/half size)', same.every(s => / 0\/0$/.test(s)), same.join(', '));
     // Facing the screening wall from close by, its live video plays and the screen becomes a see-through hole: that

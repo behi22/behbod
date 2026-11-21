@@ -6,6 +6,7 @@ import { U, lit, makeDetail } from './lit.js';
 import { MOODS } from '../pure/moods.js';
 import { inSlices } from '../pure/slices.js';
 import { useAhead } from '../useahead.js';
+import { sendInBands } from '../canvastex.js';
 
 // The range's rooms. Unlike the house, whose zones are baked pictures, these are real materials: each surface's own
 // colour and finish, lit by a lightmap that holds the light alone, with the room reflected in the floor and the
@@ -118,7 +119,8 @@ function shrinkInWorker(url, size) {
 export async function loadRangeRoom(meta, renderer, { small = false } = {}) {
   const zone = meta.zones.find(z => z.id === 'range');
   const [gltf, light] = await Promise.all([new GLTFLoader().loadAsync('assets/' + zone.glb), picture('assets/' + zone.light, small)]);
-  light.flipY = false; light.colorSpace = THREE.SRGBColorSpace; light.channel = 1; light.anisotropy = 4; light.needsUpdate = true;
+  light.flipY = false; light.colorSpace = THREE.SRGBColorSpace; light.channel = 1; light.anisotropy = 4;
+  await sendInBands(renderer, light, breathe);
   await breathe();
   const detail = await makeDetail(small ? 128 : 256, breathe);
   await breathe();
