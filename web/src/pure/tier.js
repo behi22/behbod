@@ -62,19 +62,22 @@ export function refreshFrom(intervals) {
 // While a step down is being checked, nothing else is judged.
 // The line between smooth and slow is about 50 fps on every screen: frames come in whole refreshes, so a stretch is
 // slow when its 90th-percentile frame is over 20 ms plus half a refresh (on 60 Hz over 28 ms, two refreshes; on 144 Hz
-// over 23 ms, four). The refresh is the one read while loading (`refresh`), or the quickest stretch seen since
-// (`quick`, its 10th percentile) if quicker; with no reading a 60 Hz screen is assumed, never a slower one, so a slow
-// machine is never taken for a slow screen.
-const FIRST = 4, LONGEST = 144, QUIET = 6000, FAILS = 2, CREDIT = 6, RUN = 2, STEADY_RUN = 5, GAIN = 0.9, LOOKS = 2;
+// over 23 ms, four). The refresh is learned again all visit long, so a window moved to another screen gets that
+// screen's line: it is the middle of the quick frames (each stretch's 10th percentile) of the last few stretches judged
+// (`seen`), starting from the one read while loading (`refresh`, or a 60 Hz screen with no reading), so one odd stretch
+// moves nothing. Frames alone never make it slower than 60 Hz or the loading read, so a slow machine is never taken for
+// a slow screen.
+const FIRST = 4, LONGEST = 144, QUIET = 6000, FAILS = 2, CREDIT = 6, RUN = 2, STEADY_RUN = 5, GAIN = 0.9, LOOKS = 2, SEEN = 5;
 const mean = t => t.reduce((a, v) => a + v, 0) / (t.length || 1), ASSUMED = 1000 / 60;
+const middle = xs => [...xs].sort((a, b) => a - b)[(xs.length - 1) >> 1];
 export function tierStep(current, times, now, state = {}) {
-  const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {}, floor = 'low', drop = null, refresh = null, quick = Infinity } = state;
+  const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {}, floor = 'low', drop = null, refresh = null, seen = [refresh ?? ASSUMED] } = state;
   const i = TIER_ORDER.indexOf(current), lowest = TIER_ORDER.indexOf(floor);
   const base = { ...state, tier: current, slowRuns: 0, goodRuns: 0, waits, top, from, record, fails, floor, drop };
   const next = o => ({ ...base, ...o });
   if (now - from <= QUIET) return next({ goodRuns });
-  const quickNow = Math.min(quick, p10(times));
-  const screen = Math.max(QUICKEST, Math.min(refresh ?? ASSUMED, quickNow));
+  const seenNow = [...seen, p10(times)].slice(-SEEN);
+  const screen = Math.max(QUICKEST, Math.min(Math.max(ASSUMED, refresh ?? 0), middle(seenNow)));
   const slow = p90(times) > 20 + screen / 2;
   if (drop) {
     if (slow && mean(times) > drop.mean * GAIN) {
@@ -85,7 +88,7 @@ export function tierStep(current, times, now, state = {}) {
     }
     base.drop = null;
   }
-  base.quick = quickNow;
+  base.seen = seenNow;
   const [judged = 0, slowOnes = 0] = record[current] || [];
   const mine = { ...record, [current]: [judged + 1, slowOnes + (slow ? 1 : 0)] };
   const shaky = mine[current][1] * 4 >= mine[current][0] + CREDIT;

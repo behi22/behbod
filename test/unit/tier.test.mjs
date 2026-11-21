@@ -185,6 +185,42 @@ test('with the line at 50 fps, a battery cap that starts mid visit (the screen r
   assert.equal(state.floor, 'ultra');
 });
 
+// Stretches from a list of [count, frames] pairs, run through the judge from ultra; returns the tiers seen.
+function visit(plan, state = { top: 'ultra' }) {
+  let tier = 'ultra', now = 7000;
+  const seen = [];
+  for (const [count, frames] of plan) for (let k = 0; k < count; k++) { state = tierStep(tier, frames(tier), now, state); tier = state.tier; seen.push(tier); now += 2500; }
+  return { seen, state };
+}
+// A 60 Hz screen where a few frames are drawn a little late (another task ran first), as a page measures them.
+const lateAt60 = () => [...Array(85).fill(1000 / 60 + 0.4), ...Array(15).fill(25)];
+
+// Regression: the quickest frames ever seen set the screen for the rest of the visit, so a window moved from a 144 Hz
+// screen to a 60 Hz one kept the 144 Hz line (23.5 ms) and a few late frames of 25 ms walked a smooth machine down.
+test('a window moved from a 144 Hz screen to a 60 Hz one is judged by the 60 Hz line within a few stretches', () => {
+  const at144 = () => Array(100).fill(1000 / 144 + 0.4);
+  const { seen } = visit([[10, at144], [60, lateAt60]], { top: 'ultra', refresh: 1000 / 144 });
+  assert.ok(seen.every(t => t === 'ultra'), seen.join(' '));
+});
+
+test('a window moved from a 60 Hz screen to a 144 Hz one is judged by the 144 Hz line: four-refresh frames are slow', () => {
+  const r = 1000 / 144, stutter = () => [...Array(85).fill(r + 0.4), ...Array(15).fill(r * 4)];
+  const { seen } = visit([[10, () => Array(100).fill(1000 / 60 + 0.4)], [40, stutter]], { top: 'ultra', refresh: 1000 / 60 });
+  assert.ok(seen.includes('high'), seen.join(' '));
+});
+
+// Regression: one stretch with catch-up frames (a short gap after a late one) set the screen to 240 Hz for good.
+test('one odd stretch of very short gaps does not tighten the line for the rest of the visit', () => {
+  const odd = () => [...Array(80).fill(1000 / 60 + 0.4), ...Array(20).fill(5)];
+  const { seen } = visit([[5, lateAt60], [1, odd], [60, lateAt60]], { top: 'ultra', refresh: 1000 / 60 });
+  assert.ok(seen.every(t => t === 'ultra'), seen.join(' '));
+});
+
+test('frames alone never make the screen slower than 60 Hz: a 30 fps battery cap mid visit is still slow', () => {
+  const { seen } = visit([[20, () => Array(100).fill(8.33)], [20, () => Array(100).fill(1000 / 30)]], { top: 'ultra', refresh: 1000 / 120 });
+  assert.ok(seen.includes('high'), seen.join(' '));
+});
+
 // On a 60 Hz screen frames come in whole refreshes: a stretch of 100 frames with `late` of them two refreshes long.
 const at60 = late => [...Array(100 - late).fill(1000 / 60), ...Array(late).fill(2000 / 60)];
 const switchesOf = seen => seen.filter((t, k) => k > 0 && t !== seen[k - 1]).length;
