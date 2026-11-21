@@ -59,9 +59,11 @@ export function refreshFrom(intervals) {
 // it (on a 60 Hz screen frames come in whole refreshes, so a smooth tier may average barely less than a slow one), or
 // the next step down is tried (a card too slow for one frame per refresh may show no gain until a lower tier); if none
 // down to the floor helps, the tier goes back to where it was and does not step below it (`floor`) until frames are
-// clearly worse than they were then (`floorAt`). Frames held at one pace, two refreshes or more, on the tier left and
-// the tier below alike are a frame cap (a battery saver): it goes straight back up and judges by the cap's pace
-// (`held`) until quicker frames show the cap has lifted. While a step down is being checked, nothing else is judged.
+// clearly worse than they were then (`floorAt`). Frames held at one pace on the tier left and the tier below alike,
+// none quicker, one and a half refreshes or more and no slower than the line forgives once judged by that pace, are a
+// frame cap (a battery saver's 30 fps): it goes straight back up and judges by the cap's pace (`held`) until quicker
+// frames show the cap has lifted. A step down undone, by a cap or because nothing helped, is no failed try of the tier
+// left. While a step down is being checked, nothing else is judged.
 // The line between smooth and slow is about 50 fps on every screen: frames come in whole refreshes, so a stretch is
 // slow when its 90th-percentile frame is over 20 ms plus half a refresh (on 60 Hz over 28 ms, two refreshes; on 144 Hz
 // over 23 ms, four). The refresh is learned again all visit long, so a window moved to another screen gets that
@@ -70,7 +72,7 @@ export function refreshFrom(intervals) {
 // moves nothing. Frames alone never make it slower than 60 Hz or the loading read, so a slow machine is never taken for
 // a slow screen.
 const FIRST = 4, LONGEST = 144, QUIET = 6000, FAILS = 2, CREDIT = 6, RUN = 2, STEADY_RUN = 5, GAIN = 0.9, LOOKS = 2, SEEN = 5;
-const mean = t => t.reduce((a, v) => a + v, 0) / (t.length || 1), ASSUMED = 1000 / 60;
+const mean = t => t.reduce((a, v) => a + v, 0) / (t.length || 1), ASSUMED = 1000 / 60, line = screen => 20 + screen / 2;
 const middle = xs => [...xs].sort((a, b) => a - b)[(xs.length - 1) >> 1];
 export function tierStep(current, times, now, state = {}) {
   const { slowRuns = 0, goodRuns = 0, waits = {}, top = current, from = 0, record = {}, fails = {}, floor = 'low', floorAt = null, drop = null, refresh = null, seen = [refresh ?? ASSUMED], held = null } = state;
@@ -83,17 +85,18 @@ export function tierStep(current, times, now, state = {}) {
   base.seen = [...seen, quickest].slice(-SEEN);
   base.held = held !== null && quickest < held * 0.75 ? null : held;
   const screen = Math.max(QUICKEST, Math.min(Math.max(ASSUMED, refresh ?? 0, base.held ?? 0), middle(base.seen)));
-  const slow = p90(times) > 20 + screen / 2;
-  const steady = quickest >= pace * 0.9 && pace >= screen * 1.5 && Math.abs(pace / screen - Math.round(pace / screen)) < 0.1;
+  const slow = p90(times) > line(screen);
+  const steady = quickest >= pace * 0.9 && pace >= screen * 1.5 && pace < line(pace);
   if (floorAt !== null && slow && mean(times) * GAIN > floorAt) { lowest = 0; base.floor = 'low'; base.floorAt = null; }
   if (drop) {
     if (slow && mean(times) > drop.mean * GAIN) {
       const look = { ...drop, looks: drop.looks + 1, steady: drop.steady && steady && Math.abs(pace - drop.pace) <= drop.pace * 0.1 };
       if (look.looks < LOOKS) return next({ drop: look });
       const back = TIER_ORDER.indexOf(drop.from), restored = TIER_ORDER.indexOf(top) < back ? drop.from : top;
-      if (look.steady) return next({ tier: drop.from, from: now, drop: null, held: pace, top: restored });
+      const unfailed = drop.failed ? { ...fails, [drop.from]: fails[drop.from] - 1 } : fails;
+      if (look.steady) return next({ tier: drop.from, from: now, drop: null, held: pace, top: restored, fails: unfailed });
       if (i - 1 >= lowest) return next({ tier: TIER_ORDER[i - 1], from: now, drop: { ...look, looks: 0 } });
-      return next({ tier: drop.from, from: now, drop: null, floor: drop.from, floorAt: drop.mean, top: restored });
+      return next({ tier: drop.from, from: now, drop: null, floor: drop.from, floorAt: drop.mean, top: restored, fails: unfailed });
     }
     base.drop = null;
   }
@@ -105,7 +108,7 @@ export function tierStep(current, times, now, state = {}) {
     if (runs >= (shaky ? RUN : STEADY_RUN) && i > lowest) {
       const failsNow = shaky ? { ...fails, [current]: (fails[current] || 0) + 1 } : fails;
       const capped = failsNow[current] >= FAILS && TIER_ORDER.indexOf(top) > i - 1 ? TIER_ORDER[i - 1] : top;
-      return next({ tier: TIER_ORDER[i - 1], from: now, record: mine, fails: failsNow, top: capped, drop: { from: current, mean: mean(times), looks: 0, pace, steady } });
+      return next({ tier: TIER_ORDER[i - 1], from: now, record: mine, fails: failsNow, top: capped, drop: { from: current, mean: mean(times), looks: 0, pace, steady, failed: shaky } });
     }
     return next({ slowRuns: runs, record: mine });
   }

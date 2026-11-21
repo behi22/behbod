@@ -202,6 +202,37 @@ test('a battery cap that starts mid visit (the screen read at 120 Hz) costs one 
   assert.equal(state.floor, 'low');
 });
 
+// Regression: a cap was told by frames held at a whole number of refreshes of the screen as learned so far. On a 144 Hz
+// screen a 30 fps cap is 4.8 refreshes, and a shaky ultra steps down before the line has learned the cap's pace, so the
+// cap was missed: down to low and back (4 switches) and the floor fixed at ultra. A cap whose frames keep to the
+// screen's own refreshes (34.7 ms on 144 Hz, 36.4 ms on 165 Hz) was missed on a steady ultra too.
+test('a 30 fps battery cap mid visit costs one step down and back on every common screen, on a shaky ultra too', () => {
+  for (const hz of [60, 75, 90, 100, 120, 144, 165, 240]) {
+    const r = 1000 / hz;
+    for (const cap of new Set([1000 / 30, Math.round(1000 / 30 / r) * r].filter(c => c > 28.4 && c < 38))) {
+      for (const record of [null, { ultra: [8, 5] }]) {
+        const { seen, state } = visit([[record ? 3 : 20, () => Array(100).fill(r)], [60, () => Array(100).fill(cap)]], { top: 'ultra', refresh: r, ...(record && { record }) });
+        const what = `${hz} Hz, frames every ${cap.toFixed(1)} ms, ${record ? 'shaky' : 'steady'}: ${seen.join(' ')}`;
+        assert.ok(switchesOf(seen) <= 2, what);
+        assert.equal(seen.at(-1), 'ultra', what);
+        assert.equal(state.floor, 'low', what);
+      }
+    }
+  }
+});
+
+// Regression: each cap that caught a shaky ultra counted as a failed try of it, though the step down was undone, so after
+// two caps one real stutter was its third failure and ultra was not tried again for the rest of the visit.
+test('a step down undone by a cap is no failed try: after two caps, one real stutter still lets ultra be tried again', () => {
+  const r = 1000 / 120, smooth = () => Array(100).fill(r), capped = () => Array(100).fill(1000 / 30);
+  const stutter = t => (t === 'ultra' ? [...Array(80).fill(r), ...Array(20).fill(1000 / 30)] : smooth());
+  const { seen, state } = visit([[3, smooth], [12, capped], [8, smooth], [12, capped], [8, smooth], [6, stutter], [40, smooth]], { top: 'ultra', refresh: r, record: { ultra: [10, 10] } });
+  const after = seen.slice(43), down = after.indexOf('high');
+  assert.ok(down >= 0 && down < 6, `the stutter steps down: ${after.join(' ')}`);
+  assert.ok(after.slice(down).includes('ultra'), `and ultra is tried again: ${after.join(' ')}`);
+  assert.equal(state.top, 'ultra');
+});
+
 const held30 = () => Array(100).fill(1000 / 30);
 test('a cap that catches a shaky ultra on its second failed try still goes back to ultra, and ultra stays its top', () => {
   const { seen, state } = visit([[60, held30]], { top: 'ultra', refresh: 1000 / 120, record: { ultra: [8, 4] }, fails: { ultra: 1 } });
