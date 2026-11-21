@@ -219,7 +219,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   const turnAt = { pishi: 0, jessi: 0, bh22: 0 };
   // Up on the sill or the tree, Pishi can only be petted.
   const actionFor = id => (id === 'pishi' && !pishi.onFloor ? 'pet' : TURNS[id][turnAt[id] % TURNS[id].length]);
-  let now = 0, lastMode = 'walk', playerSpeed = 0;
+  let now = 0, lastMode = 'walk', lastCtx = null, playerSpeed = 0;
   const blip = (fn, a, player) => { if (!player || a.pos.distanceTo(player) < 9) fn(a.pos); };
   let purring = 0;
   const sfx = {
@@ -670,6 +670,22 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     love(pishi.pos.clone().add(new THREE.Vector3(0, 0.4, 0)));
     pishi.bub.say('mrow!', now); blip(sfx.meow, pishi);
   }
+  // Called by the treat jar: down from wherever she is, then a trot over to `spot` (Blender axes) and a treat there.
+  function pishiCome(spot) {
+    if (pishi.hop || ['keys', 'todesk', 'flee', 'down', 'totreat', 'treat'].includes(pishi.state)) return false;
+    stopPishi(); freshPishi();
+    pishi.bub.say('!', now);
+    const go = () => {
+      pishi.state = 'totreat'; pishi.speed = 1.3;
+      goTo(pishi, spot, ok => { pishi.speed = pishi.base; if (ok && lastCtx) pishiTreat(lastCtx); else pishiNext(); });
+    };
+    const land = () => { pishi.onFloor = true; go(); };
+    if (pishi.state === 'window') { pishi.state = 'down'; hop(pishi, b2t(...windowFloor), land); }
+    else if (pishi.state === 'perch') pishiDown([...walkUp].reverse().slice(1).concat(b2t(...treeFloor)), land);
+    else if (pishi.state === 'treesit') pishiDown([climbUp[0], b2t(...treeFloor)], land);
+    else go();
+    return true;
+  }
   function pishiShoo() {
     if (pishi.state !== 'keys') return false;
     pishi.bub.say('mrrow', now); blip(sfx.meow, pishi);
@@ -717,7 +733,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (st === 'treat') tickPishiTreat(dt);
     if (st === 'treesit' && (pishi.timer -= dt) < 0) pishiDown([climbUp[0], b2t(...treeFloor)], () => { pishi.onFloor = true; pishiNext(); });
     // She runs up the cat tree when Jessi comes too close.
-    if (pishi.onFloor && !pishi.hop && jessi.onFloor && !['flee', 'keys', 'todesk', 'play', 'treat'].includes(pishi.state) && pishi.pos.distanceTo(jessi.pos) < 0.9) {
+    if (pishi.onFloor && !pishi.hop && jessi.onFloor && !['flee', 'keys', 'todesk', 'play', 'treat', 'totreat'].includes(pishi.state) && pishi.pos.distanceTo(jessi.pos) < 0.9) {
       pishi.state = 'flee'; pishi.speed = 2.2;
       pishi.bub.say('hss!', now); blip(sfx.hiss, pishi, ctx.player);
       goTo(pishi, treeFloor, ok => {
@@ -860,6 +876,43 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     love(jessi.pos.clone().add(new THREE.Vector3(0, 0.5, 0)));
     jessi.bub.say('woof!', now); blip(sfx.bark, jessi);
   }
+  // Called by the treat jar: up from her bed if she is napping, then a run over to `spot` (Blender axes) and a treat.
+  let biscuit = null;
+  const JESSI_TREAT = 3.2;
+  function jessiCome(spot) {
+    if (jessi.hop || jessi.carry || ['fetch', 'waking', 'totreat', 'treat'].includes(jessi.state)) return false;
+    jessi.route = []; jessi.pending = null; jessi.epoch++;
+    for (const k of POSES) jessi.want[k] = 0;
+    jessi.bub.say('!', now); blip(sfx.bark, jessi, lastPlayer);
+    jessiWake(() => {
+      jessi.state = 'totreat'; jessi.speed = 1.6;
+      goTo(jessi, spot, ok => { jessi.speed = jessi.base; if (ok) jessiTreat(); else jessiNext(lastCtx); });
+    });
+    return true;
+  }
+  function jessiTreat() {
+    Object.assign(jessi, { state: 'treat', timer: JESSI_TREAT });
+    faceTo(jessi, lastPlayer, 1);
+    // A little bone-shaped biscuit, made the first time she has one.
+    if (!biscuit) {
+      biscuit = mesh([piece(cyl(0.007, 0.007, 0.04, 8), '#d9b277', [0, 0, 0], [0, 0, Math.PI / 2]), ...[-1, 1].flatMap(s => [-1, 1].map(k => piece(sph(0.007, 8, 6), '#d9b277', [s * 0.021, 0, k * 0.006])))], PAINT);
+      scene.add(biscuit);
+    }
+    biscuit.position.copy(jessi.pos).add(new THREE.Vector3(Math.sin(jessi.facing) * 0.2, 0.008, Math.cos(jessi.facing) * 0.2));
+    biscuit.rotation.y = jessi.facing; biscuit.visible = true;
+    jessi.bub.say('?', now);
+  }
+  function tickJessiTreat(dt) {
+    const t = JESSI_TREAT - jessi.timer;
+    // A sniff, head down to crunch it, then a happy bark and a wag.
+    jessi.want.bow = t > 0.5 && t < 2.2 ? 0.6 : 0;
+    if (t > 1.9 && biscuit) biscuit.visible = false;
+    if ((jessi.timer -= dt) > 0) return;
+    jessi.want.bow = 0;
+    jessi.state = 'happy'; jessi.timer = 2.5;
+    love(jessi.pos.clone().add(new THREE.Vector3(0, 0.5, 0)));
+    jessi.bub.say('woof!', now); blip(sfx.bark, jessi);
+  }
   function tickJessi(dt, ctx) {
     if (jessi.carry) ball.position.copy(jessi.head.getWorldPosition(V)).add(new THREE.Vector3(Math.sin(jessi.facing) * 0.11, -0.05, Math.cos(jessi.facing) * 0.11));
     else stepBall(dt);
@@ -873,6 +926,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (st === 'happy' && (jessi.timer -= dt) < 0) { jessi.state = 'follow'; jessi.timer = rnd(10, 18); jessi.repath = 0; jessi.want.bow = 0; }
     if (st === 'petted' && (jessi.timer -= dt) < 0) { jessi.state = 'follow'; jessi.timer = rnd(8, 14); jessi.repath = 0; Object.assign(jessi.want, { lean: 0, roll: 0, blink: 0 }); }
     if (st === 'trick') tickTrick(dt, ctx);
+    if (st === 'treat') tickJessiTreat(dt);
     if (st === 'fetch') tickFetch(dt);
     if (st === 'follow') {
       const d = jessi.pos.distanceTo(ctx.player);
@@ -883,10 +937,10 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         goTo(jessi, tb(behind), null);
       } else if (d < 1.4 && !jessi.moving) faceTo(jessi, ctx.player, dt);
     }
-    const sit = (st === 'happy' || st === 'petted' || (st === 'trick' && jessi.trick !== 'spin') || (st === 'follow' && !jessi.moving)) && !jessi.hop;
+    const sit = (st === 'happy' || st === 'petted' || st === 'treat' || (st === 'trick' && jessi.trick !== 'spin') || (st === 'follow' && !jessi.moving)) && !jessi.hop;
     jessi.sitK += ((sit ? 1 : 0) - jessi.sitK) * Math.min(1, dt * 4);
     jessi.sleepK += ((st === 'nap' ? 1 : 0) - jessi.sleepK) * Math.min(1, dt * 2);
-    jessi.wag = st === 'happy' || st === 'fetch' || st === 'petted' || st === 'trick' || (st === 'follow' && jessi.pos.distanceTo(ctx.player) < 2) ? 1 : 0.25;
+    jessi.wag = st === 'happy' || st === 'fetch' || st === 'petted' || st === 'trick' || st === 'totreat' || st === 'treat' || (st === 'follow' && jessi.pos.distanceTo(ctx.player) < 2) ? 1 : 0.25;
   }
 
   // ---------- poses ----------
@@ -952,10 +1006,17 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     feel: name => feel(name),
     get mood() { return mood; },
     get holo() { return holoT >= 0; },
+    // The treat jar was shaken: whoever is free comes. spots: where each eats, { pishi, jessi } in Blender axes.
+    treats(spots) {
+      const came = [];
+      if (pishiCome(spots.pishi)) came.push('Pishi');
+      if (jessiCome(spots.jessi)) came.push('Jessi');
+      return came;
+    },
     // BH-22 and Jessi go through the balcony door, so it opens for them too (the mouse droid would keep it busy).
     positions: [r2.pos, jessi.pos],
     tick(dt, t, ctx) {
-      now = t;
+      now = t; lastCtx = ctx;
       if (purring && now > purring) { fx?.purr(false); purring = 0; }
       playerSpeed = dt > 0 ? ctx.player.distanceTo(lastPlayer) / dt : 0;
       lastPlayer.copy(ctx.player);

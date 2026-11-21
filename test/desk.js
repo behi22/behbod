@@ -7,13 +7,15 @@
 //   button   the button presses down into its base (failed before these changes)
 //   fan      BH-22 switches the desk fan on while the PC is busy, and it spins down after
 //   holo     its rare hologram
+//   jar      the pets' treat jar
+//   smooth   the first of each new thing costs no long frame (it measures frames: run it alone, under the timing lock)
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -54,6 +56,7 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
   const W = require('../web/assets/world.json');
   const { FAN_SPOT, COOL } = await import('../web/src/pure/desk.js');
   const { HOLO_TEXT, HOLO_TIME } = await import('../web/src/pure/bh22.js');
+  const { JAR } = await import('../web/src/pure/jar.js');
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
     // ---------- the fish: they turn round in the water, about themselves ----------
@@ -306,6 +309,66 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       check('once a visit at most', !(await o.p.evaluate(() => __loft.creatures.holo)));
       check('holo: no error', errs.length === 0 && o.errs.length === 0, [...errs, ...o.errs].slice(0, 3).join(' | '));
       await o.ctx.close();
+    }
+    // ---------- the treat jar ----------
+    if (want('jar')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      check('the jar is in the house', await p.evaluate(() => !!__loft.scene.getObjectByName('treat_jar')));
+      // Pishi on her window sill, Jessi napping: both come.
+      await p.evaluate(() => { const c = __loft.creatures; c.pishi.timer = 999; c.jessi.timer = 999; });
+      const st0 = await p.evaluate(() => [__loft.creatures.pishi.state, __loft.creatures.jessi.state]);
+      await standAt(p, JAR.stand, yawTo(JAR.stand, JAR.at));
+      const near = await p.evaluate(() => [__loft.near, document.getElementById('prompt').lastChild.nodeValue]);
+      check('at the jar the prompt offers it', near[0] === 'treats' && near[1] === 'Shake the treat jar', JSON.stringify(near));
+      await p.keyboard.press('e');
+      await p.waitForTimeout(200);
+      const said = await p.evaluate(() => document.getElementById('toast').textContent);
+      check('E shakes it, and both come running', said === 'You shake the treat jar. Pishi and Jessi come running.', `${st0} / ${said}`);
+      await p.waitForTimeout(300);
+      await p.screenshot({ path: path.join(OUT, 'jar-shake.png') });
+      await p.keyboard.press('e'); await p.waitForTimeout(100);
+      check('shaken again at once: they are already coming', (await p.evaluate(() => document.getElementById('toast').textContent)) === 'One moment, they are on their way.');
+      // Where each one is when its treat begins.
+      await p.evaluate(() => { window.__ate = {}; window.__ateT = setInterval(() => { for (const n of ['pishi', 'jessi']) { const a = __loft.creatures[n]; if (a.state === 'treat' && !__ate[n]) __ate[n] = [a.pos.x, a.pos.z]; } }, 50); });
+      await p.waitForFunction(() => __ate.jessi, null, { timeout: 30000 }).catch(() => {});
+      await p.waitForTimeout(400);
+      await p.screenshot({ path: path.join(OUT, 'jar-jessi.png') });
+      await p.waitForFunction(() => __ate.pishi && __ate.jessi, null, { timeout: 40000 }).catch(() => {});
+      await p.waitForTimeout(400);
+      await p.screenshot({ path: path.join(OUT, 'jar-pishi.png') });
+      const eat = await p.evaluate(sp => { const d = (a, q) => (a ? Math.hypot(a[0] - q.x, a[1] - q.z) : 99); return { dp: d(__ate.pishi, sp.pishi), dj: d(__ate.jessi, sp.jessi) }; }, { pishi: b2t(...JAR.spots.pishi), jessi: b2t(...JAR.spots.jessi) });
+      check('each eats a treat at its own place by the jar', eat.dp < 0.35 && eat.dj < 0.35, JSON.stringify(eat));
+      await p.waitForTimeout(4500);
+      check('then they carry on', await p.evaluate(() => !['treat', 'totreat'].includes(__loft.creatures.pishi.state) && !['treat', 'totreat'].includes(__loft.creatures.jessi.state)));
+      check('jar: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- smooth: the first of each new thing costs no long frame (run alone, under the timing lock) ----------
+    if (want('smooth')) {
+      const { ctx, p, errs } = await open(b, DESK, '&holo');
+      await p.waitForTimeout(6000);
+      const s = W.points.spawn;
+      await standAt(p, s, Math.PI);
+      await r2At(p, [s[0] + 0.6, s[1] + 0.1, s[2]]);
+      await p.waitForTimeout(1500);
+      // The longest frame in the second before, and in the two seconds after, something first happens.
+      const frames = what => p.evaluate(async w => {
+        const gaps = [], stamp = () => new Promise(r => requestAnimationFrame(r));
+        let last = await stamp();
+        const take = async ms => { const end = performance.now() + ms, out = []; while (performance.now() < end) { const t = await stamp(); out.push(t - last); last = t; } return out; };
+        const before = await take(1000);
+        ({ deploy: () => __desk.press(), hearts: () => __loft.creatures.feel('love'), arcs: () => __loft.creatures.feel('happy'), x: () => __loft.creatures.feel('dizzy'),
+          holo: () => __loft.creatures.act('bh22', { player: __loft.pos, mode: 'walk', facing: 0 }), jar: () => __jar.shake() })[w]();
+        const after = await take(2000);
+        return { before: Math.max(...before), after: Math.max(...after), slow: after.filter(g => g > 50).length };
+      }, what);
+      for (const what of ['deploy', 'hearts', 'arcs', 'x', 'holo', 'jar']) {
+        const f = await frames(what);
+        check(`the first ${what} draws with no long frame`, f.slow === 0 && f.after < Math.max(50, f.before * 1.5), `longest ${f.after.toFixed(1)} ms after, ${f.before.toFixed(1)} ms before`);
+        await p.waitForTimeout(what === 'holo' ? HOLO_TIME * 1000 : 500);
+      }
+      check('smooth: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
     }
   } finally {
     await b.close();
