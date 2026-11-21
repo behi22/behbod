@@ -314,6 +314,13 @@ const SHEET_VIEW = [[18.35, 9.95, 1.62], [18.35, 10.62, 1.26]];
       // The leaf is drawn with the desk sheet's own shader: nothing new to build when a page first turns.
       const shared = await p.evaluate(() => { const P = m => __loft.renderer.properties.get(m).currentProgram; const leaf = P(__piano.sheet.leaf.children[0].material), desk = P(__loft.world.pianoParts.sheet.material); return [!!leaf, leaf === desk]; });
       check('the turning page needs no shader of its own', shared[0] && shared[1], JSON.stringify(shared));
+      // Its picture is made by the same maker as the desk sheet's and every screen's, so it goes to the graphics card the
+      // same way they do (and any change to how they go, such as a faster upload, reaches it too).
+      const made = await p.evaluate(() => {
+        const leaf = __piano.sheet.leaf.children[0].material.map, desk = __loft.screens.textures.sheet, own = __loft.screens.textures.sheet_leaf;
+        return { own: !!own && leaf === own, same: !!own && leaf.constructor === desk.constructor && ['colorSpace', 'flipY', 'anisotropy'].every(k => leaf[k] === desk[k]) && leaf.image.width === desk.image.width && leaf.image.height === desk.image.height };
+      });
+      check('the turning page\'s picture is made like the desk sheet\'s', made.own && made.same, JSON.stringify(made));
       // Stopped, it stays where it is; a new start of the same song goes back to page one.
       await button(p, 'Stop').click();
       const halt = await p.evaluate(() => __piano.sheet.state);

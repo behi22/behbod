@@ -180,7 +180,7 @@ const scope = makeTelescope(scene, camera, meta, {
 // The metronome on the piano's lid, the piano lamp that warms while it plays and the sheet music that turns its pages.
 const metronome = makeMetronome({ scene, arm: world.pianoParts.arm, sound, audio, store });
 const pianoLamp = makePianoLamp({ scene, bulb: world.pianoParts.lamp });
-const sheetMusic = makeSheetMusic({ scene, meta, sheet: world.pianoParts.sheet, texture: screens.textures.sheet });
+const sheetMusic = makeSheetMusic({ scene, meta, sheet: world.pianoParts.sheet, texture: screens.textures.sheet, leaf: screens.textures.sheet_leaf });
 const pianoMode = makePianoMode(audio.piano, { onExit: () => stand(), onPlay: () => earn('piano'), onLearned: title => toast(`You played ${title} all the way through.`), metronome, store });
 window.__piano = { metronome, lamp: pianoLamp, sheet: sheetMusic };
 const panels = makePanels(store);

@@ -8,17 +8,14 @@ const FACING = { '-Y': [0, 0, 1], '+Y': [0, 0, -1], '-X': [-1, 0, 0], '+X': [1, 
 // The sheet music on the piano's desk shows the song playing, or being learned, from its first pages, and turns a page
 // when the song reaches the next two: the right page lifts off the desk and lands on the left, in step with the song.
 // While nothing plays, nothing moves.
-export function makeSheetMusic({ scene, meta, sheet, texture }) {
+export function makeSheetMusic({ scene, meta, sheet, texture, leaf: leafTex }) {
   const at = meta.screens.sheet;
-  if (!sheet || !at || !texture) return { tick() {}, get state() { return null; } };
+  if (!sheet || !at || !texture || !leafTex) return { tick() {}, get state() { return null; } };
   const W = at.w / 2, H = at.h, desk = texture.image, base = desk.getContext('2d');
   // The leaf being turned: its front (the page lifting) and its back (the next left page) are two meshes over the
-  // same points, both reading one canvas, the back's page on its left half and the front's on its right.
-  const leafCanvas = document.createElement('canvas');
-  leafCanvas.width = PAGE.w * 2; leafCanvas.height = PAGE.h;
-  const lg = leafCanvas.getContext('2d');
-  const leafTex = new THREE.CanvasTexture(leafCanvas);
-  leafTex.colorSpace = texture.colorSpace; leafTex.anisotropy = texture.anisotropy; leafTex.flipY = texture.flipY;
+  // same points, both reading one canvas, the back's page on its left half and the front's on its right. That canvas
+  // is a picture made like the desk's (panels.js), so it goes to the graphics card the way every canvas picture does.
+  const leafCanvas = leafTex.image, lg = leafCanvas.getContext('2d');
   // A copy of the desk sheet's own material, so the leaf looks the same, dims with the lamps and needs no new shader.
   const mat = sheet.material.clone();
   mat.map = leafTex;

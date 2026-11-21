@@ -334,8 +334,9 @@ export function makePanels(surface, ctx) {
   add('kilim', 1500, 1040, drawKilim);
   add('shelf_photo', 320, 440, drawShelfPhoto);
 
-  // The sheet music on the piano: the song it is open at, two pages (src/sheetmusic.js turns them as it plays).
+  // The sheet music on the piano: the song it is open at, two pages, and the leaf src/sheetmusic.js turns as it plays.
   add('sheet', 840, 560, drawSheet);
+  S.sheet_leaf = surface(840, 560);
 
   // Spotify: placeholders until the small server that keeps my login is built.
   add('nowplaying', 256, 256, g => {
