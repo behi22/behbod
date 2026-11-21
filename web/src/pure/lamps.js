@@ -15,18 +15,24 @@ const mix = (a, b, t) => a + (b - a) * t;
 const level = (off, lamps) => 1 - (1 - off) * (1 - lamps);
 const clamp = v => Math.min(1, Math.max(0, v));
 
-export function roomLight(day, lamps) {
-  const d = clamp(day), l = clamp(lamps);
-  return OFF.night.map((n, i) => level(mix(n, OFF.day[i], d), l));
-}
-export const bulbLight = (day, lamps) => level(mix(BULB_OFF.night, BULB_OFF.day, clamp(day)), clamp(lamps));
-export const fillLight = (day, lamps) => level(mix(FILL_OFF.night, FILL_OFF.day, clamp(day)), clamp(lamps));
+// The Movie scene turns the lamps down low and warm; `movie` eases it in and out, 0 to 1, under the switch's `lamps`.
+export const MOVIE = { level: 0.22, warm: [1, 0.72, 0.42] };
+export const dimsLamps = scene => scene === 'movie';
+const shine = (lamps, movie) => clamp(lamps) * (1 - clamp(movie) * (1 - MOVIE.level));
 
-// Settles exactly on 0 or 1, so a finished flip back on leaves every level at exactly 1.
-export function settle(k, on, dt) {
-  const to = on ? 1 : 0, rate = on ? 14 : 20, next = k + (to - k) * Math.min(1, dt * rate);
+export function roomLight(day, lamps, movie = 0) {
+  const d = clamp(day), l = shine(lamps, movie), m = clamp(movie);
+  return OFF.night.map((n, i) => level(mix(n, OFF.day[i], d), l * (1 - m * (1 - MOVIE.warm[i]))));
+}
+export const bulbLight = (day, lamps, movie = 0) => level(mix(BULB_OFF.night, BULB_OFF.day, clamp(day)), shine(lamps, movie));
+export const fillLight = (day, lamps, movie = 0) => level(mix(FILL_OFF.night, FILL_OFF.day, clamp(day)), shine(lamps, movie));
+
+// Settles exactly on 0 or 1, so a finished flip back on leaves every level at exactly 1. A scene fades more slowly.
+export function settle(k, on, dt, rate = on ? 14 : 20) {
+  const to = on ? 1 : 0, next = k + (to - k) * Math.min(1, dt * rate);
   return Math.abs(next - to) < 0.004 ? to : next;
 }
+export const SCENE_RATE = 3;
 
 // The balcony, past the window wall, keeps its own lights.
 export const GLASS_Y = 15.12;

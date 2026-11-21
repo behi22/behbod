@@ -257,8 +257,8 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       await p.keyboard.type('scene'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
       await p.keyboard.type('scene visualizer'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
       const lines = await p.evaluate(() => __loft.screens.desktop.term.lines.slice(-5));
-      check('the terminal lists it and picks it, with a hint while nothing plays', lines.join('|') === ['$ scene', 'scenes: chill  focus  matchday  off  party  visualizer', '$ scene visualizer', 'lights: visualizer', 'play a record and it moves with the music.'].join('|'), lines.join(' | '));
-      check('the Settings lights row has every scene', await p.evaluate(async () => { const { rows } = await import('/src/pure/desktop.js'); return rows('settings', { scenes: __loft.world.scenes, scene: 'visualizer' }).find(r => r.text[0][0] === 'lights').pills.map(x => x.label).join() === 'chill,focus,matchday,off,party,visualizer'; }));
+      check('the terminal lists it and picks it, with a hint while nothing plays', lines.join('|') === ['$ scene', 'scenes: chill  focus  matchday  movie  off  party  visualizer', '$ scene visualizer', 'lights: visualizer', 'play a record and it moves with the music.'].join('|'), lines.join(' | '));
+      check('the Settings lights row has every scene', await p.evaluate(async () => { const { rows } = await import('/src/pure/desktop.js'); return rows('settings', { scenes: __loft.world.scenes, scene: 'visualizer' }).find(r => r.text[0][0] === 'lights').pills.map(x => x.label).join() === 'chill,focus,matchday,movie,off,party,visualizer'; }));
       await p.evaluate(() => __loft.leaveDesk());
       await p.waitForTimeout(1500);
       check('music: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
@@ -332,21 +332,30 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       check('goals: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
-    // ---------- the goal flash's pace, frame by frame, also with a second goal while it runs ----------
+    // ---------- the goal flash's pace, frame by frame, also with a second goal while it runs, and with a late frame ----------
     if (want('flash')) {
-      // Every change of the purple strip's colour from a goal on (the change at the goal itself included), in ms.
-      const changes = (p, again) => p.evaluate(([again]) => new Promise(done => {
-        const t0 = performance.now(), at = [];
-        let prev = __strip.color.toArray().join(), second = again == null;
-        __loft.world.goal(t0 / 1000);
-        const rec = () => {
-          const now = performance.now(), c = __strip.color.toArray().join();
-          if (c !== prev) { at.push(now - t0); prev = c; }
-          if (!second && now - t0 >= again * 1000) { second = true; __loft.world.goal(now / 1000); }
-          if (now - t0 < 4600) requestAnimationFrame(rec); else done({ at, back: c, goal: __loft.world.leds.goal });
+      // Every change of the purple strip's colour from a goal on (the change at the goal itself included), in ms by the
+      // house's own clock as it drew it, so a long task of the house's own before its frame cannot fake a short gap.
+      // `stall`: the frame due just after the third beat is held up that long, as a busy moment would.
+      const changes = (p, again, stall = 0) => p.evaluate(([again, stall]) => new Promise(done => {
+        const t0 = performance.now(), at = [], frames = [], W = __loft.world, tick = W.tick;
+        let prev = __strip.color.toArray().join(), second = again == null, held = !stall;
+        W.tick = function (dt, t, ...rest) {
+          const out = tick.call(this, dt, t, ...rest), c = __strip.color.toArray().join();
+          if (c !== prev) { at.push(t * 1000 - t0); prev = c; }
+          return out;
+        };
+        W.goal(t0 / 1000);
+        const rec = ts => {
+          const now = performance.now();
+          frames.push(ts);
+          if (!second && now - t0 >= again * 1000) { second = true; W.goal(now / 1000); }
+          if (!held && now > t0 + 500 - 30) { held = true; while (performance.now() < t0 + 500 + stall) { /* a long task */ } }
+          if (now - t0 < 4600) requestAnimationFrame(rec);
+          else { W.tick = tick; done({ at, back: __strip.color.toArray().join(), goal: W.leds.goal, frame: frames.slice(1).map((f, i) => f - frames[i]).sort((a, b) => a - b)[frames.length >> 1] }); }
         };
         requestAnimationFrame(rec);
-      }), [again]);
+      }), [again, stall]);
       const pace = at => {
         let most = 0, gap = Infinity;
         for (let i = 0; i < at.length; i++) { let n = 0; for (let j = i; j < at.length && at[j] - at[i] <= 1000; j++) n++; most = Math.max(most, n); if (i) gap = Math.min(gap, at[i] - at[i - 1]); }
@@ -356,11 +365,11 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       for (const motion of ['full', 'reduce']) {
         const { ctx, p, errs } = await open(b, { ...DESK, reducedMotion: motion === 'reduce' ? 'reduce' : 'no-preference' });
         await findStrip(p);
-        for (const again of [null, 1.0, 1.85, 1.95]) {
-          const r = await changes(p, again), f = pace(r.at);
+        for (const [again, stall] of [[null, 0], [1.0, 0], [1.85, 0], [1.95, 0], [null, 105]]) {
+          const r = await changes(p, again, stall), f = pace(r.at);
           const ok = motion === 'reduce' ? r.at.length === 2 : f.most <= 5 && f.gap >= 200;
-          check(`the goal flash (${motion} motion${again ? `, a second goal at ${again} s` : ''}): under three flashes in any second, never a quick flicker, then exactly the scene`,
-            ok && r.back === chill && !r.goal, `${r.at.length} changes, at most ${f.most} in a second, closest ${f.gap} ms apart: ${r.at.map(Math.round).join(' ')}`);
+          check(`the goal flash (${motion} motion${again ? `, a second goal at ${again} s` : ''}${stall ? `, a frame ${stall} ms late` : ''}): under three flashes in any second, never two changes under 200 ms apart, then exactly the scene`,
+            ok && r.back === chill && !r.goal, `${r.at.length} changes, at most ${f.most} in a second, closest ${f.gap} ms apart (a frame is ${r.frame.toFixed(1)} ms): ${r.at.map(Math.round).join(' ')}`);
           await p.waitForTimeout(300);
         }
         check(`flash (${motion}): no error`, errs.length === 0, errs.slice(0, 3).join(' | '));

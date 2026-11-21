@@ -3,7 +3,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
 import { onSwitch } from './pure/lamps.js';
-import { BANDS, settle, follow, kicked, fade, pulse, lively, goalStart, goalShows } from './pure/leds.js';
+import { BANDS, settle, follow, kicked, fade, pulse, lively, goalStart, goalView, unseen } from './pure/leds.js';
 import { stripViz } from './stripviz.js';
 import { swim, reach } from './pure/fish.js';
 import { fanSpin, pressDepth, FAN_FROM_DEPLOY } from './pure/desk.js';
@@ -147,7 +147,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   // The studio's RGB: light scenes from the terminal, holiday colours by default on a holiday, a green sweep on DEPLOY.
   const CHILL = [[0.55, 0.15, 1.0], [0.1, 0.9, 0.8]];
-  const SCENES = { chill: CHILL, focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[0.1, 0.85, 0.25], [0.95, 0.95, 0.95]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null, visualizer: CHILL };
+  const SCENES = { chill: CHILL, focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[0.1, 0.85, 0.25], [0.95, 0.95, 0.95]], movie: [[0.16, 0.05, 0.3], [0.03, 0.2, 0.18]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null, visualizer: CHILL };
   const COOLANT = { teal: [0.1, 0.9, 0.8], purple: [0.55, 0.15, 1.0], red: [1.0, 0.12, 0.1], gold: [1.0, 0.7, 0.15], white: [0.9, 0.95, 1.0] };
   // The PC's lights are one mesh per channel, so the whole glass case is three draw calls.
   for (const [fam, list] of Object.entries(pcParts)) {
@@ -171,6 +171,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   applyScene();
   // `mk` eases a record in and out of the strips and lands on 0 with them exactly as they were.
   let records = null, through = () => 0, mk = 0, avg = 0.4, kick = 0, viz = null, still = false;
+  let seen = unseen();
   const A = new THREE.Color(), B = new THREE.Color(), heard = new Float32Array(BANDS), usual = new Float32Array(BANDS).fill(-1);
   function sceneColours(t) {
     if (sceneName === 'party') { const h = (t * 0.15) % 1; A.setHSL(h, 0.9, 0.5); B.setHSL((h + 0.33) % 1, 0.9, 0.5); }
@@ -192,7 +193,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     sceneColours(t);
     if (sceneName === 'visualizer' && viz) {
       lively(records.spectrum(heard), usual, viz.uBands.value, dt);
-      if (!goalShows(goalBeats, t) && !deployUntil) viz.uViz.value = mk * Math.min(1, g);
+      if (!seen.show && !deployUntil) viz.uViz.value = mk * Math.min(1, g);
     } else {
       const m = pulse(level, avg, kick, mk * Math.min(1, g));
       A.multiplyScalar(m); B.multiplyScalar(m);
@@ -356,8 +357,9 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     ariaK += ((busy ? 1 : 0) - ariaK) * Math.min(1, dt * 2);
     if (aria.eyes) { const blink = (t % 4.2) < 0.12; for (const e of aria.eyes) e.scale.y = blink ? 0.15 : 0.3 + 0.7 * ariaK; }
     if (aria.tip) { const k = (1.2 + 0.8 * ariaK) + Math.sin(t * (1.5 + 2 * ariaK)) * (0.5 + 0.5 * ariaK); aria.tip.material.color.setRGB(1.0 * k, 0.62 * k, 0.3 * k); }
+    seen = goalView(seen, goalBeats, t, still);
     tickMusic(dt, t);
-    const flash = goalShows(goalBeats, t, still);
+    const flash = seen.show;
     if (flash) { flashing = true; paintRGB(A.setRGB(...flash[0]), B.setRGB(...flash[1])); }
     else if (flashing) { flashing = false; applyScene(); }
     if (deployUntil) {

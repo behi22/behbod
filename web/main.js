@@ -35,6 +35,7 @@ import { makeKnight, makeSaber } from './src/saber.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
 import { makeHello } from './src/hello.js';
 import { makeLights } from './src/lightswitch.js';
+import { makePishiCam } from './src/pishicam.js';
 import { lightsCommand } from './src/pure/lamps.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
@@ -230,6 +231,7 @@ function enterPens() {
 const knight = makeKnight(scene, meta, [scene], { renderer });
 // The light switch by the front door; the knight's glass case keeps its own light.
 const lights = makeLights(scene, world, { sfx: audio.sfx, skip: [knight?.root] }); window.__lights = lights;
+const pishiCam = makePishiCam({ renderer, scene, screen: scene.getObjectByName('screen_pishi'), texture: screens.textures.pishi, pishi: creatures.pishi, me, coarse }); window.__pishiCam = pishiCam;
 persia.tableReady.then(() => lights.adopt());
 const saber = makeSaber({ engine, camera, canvas, coarse, knight, meta, audio: audio.saber, store, onExit: () => { mode = 'walk'; me.root.visible = true; } });
 const saberEye = new THREE.Vector3();
@@ -675,7 +677,10 @@ function goTo(name) {
   });
 }
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
-$('cmd').addEventListener('keydown', e => { if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); } });
+$('cmd').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); }
+  else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.isComposing) { e.preventDefault(); const line = screens.recall(e.key === 'ArrowUp' ? -1 : 1, e.target.value); if (line !== null) e.target.value = line; }
+});
 $('use').addEventListener('click', () => {
   if (mode === 'desk') leaveDesk(); else if (mode === 'sit') stand(); else if (mode === 'range') range.exit(); else if (mode === 'scope') scope.exit(); else if (mode === 'pens') pens.exit(); else if (mode === 'saber') saber.exit(); else if (near) act(near);
 });
@@ -903,6 +908,7 @@ function step() {
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
   ambience(dt);
+  pishiCam.tick(dt, now, camera, engine.tier.post);
   doorsReady = true;
   engine.render(dt);
 
@@ -943,6 +949,7 @@ camera.position.copy(start.p); camLook.copy(start.l);
 $('note').textContent = 'Getting the room ready';
 lights.adopt();
 await engine.warmUp();
+screens.contrib.start();
 $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
 function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }
 $('enter').classList.add('ready');

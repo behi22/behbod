@@ -12,6 +12,8 @@ import { WALLPAPERS } from './src/pure/desktop.js';
 import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
 import { paintStory, paintWallpaper } from './src/shah/scenes.js';
 import { helloWorld } from './src/pure/hello.js';
+import { newHistory, remember, browse } from './src/pure/history.js';
+import { makeContrib } from './src/contrib.js';
 
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace";
 const TATTOO = ['بنگر و بشنو،', 'بگذر و به شو'];
@@ -62,6 +64,7 @@ export function makeCanvases(meta, opts = {}) {
   // the same desktop out in HTML over this screen, from the same model.
   S.main = surface(DW, DH);
   const term = { lines: [], input: '', focus: false, blink: 0 };
+  const hist = newHistory();
   const desk = { st: newDesktop(), ctx: { wallpaper: loadWallpaper() }, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), reader: newReader(), sfx: null, dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
   // Painted once and kept: each is many shapes, and the monitor repaints every second.
@@ -259,16 +262,9 @@ export function makeCanvases(meta, opts = {}) {
     t.needsUpdate = true;
   }
 
-  // Little screens: contributions, training loss, Pishi cam.
+  // Little screens: his live contributions, training loss, Pishi cam.
   S.contrib = surface(320, 190);
-  (() => {
-    const { g, c, t } = S.contrib, r = seeded(22);
-    g.fillStyle = '#0a0f15'; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = '#7f8aa0'; g.font = `14px ${MONO}`; g.fillText('contributions', 12, 22);
-    const pal = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'];
-    for (let x = 0; x < 52; x++) for (let y = 0; y < 7; y++) { const v = r(); g.fillStyle = pal[v < 0.25 ? 0 : v < 0.5 ? 1 : v < 0.72 ? 2 : v < 0.9 ? 3 : 4]; g.fillRect(12 + x * 5.6, 40 + y * 18, 4.6, 15); }
-    t.needsUpdate = true;
-  })();
+  const contrib = makeContrib(S.contrib, { store: local, font: MONO });
   S.loss = surface(320, 190);
   const lossPts = [];
   const lr = seeded(5);
@@ -287,24 +283,8 @@ export function makeCanvases(meta, opts = {}) {
     g.fillStyle = '#ff9f5a'; g.fillText(lossPts[Math.max(0, n - 1)].toFixed(4), 220, 22);
     t.needsUpdate = true;
   }
+  // The Pishi cam's screen; src/pishicam.js draws it.
   S.pishi = surface(320, 190);
-  function drawPishi(now) {
-    const { g, c, t } = S.pishi;
-    g.fillStyle = '#121418'; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = '#23262d'; g.beginPath(); g.ellipse(160, 150, 110, 30, 0, 0, 7); g.fill();
-    const br = 1 + Math.sin(now / 900) * 0.03;
-    g.fillStyle = '#7b7f87'; g.beginPath(); g.ellipse(160, 128, 64 * br, 30 * br, 0, 0, 7); g.fill();
-    g.beginPath(); g.ellipse(108, 116, 28, 22, -0.3, 0, 7); g.fill();
-    g.beginPath(); g.moveTo(92, 100); g.lineTo(98, 82); g.lineTo(108, 97); g.fill();
-    g.beginPath(); g.moveTo(112, 96); g.lineTo(124, 82); g.lineTo(126, 100); g.fill();
-    g.strokeStyle = '#7b7f87'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(222, 130); g.quadraticCurveTo(250, 150, 210, 160); g.stroke();
-    g.strokeStyle = '#3c3f46'; g.lineWidth = 2; g.beginPath(); g.moveTo(98, 114); g.lineTo(108, 116); g.moveTo(112, 116); g.lineTo(120, 113); g.stroke();
-    g.fillStyle = '#d2d6de'; g.font = `13px ${MONO}`; g.fillText('CAM 02 · PISHI', 12, 22);
-    if (Math.floor(now / 700) % 2) { g.fillStyle = '#ff3b30'; g.beginPath(); g.arc(300, 17, 6, 0, 7); g.fill(); }
-    g.fillStyle = 'rgba(255,255,255,.04)';
-    for (let y = 0; y < c.height; y += 3) g.fillRect(0, y, c.width, 1);
-    t.needsUpdate = true;
-  }
 
   // Outside the window: Vancouver by the real sun and weather, North Shore mountains, Grouse runs, Lions Gate lights.
   S.backdrop = surface(2048, 750);
@@ -375,7 +355,7 @@ export function makeCanvases(meta, opts = {}) {
       if (near && Math.floor(now / 1000) !== sec) { sec = Math.floor(now / 1000); drawTimer(S.timer, now); }
       if (backdrop) outside.tick(now);
       panels.tick(Date.now());
-      if (near && acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); drawPishi(now); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
+      if (near && acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
       // The caret blinks on the monitor only while it shows; under the seated view the page draws its own.
       if (focused && !desk.covered) { const b = Math.floor(now / 500); if (b !== term.blink) { term.blink = b; desk.dirty = true; } }
       if (Math.floor(now / 1000) !== desk.clockSec) {
@@ -422,11 +402,15 @@ export function makeCanvases(meta, opts = {}) {
     print: (...lines) => say(...lines),
     // Commands the rest of the loft adds: fn(say, argument).
     command(name, fn) { EXTRA[name] = fn; },
+    // Up (-1) or Down (+1) through the commands entered, from the line now typed: the line to show, or null.
+    recall: (dir, current) => browse(hist, dir, current),
+    contrib,
     run(text, exit) {
       const cmd = text.trim().toLowerCase().replace(/\s+/g, ' ');
       openApp(desk.st, 'terminal');
       say('$ ' + text.slice(0, 60));
       term.input = '';
+      remember(hist, text);
       if (cmd === 'exit') { exit(); return; }
       const [word, ...rest] = cmd.split(' ');
       let hello = null;
@@ -458,6 +442,7 @@ export function makeCanvases(meta, opts = {}) {
         const names = [...Object.keys(CMDS), ...Object.keys(EXTRA), 'exit'].filter(n => term.input && n.startsWith(term.input.toLowerCase()));
         if (names.length === 1) { term.input = names[0]; changed(); } else if (names.length > 1) say(names.join('  '));
       } else if (e.key === 'Enter') { this.run(term.input, exit); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const line = browse(hist, e.key === 'ArrowUp' ? -1 : 1, term.input); if (line !== null) { term.input = line; changed(); } }
       else if (e.key === 'Backspace') { term.input = term.input.slice(0, -1); changed(); }
       else if (e.key.length === 1 && term.input.length < 60) { term.input += e.key; changed(); }
       e.preventDefault();
