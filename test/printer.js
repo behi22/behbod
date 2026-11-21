@@ -55,13 +55,14 @@ async function open(b, opts, { auto = true, save, ear = false, init = null, rout
   if (init) await ctx.addInitScript(init);
   if (route) await ctx.route(...route);
   if (save !== undefined) await ctx.addInitScript(s => { try { if (s === null) localStorage.removeItem('home.print'); else localStorage.setItem('home.print', s); } catch { /* none */ } }, save);
-  const p = await ctx.newPage(), errs = [];
+  const p = await ctx.newPage(), errs = [], asked = [];
   watch(p, errs);
+  p.on('request', r => { const m = r.url().match(/\/src\/(.+\.js)(\?|$)/); if (m) asked.push(m[1]); });
   await p.goto(`${BASE}/?${auto ? 'auto&' : ''}q=${opts.isMobile ? 'medium' : 'high'}`);
   await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0 && (document.getElementById('enter').classList.contains('ready')), null, { timeout: 120000 });
   if (!auto) { await p.click('#enter'); }
   await p.waitForTimeout(800);
-  return { ctx, p, errs };
+  return { ctx, p, errs, asked };
 }
 async function standAt(p, at, yaw) {
   await p.evaluate(([v, yw]) => { __loft.pos.set(v.x, v.y + 0.05, v.z); if (yw !== undefined) __loft.yaw = yw; }, [b2t(...at), yaw]);
@@ -103,7 +104,10 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
   try {
     // ---------- E opens the screen; a model, a colour and a size picked, then Print ----------
     if (want('screen')) {
-      const { ctx, p, errs } = await open(b, DESK, { save: null });
+      const { ctx, p, errs, asked } = await open(b, DESK, { save: null });
+      // Only the printer and the words it answers to load with the page; its shapes load in the worker, and the page's own builder never unless needed.
+      const LATER = /^(printpage|printwork|printscreen)\.js$|^pure\/(printbuild|mesher|keychain|models|sdf)\.js$/;
+      check('the printer\'s shapes, its builder and its screen are not fetched with the page', asked.length > 20 && !asked.some(f => LATER.test(f)), asked.filter(f => /print|pure\/(mesher|keychain|models|sdf|catalog|letters)/.test(f)).join(' '));
       const pics = [];
       p.on('response', r => { if (/assets\/printer\//.test(r.url())) pics.push(`${r.status()} ${r.url().split('/').pop()}`); });
       check('nothing of the printer is built or fetched at the start', !(await p.evaluate(() => __loft.printer.built)) && pics.length === 0, JSON.stringify(pics));
@@ -113,16 +117,21 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       await untilBuilt(p);
       const idle = await state(p);
       check('with nothing printed yet, the default rocket is part way through and silent', !idle.mine && idle.print.model === 'rocket' && idle.k > 0 && idle.k < 1 && !idle.sounding && idle.built?.tris > 1000, JSON.stringify({ k: idle.k, s: idle.sounding, b: idle.built }));
+      const ready = asked.includes('printscreen.js');
       await p.keyboard.press('KeyE');
       await p.waitForSelector('.pn-printer .ps-grid', { timeout: 5000 }).catch(() => {});
       await p.waitForTimeout(1500);
+      check('the screen\'s code is already here when it opens, fetched on the way to the printer', ready, asked.filter(f => /print/.test(f)).join(' '));
       const scr = await p.evaluate(() => ({
         mode: __loft.mode, tiles: document.querySelectorAll('.ps-tile').length, swatches: document.querySelectorAll('.ps-sw').length, prompt: document.getElementById('prompt').classList.contains('on'),
         cam: __loft.camera.position.distanceTo(__loft.printer.group.position), me: __loft.headVisible, focus: document.activeElement?.closest('.ps-type') ? 'type' : document.activeElement?.tagName,
       }));
       check('E opens the touch screen: every model, a keychain, every colour, the camera at the printer', scr.mode === 'printer' && scr.tiles === P.SHOWN.length + 1 && scr.swatches === P.SWATCHES.length && !scr.prompt && scr.cam < 1.2 && scr.focus === 'type', JSON.stringify(scr));
+      // Counted before the test loads the sheet itself to measure it: the test server marks every file no-store, so the
+      // browser may fetch the test's own copy again, and that one is not the page's.
+      const fetched = pics.slice();
       const sheet = await p.evaluate(async () => { const i = new Image(); i.src = 'assets/printer/models.webp'; await i.decode(); return [i.naturalWidth, i.naturalHeight]; });
-      check('the model pictures arrive when the screen opens, one sheet', pics.length === 1 && /^200 models\.webp/.test(pics[0]) && sheet[0] === 6 * 128, `${pics.join()} ${sheet}`);
+      check('the model pictures arrive when the screen opens, one sheet', fetched.length === 1 && /^200 models\.webp/.test(fetched[0]) && sheet[0] === 6 * 128, `${fetched.join()} ${sheet}`);
       const seen = await printOnScreen(p);
       check('the print is in view beside the screen, nothing over it', seen.z < 1 && seen.x > 0 && seen.x < 1280 * 0.68 && seen.y > 0 && seen.y < 800 && seen.top === 'CANVAS', JSON.stringify(seen));
       await p.screenshot({ path: path.join(OUT, 'screen-open.png') });
@@ -165,6 +174,7 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       await p.waitForTimeout(1200);
       const back = await p.evaluate(() => ({ mode: __loft.mode, panel: !!document.querySelector('.pn'), me: __loft.headVisible, prompt: document.getElementById('prompt').classList.contains('on') }));
       check('Esc closes it and I am back on my feet at the printer', back.mode === 'walk' && !back.panel && back.me && back.prompt, JSON.stringify(back));
+      check('the page\'s own builder is never fetched while the worker builds', !asked.includes('printpage.js'), asked.filter(f => /print/.test(f)).join(' '));
       check('the screen: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }

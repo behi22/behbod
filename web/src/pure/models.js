@@ -3,6 +3,7 @@ import {
   sphere, ellipsoid, box, rod, cylinder, torus, polygon, lathe, extrude, union, blend, cut, carve, meet, inflate,
   move, scale, mirrorX, mirrorZ, turn, around, onBed,
 } from './sdf.js';
+import { MODELS as CATALOG } from './catalog.js';
 
 const { PI, sin, cos, abs, max, min, sqrt, atan2, hypot } = Math;
 const B = (w, h, d, y0 = 0) => [-w, y0, -d, w, h, d];
@@ -379,36 +380,6 @@ function cube() {
   return { f: onBed(carve(0.06, c, grooves)), bounds: B(5, 9, 5), lip: 1.6 };
 }
 
-export const MODELS = [
-  { id: 'knight', name: 'chess knight', words: ['knight', 'horse', 'chess', 'chessknight', 'pony'], colour: 'white', make: knight },
-  { id: 'rocket', name: 'rocket', words: ['rocket', 'spaceship', 'rocketship'], colour: 'red', sides: [3, 8, 4, 'fins'], make: rocket },
-  { id: 'pishi', name: 'little Pishi', words: ['pishi', 'cat', 'kitty', 'kitten', 'pishy'], colour: 'grey', make: pishi },
-  { id: 'bh22', name: 'mini BH-22', words: ['bh22', 'bh', 'robot', 'droid', 'bot'], colour: 'silver', make: bh22 },
-  { id: 'controller', name: 'game controller', words: ['controller', 'gamepad', 'joystick', 'pad', 'gamecontroller'], colour: 'purple', make: controller },
-  { id: 'trophy', name: 'trophy', words: ['trophy', 'award', 'prize', 'winner', 'champion'], colour: 'gold', make: trophy },
-  { id: 'skull', name: 'skull', words: ['skull', 'skeleton', 'bones'], colour: 'white', make: skull },
-  { id: 'car', name: 'car', words: ['car', 'auto', 'racecar', 'truck', 'automobile'], colour: 'blue', make: car },
-  { id: 'sneaker', name: 'sneaker', words: ['sneaker', 'sneakers', 'shoe', 'shoes', 'trainer', 'trainers', 'kicks'], colour: 'white', make: sneaker },
-  { id: 'duck', name: 'rubber duck', words: ['duck', 'ducky', 'duckie', 'rubberduck'], colour: 'yellow', make: duck },
-  { id: 'teapot', name: 'teapot', words: ['teapot', 'tea', 'kettle', 'pot'], colour: 'teal', make: teapot },
-  { id: 'crown', name: 'crown', words: ['crown', 'tiara'], colour: 'gold', sides: [4, 10, 6, 'points'], make: crown },
-  { id: 'dino', name: 'dinosaur', words: ['dino', 'dinosaur', 'trex', 'rex', 'dragon'], colour: 'green', make: dino },
-  { id: 'octopus', name: 'octopus', words: ['octopus', 'squid', 'kraken'], colour: 'pink', make: octopus },
-  { id: 'penguin', name: 'penguin', words: ['penguin', 'pingu'], colour: 'black', make: penguin },
-  { id: 'ghost', name: 'ghost', words: ['ghost', 'boo', 'spooky'], colour: 'white', make: ghost },
-  { id: 'mushroom', name: 'mushroom', words: ['mushroom', 'shroom', 'toadstool'], colour: 'red', make: mushroom },
-  { id: 'boat', name: 'tugboat', words: ['boat', 'tugboat', 'ship', 'tug'], colour: 'orange', make: boat },
-  { id: 'lighthouse', name: 'lighthouse', words: ['lighthouse'], colour: 'white', make: lighthouse },
-  { id: 'planet', name: 'planet', words: ['planet', 'saturn', 'space'], colour: 'orange', make: planet },
-  { id: 'rook', name: 'castle', words: ['rook', 'castle', 'tower', 'fort'], colour: 'grey', make: rook },
-  { id: 'king', name: 'chess king', words: ['king'], colour: 'black', make: king },
-  { id: 'heart', name: 'heart', words: ['heart', 'love', 'hearts'], colour: 'pink', make: heart },
-  { id: 'star', name: 'star', words: ['star', 'stars'], colour: 'gold', sides: [3, 12, 5, 'points'], spiky: true, make: star },
-  { id: 'gear', name: 'gear', words: ['gear', 'cog', 'gears'], colour: 'silver', sides: [6, 20, 12, 'teeth'], spiky: true, make: gear },
-  { id: 'flower', name: 'flower', words: ['flower', 'rose', 'bloom', 'daisy', 'flowers'], colour: 'pink', sides: [4, 12, 7, 'petals'], make: flower },
-  { id: 'vase', name: 'vase', words: ['vase', 'jar', 'urn'], colour: 'gold', sides: [3, 12, 6, 'sides'], spiky: true, make: vase },
-  { id: 'mug', name: 'mug', words: ['mug', 'cup', 'glass', 'coffee'], colour: 'white', make: mug },
-  { id: 'spiral', name: 'spiral', words: ['spiral', 'swirl', 'twister'], colour: 'teal', sides: [3, 8, 4, 'arms'], spiky: true, make: spiral, hidden: true },
-  { id: 'cube', name: 'puzzle cube', words: ['cube', 'rubik', 'rubiks', 'puzzle'], colour: 'white', make: cube, hidden: true },
-];
+const MAKE = { knight, rocket, pishi, bh22, controller, trophy, skull, car, sneaker, duck, teapot, crown, dino, octopus, penguin, ghost, mushroom, boat, lighthouse, planet, rook, king, heart, star, gear, flower, vase, mug, spiral, cube };
+export const MODELS = CATALOG.map(m => ({ ...m, make: MAKE[m.id] }));
 export const MODEL = Object.fromEntries(MODELS.map(m => [m.id, m]));

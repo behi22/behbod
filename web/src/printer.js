@@ -1,26 +1,20 @@
 import * as THREE from 'three';
 import { DEFAULT, COLOURS, parsePrint, cleanPrint, describe } from './pure/printer.js';
-import { buildPrint, PATH } from './pure/printbuild.js';
-import { drawLetters, letterField } from './pure/keychain.js';
 
-// Models are built off the page's thread the first time they are needed, never when the page starts.
+// Models are built off the page's thread when first needed, never at the start; the page loads only this and the words it knows.
 const KEY = 'home.print', HEAT = 1.8, PRINT = 15, SLOW = 300, NEAR = 12;
 // The models' fronts face the room (-x), where a visitor stands.
 const FACE = -Math.PI / 2, UP = new THREE.Vector3(0, 1, 0);
 
-// Work done on the page (a browser without a worker, or a worker without a canvas) takes SLICE ms of a frame at most.
-const SLICE = 5;
-let deadline = 0;
+// Work on the page (no worker, or a worker without a canvas) takes SLICE ms of a frame at most, and its code is fetched only then.
+const SLICE = 5, SETTLE = 6;
+let deadline = 0, pageWork = null, screenCode = null, idleAsked = false;
 const due = () => performance.now() > deadline;
-let cv = null;
-const letters = text => drawLetters(text, (w, h) => {
-  cv ||= document.createElement('canvas');
-  cv.width = w; cv.height = h;
-  return cv.getContext('2d', { willReadFrequently: true });
-}, due);
-function* onPage(print, points) {
-  const field = print.model === 'word' ? yield* letterField(yield* letters(print.text), due) : null;
-  return yield* buildPrint(print, { field, points, due });
+const loadPageWork = () => (pageWork ||= import('./printpage.js'));
+const warmScreen = () => { screenCode ||= import('./printscreen.js').catch(() => {}); };
+function warmWhenIdle() {
+  idleAsked = true;
+  if (window.requestIdleCallback) requestIdleCallback(warmScreen, { timeout: 5000 }); else setTimeout(warmScreen, 500);
 }
 
 export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = null, coarse = false }) {
@@ -104,12 +98,15 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     }
     slowly(id, print);
   }
-  function slowly(id, print) { slow = { id, gen: onPage(print, points), then: b => take(id, b) }; }
-  function lettersFor(id, print) {
-    slow = { id, gen: letters(print.text), then: bitmap => { if (id === job && worker) worker.postMessage({ id, print, bitmap, points }, [bitmap.data.buffer]); } };
+  function onPage(id, then, make) {
+    const s = slow = { id, gen: null, then };
+    loadPageWork().then(m => { if (slow === s) s.gen = make(m); }, e => { if (slow === s) fail(id, e.message); });
   }
+  const slowly = (id, print) => onPage(id, b => take(id, b), m => m.onPage(print, points, due));
+  const lettersFor = (id, print) => onPage(id, bitmap => { if (id === job && worker) worker.postMessage({ id, print, bitmap, points }, [bitmap.data.buffer]); }, m => m.letters(print.text, due));
   function stepSlow() {
     const s = slow;
+    if (!s.gen) return;
     deadline = performance.now() + SLICE;
     try {
       const r = s.gen.next();
@@ -177,7 +174,8 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     tick(dt, cam) {
       clock += dt;
       const near = cam.distanceToSquared(bedTop) < NEAR * NEAR;
-      if (near && !asked) build();
+      if (near && !asked) { build(); warmScreen(); }
+      if (!idleAsked && clock > SETTLE) warmWhenIdle();
       if (slow) stepSlow();
       const k = progress(), warm = heating();
       if (mine && k >= 1) done = true;
@@ -187,7 +185,7 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
       if (!near && !run) { if (sounding) { sounding = false; sfx?.printer(false); } return; }
       // The nozzle follows this layer's outline; when nothing is printing the head parks and the bed comes home.
       if (printing) {
-        const f = (k * layers - layer) * PATH, i = Math.min(PATH - 1, Math.floor(f)), j = Math.min(PATH - 1, i + 1), w = f - i, o = layer * PATH, P = built.path;
+        const P = built.path, N = P.length / 2 / layers, f = (k * layers - layer) * N, i = Math.min(N - 1, Math.floor(f)), j = Math.min(N - 1, i + 1), w = f - i, o = layer * N;
         nz.set(P[(o + i) * 2] * (1 - w) + P[(o + j) * 2] * w, 0, P[(o + i) * 2 + 1] * (1 - w) + P[(o + j) * 2 + 1] * w).applyAxisAngle(UP, FACE);
         target.head.set(0, ((layer + 1) / layers) * built.height + 0.037 + bedTop.y - headRest.y, nz.z);
         target.bed.set(-nz.x, 0, 0);

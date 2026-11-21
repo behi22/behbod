@@ -1,9 +1,9 @@
-import { MODELS, MODEL } from './pure/models.js';
+import { MODELS, MODEL } from './pure/catalog.js';
 import { COLOURS, SWATCHES, SHOWN, cleanText, describe, wordColour, parsePrint } from './pure/printer.js';
 
 // The pictures are one sheet, fetched the first time the screen opens.
 export const SHEET = { url: 'assets/printer/models.webp', cols: 6, tile: 128 };
-// Its rules join the panel's own stylesheet when the page starts: adding a stylesheet later restyles the whole page.
+// Its rules go in when this code arrives (in a quiet moment, or as you come near), not as the screen opens: new rules restyle the page.
 export const CSS = `
 .pn.pn-printer { place-items: stretch end; background: transparent; pointer-events: none; padding: 12px; }
 .pn.pn-printer .pn-box { pointer-events: auto; width: min(392px, 100%); max-height: none; height: calc(100dvh - 24px); display: flex; flex-direction: column;
@@ -66,6 +66,7 @@ body[data-mode="printer"] #hood, body[data-mode="printer"] #closet { display: no
   .pn-printer .pn-said { margin-top: 2px; min-height: 0; }
 }
 `;
+if (typeof document !== 'undefined' && !document.getElementById('ps-css')) document.head.append(Object.assign(document.createElement('style'), { id: 'ps-css', textContent: CSS }));
 const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; };
 const index = Object.fromEntries(MODELS.map((m, i) => [m.id, i]));
 function picture(id, node = el('span', { className: 'ps-pic' })) {

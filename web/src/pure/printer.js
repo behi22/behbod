@@ -1,5 +1,5 @@
 // Any word that is not a model prints on a keychain; words like taller or red adjust the print on the bed.
-import { MODELS, MODEL } from './models.js';
+import { MODELS, MODEL } from './catalog.js';
 
 export const COLOURS = {
   red: '#e0453a', orange: '#f08a24', gold: '#f2b630', yellow: '#f5d43a', green: '#4cc46a', teal: '#3ee6c4', blue: '#3d7bf0',

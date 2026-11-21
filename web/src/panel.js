@@ -1,5 +1,3 @@
-import { printScreen, CSS as PRINTER_CSS } from './printscreen.js';
-
 // A reading panel over the room: the story book, the about board, the 3D printer's screen, and the guestbook and mailbox, which keep
 // what you write on this device only until their server is set up. Everything typed is shown with textContent, never as HTML.
 const CSS = `
@@ -23,8 +21,8 @@ const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag)
 const FOCUSABLE = 'button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])';
 
 export function makePanels(store) {
-  if (!document.getElementById('pn-css')) { const s = document.createElement('style'); s.id = 'pn-css'; s.textContent = CSS + PRINTER_CSS; document.head.append(s); }
-  let open = null, sized = 0;
+  if (!document.getElementById('pn-css')) { const s = document.createElement('style'); s.id = 'pn-css'; s.textContent = CSS; document.head.append(s); }
+  let open = null, sized = 0, asked = 0;
   const NONE = Object.freeze({ right: 0, bottom: 0 });
   addEventListener('resize', () => { sized++; });
   function show(title, build, variant = '', onClose = null) {
@@ -54,6 +52,7 @@ export function makePanels(store) {
     all[i < 0 ? (dir > 0 ? 0 : all.length - 1) : (i + dir + all.length) % all.length].focus();
   }
   function close() {
+    asked++;
     if (!open) return;
     const was = open;
     removeEventListener('keydown', was.onKey, true);
@@ -112,9 +111,14 @@ export function makePanels(store) {
         ];
       });
     },
+    // The screen's code is usually here already (the printer fetches it as you come near); a later open or close wins.
     printer(pr, { onClose } = {}) {
-      const screen = printScreen(pr, { touch: matchMedia('(pointer: coarse)').matches });
-      show('3D PRINTER', () => screen.nodes, 'printer', () => { screen.stop(); onClose?.(); });
+      const ask = ++asked;
+      import('./printscreen.js').then(({ printScreen }) => {
+        if (ask !== asked) return;
+        const screen = printScreen(pr, { touch: matchMedia('(pointer: coarse)').matches });
+        show('3D PRINTER', () => screen.nodes, 'printer', () => { screen.stop(); onClose?.(); });
+      }, e => { if (ask === asked) { console.warn('[loft] printer screen:', e.message); onClose?.(); } });
     },
     // Measured once and again only on a resize: it is asked every frame, and measuring forces the page's layout.
     cover() {
