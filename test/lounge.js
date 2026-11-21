@@ -103,6 +103,20 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
         return { inside: count(20, 100), edge: count(0, 8) };
       });
       check('the red banner on the bell tower flies inside the cover, not cut off at its top', banner.inside > 200 && banner.edge === 0, JSON.stringify(banner));
+      // Their cost on a slow phone was mostly the grain, a thousand and more dots one at a time.
+      const calls = await p.evaluate(async () => {
+        const { paintCover, paintSpine } = await import('/src/covers.js'), { GAMES } = await import('/src/pure/shelf.js');
+        const P = CanvasRenderingContext2D.prototype, names = ['fillRect', 'fill', 'stroke', 'strokeRect', 'fillText'], was = names.map(k => P[k]);
+        let n = 0;
+        names.forEach((k, i) => { P[k] = function (...a) { n++; return was[i].apply(this, a); }; });
+        const per = [];
+        try {
+          for (const game of GAMES) { const c = document.createElement('canvas'); c.width = 320; c.height = 396; n = 0; paintCover(c.getContext('2d'), game, 1, 320, 396); per.push(n); }
+          const c = document.createElement('canvas'); c.width = 48; c.height = 768; n = 0; paintSpine(c.getContext('2d'), GAMES[0], 1, 48, 768); per.push(n);
+        } finally { names.forEach((k, i) => { P[k] = was[i]; }); }
+        return per;
+      });
+      check('each cover and spine takes a few hundred drawing calls, its grain one fill', Math.max(...calls) < 1200, calls.join(' '));
       check('covers: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }

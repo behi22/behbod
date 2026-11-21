@@ -58,9 +58,19 @@ function dots(g, r, x0, y0, w, h, n, colour, size) {
   g.fillStyle = colour;
   for (let i = 0; i < n; i++) { const s = size * (0.4 + r() * 0.9); g.beginPath(); g.arc(x0 + r() * w, y0 + r() * h, s, 0, Math.PI * 2); g.fill(); }
 }
+// Film grain: one tile of light and dark dots, made once and laid over each picture at its own offset in a single fill.
+let grainTile = null;
 function grain(g, r, w, h, alpha) {
-  const n = Math.round(w * h / 90);
-  for (let i = 0; i < n; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '255,255,255' : '0,0,0'},${alpha * (0.4 + r() * 0.6)})`; g.fillRect(r() * w, r() * h, 1 + r(), 1 + r()); }
+  if (!grainTile) {
+    const S = 128, q = rng('grain');
+    grainTile = document.createElement('canvas');
+    grainTile.width = grainTile.height = S;
+    const t = grainTile.getContext('2d');
+    for (let i = 0; i < Math.round(S * S / 90); i++) { t.fillStyle = `rgba(${q() < 0.5 ? '255,255,255' : '0,0,0'},${0.4 + q() * 0.6})`; t.fillRect(q() * S, q() * S, 1 + q(), 1 + q()); }
+  }
+  const p = g.createPattern(grainTile, 'repeat');
+  p.setTransform(new DOMMatrix([1, 0, 0, 1, -r() * 128, -r() * 128]));
+  g.save(); g.globalAlpha = alpha; g.fillStyle = p; g.fillRect(0, 0, w, h); g.restore();
 }
 function vignette(g, w, h, k) {
   const gr = g.createRadialGradient(w / 2, h * 0.45, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.78);
