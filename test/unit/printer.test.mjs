@@ -375,3 +375,15 @@ test('an even number of petals is turned half a petal, so none points down the s
     for (let t = 0.05; t < Math.PI; t += 0.05) assert.equal(at(t, 3) < 0, at(-t, 3) < 0, `${n} petals at ${t.toFixed(2)}`);
   }
 });
+
+test('a model named in two words is read whole: a chess king is the king, though chess alone is the knight', () => {
+  for (const [typed, id] of [['chess king', 'king'], ['king', 'king'], ['chess knight', 'knight'], ['knight', 'knight'], ['chess', 'knight'],
+    ['a black chess king please', 'king'], ['chess-king', 'king'], ['a chess king and a knight', 'king'], ['king chess', 'king'], ['chess piece king', 'king'],
+    ['space rocket', 'rocket'], ['rocket ship and a duck', 'rocket']]) assert.equal(parsePrint(typed).p.model, id, typed);
+  // Every model answers to its full name, and to each of its own words.
+  for (const m of MODELS) {
+    assert.equal(parsePrint(m.name).p.model, m.id, m.name);
+    for (const w of m.words) assert.equal(parsePrint(w).p.model, m.id, w);
+  }
+  assert.equal(parsePrint('print a chess king taller').said, 'Printing a black chess king.');
+});

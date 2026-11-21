@@ -97,6 +97,16 @@ const MODS = {
 const PAIRS = new Set(['rubberduck', 'gamecontroller', 'chessknight', 'racecar', 'rocketship', 'spaceship']);
 const joinPairs = s => s.replace(/\bbh[\s_-]*22\b/g, 'bh22').replace(/\bt[\s_-]*rex\b/g, 'trex')
   .replace(/\b(rubber|game|chess|race|rocket|space)\s+(duck|controller|knight|car|ship)\b/g, (m, a, b) => (PAIRS.has(a + b) ? a + b : m));
+const nameWords = m => m.name.toLowerCase().split(/[\s-]+/);
+// A model's full name of two words or more is read whole first, the longest first: "chess king" is the king, though "chess" alone is the knight.
+const NAMES = MODELS.filter(m => /[\s-]/.test(m.name))
+  .map(m => ({ w: nameWords(m), id: m.id }))
+  .sort((a, b) => b.w.length - a.w.length || b.w.join('').length - a.w.join('').length)
+  .map(({ w, id }) => ({ re: new RegExp(`\\b${w.join('[\\s_-]*')}\\b`, 'g'), id }));
+const joinNames = s => NAMES.reduce((t, { re, id }) => t.replace(re, id), s);
+// A model word that names one model (its id, a word only its name has, a joined one like t-rex) beats one that only stands for it.
+const SHARED = new Set(MODELS.flatMap(nameWords).filter((w, i, all) => all.indexOf(w) !== i));
+const SPECIFIC = new Set([...WORDS.keys()].filter(w => { const m = MODEL[WORDS.get(w)]; return w === m.id || PAIRS.has(w) || w === 'trex' || (nameWords(m).includes(w) && !SHARED.has(w)); }));
 const keyOf = w => w.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 
 export function parsePrint(text, current = DEFAULT) {
@@ -107,13 +117,13 @@ export function parsePrint(text, current = DEFAULT) {
   let cut = false;
   if (q) { quoted = cleanText(q[1]); cut = tooMany(q[1]); raw = raw.slice(0, q.index) + ' ' + raw.slice(q.index + q[0].length); }
   // Read word by word, punctuation at a word's ends set aside ("taller!" is taller); "<3" stays as it is.
-  const spans = joinPairs(raw.toLowerCase()).split(/[\s()[\]{}]+/).filter(Boolean), words = spans.map(keyOf);
-  let model = null, colour = null, sides = null, sideStep = 0;
+  const spans = joinPairs(joinNames(raw.toLowerCase())).split(/[\s()[\]{}]+/).filter(Boolean), words = spans.map(keyOf);
+  let model = null, colour = null, sides = null, sideStep = 0, named = -1;
   const mods = [], unknown = [], symbols = [], numbers = [];
   words.forEach((w, i) => {
     const prev = words[i - 1];
     if (!w) symbols.push(spans[i]);
-    else if (WORDS.has(w)) model ||= WORDS.get(w);
+    else if (WORDS.has(w)) { const r = SPECIFIC.has(w) ? 1 : 0; if (r > named) { model = WORDS.get(w); named = r; } }
     else if (Object.hasOwn(COLOURS, w)) colour = w;
     else if (Object.hasOwn(MODS, w)) mods.push(w);
     else if (/^\d+[.,!?]*$/.test(spans[i])) numbers.push(+w);
