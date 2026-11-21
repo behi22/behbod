@@ -283,24 +283,8 @@ export function makeCanvases(meta, opts = {}) {
     g.fillStyle = '#ff9f5a'; g.fillText(lossPts[Math.max(0, n - 1)].toFixed(4), 220, 22);
     t.needsUpdate = true;
   }
+  // The Pishi cam's screen; src/pishicam.js draws it.
   S.pishi = surface(320, 190);
-  function drawPishi(now) {
-    const { g, c, t } = S.pishi;
-    g.fillStyle = '#121418'; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = '#23262d'; g.beginPath(); g.ellipse(160, 150, 110, 30, 0, 0, 7); g.fill();
-    const br = 1 + Math.sin(now / 900) * 0.03;
-    g.fillStyle = '#7b7f87'; g.beginPath(); g.ellipse(160, 128, 64 * br, 30 * br, 0, 0, 7); g.fill();
-    g.beginPath(); g.ellipse(108, 116, 28, 22, -0.3, 0, 7); g.fill();
-    g.beginPath(); g.moveTo(92, 100); g.lineTo(98, 82); g.lineTo(108, 97); g.fill();
-    g.beginPath(); g.moveTo(112, 96); g.lineTo(124, 82); g.lineTo(126, 100); g.fill();
-    g.strokeStyle = '#7b7f87'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(222, 130); g.quadraticCurveTo(250, 150, 210, 160); g.stroke();
-    g.strokeStyle = '#3c3f46'; g.lineWidth = 2; g.beginPath(); g.moveTo(98, 114); g.lineTo(108, 116); g.moveTo(112, 116); g.lineTo(120, 113); g.stroke();
-    g.fillStyle = '#d2d6de'; g.font = `13px ${MONO}`; g.fillText('CAM 02 · PISHI', 12, 22);
-    if (Math.floor(now / 700) % 2) { g.fillStyle = '#ff3b30'; g.beginPath(); g.arc(300, 17, 6, 0, 7); g.fill(); }
-    g.fillStyle = 'rgba(255,255,255,.04)';
-    for (let y = 0; y < c.height; y += 3) g.fillRect(0, y, c.width, 1);
-    t.needsUpdate = true;
-  }
 
   // Outside the window: Vancouver by the real sun and weather, North Shore mountains, Grouse runs, Lions Gate lights.
   S.backdrop = surface(2048, 750);
@@ -371,7 +355,7 @@ export function makeCanvases(meta, opts = {}) {
       if (near && Math.floor(now / 1000) !== sec) { sec = Math.floor(now / 1000); drawTimer(S.timer, now); }
       if (backdrop) outside.tick(now);
       panels.tick(Date.now());
-      if (near && acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); drawPishi(now); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
+      if (near && acc > 0.12) { acc = 0; codeScroll += 0.45; drawCode(); if (lossHead < 120) { lossHead += 0.6; drawLoss(); } else if (slow > 6) { lossHead = 20; slow = 0; } }
       // The caret blinks on the monitor only while it shows; under the seated view the page draws its own.
       if (focused && !desk.covered) { const b = Math.floor(now / 500); if (b !== term.blink) { term.blink = b; desk.dirty = true; } }
       if (Math.floor(now / 1000) !== desk.clockSec) {

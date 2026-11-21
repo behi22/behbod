@@ -30,6 +30,7 @@ import { makeKnight, makeSaber } from './src/saber.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
 import { makeHello } from './src/hello.js';
 import { makeLights } from './src/lightswitch.js';
+import { makePishiCam } from './src/pishicam.js';
 import { lightsCommand } from './src/pure/lamps.js';
 import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
@@ -219,6 +220,7 @@ function enterPens() {
 const knight = makeKnight(scene, meta, [scene], { renderer });
 // The light switch by the front door; the knight's glass case keeps its own light.
 const lights = makeLights(scene, world, { sfx: audio.sfx, skip: [knight?.root] }); window.__lights = lights;
+const pishiCam = makePishiCam({ renderer, scene, screen: scene.getObjectByName('screen_pishi'), texture: screens.textures.pishi, pishi: creatures.pishi, me, coarse }); window.__pishiCam = pishiCam;
 persia.tableReady.then(() => lights.adopt());
 const saber = makeSaber({ engine, camera, canvas, coarse, knight, meta, audio: audio.saber, store, onExit: () => { mode = 'walk'; me.root.visible = true; } });
 const saberEye = new THREE.Vector3();
@@ -886,6 +888,7 @@ function step() {
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
   ambience(dt);
+  pishiCam.tick(dt, now, camera, engine.tier.post);
   doorsReady = true;
   engine.render(dt);
 
