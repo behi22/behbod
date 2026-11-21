@@ -935,6 +935,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (st === 'petted' && (jessi.timer -= dt) < 0) { jessi.state = 'follow'; jessi.timer = rnd(8, 14); jessi.repath = 0; Object.assign(jessi.want, { lean: 0, roll: 0, blink: 0 }); }
     if (st === 'trick') tickTrick(dt, ctx);
     if (st === 'treat') tickJessiTreat(dt);
+    else if (biscuit?.visible) biscuit.visible = false;
     if (st === 'fetch') tickFetch(dt);
     if (st === 'follow') {
       const d = jessi.pos.distanceTo(ctx.player);

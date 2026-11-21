@@ -363,6 +363,21 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.waitForTimeout(7500);
       const again = await p.evaluate(() => [__jar.shake(), __loft.creatures.pishi.state, __loft.creatures.jessi.state]);
       check('from far off both come, and shaken again while they are still on their way it says so', far === 'You shake the treat jar. Pishi and Jessi come running.' && again[1] === 'totreat' && again[2] === 'totreat' && again[0] === 'One moment, they are on their way.', `${far} / ${JSON.stringify(again)}`);
+      // Her treat cut short (E, and she runs for the ball): her biscuit goes with it (it was left on the floor for good).
+      await p.waitForFunction(() => __loft.creatures.jessi.state === 'treat', null, { timeout: 20000 }).catch(() => {});
+      await p.waitForTimeout(300);
+      const cut = await p.evaluate(() => {
+        const c = __loft.creatures, j = c.jessi, V = j.pos.constructor;
+        let biscuit = null;
+        __loft.scene.traverse(o => { if (o.isMesh && o.parent === __loft.scene && o.visible && Math.abs(Math.hypot(o.position.x - j.pos.x, o.position.z - j.pos.z) - 0.2) < 0.02 && Math.abs(o.position.y - j.pos.y - 0.008) < 0.01) biscuit = o; });
+        window.__biscuit = biscuit;
+        const player = j.pos.clone().add(new V(0, 0, 0.6));
+        for (const facing of [0, -Math.PI / 2, Math.PI / 2, Math.PI]) { if (j.state !== 'treat') break; c.act('jessi', { player, mode: 'walk', facing }); }
+        return { found: !!biscuit, state: j.state };
+      });
+      await p.waitForTimeout(1000);
+      const left = await p.evaluate(() => window.__biscuit?.visible);
+      check('her treat cut short, the biscuit goes too', cut.found && cut.state !== 'treat' && left === false, `${JSON.stringify(cut)} biscuit shown after: ${left}`);
       check('jar: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
