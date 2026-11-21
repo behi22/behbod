@@ -1,6 +1,7 @@
 // The letters come in as a picture drawn in whatever font the browser has, so any script prints.
 import { box, torus, extrude, blend, union, cut } from './sdf.js';
 import { never } from './mesher.js';
+import { FONT, FONT_PX, STEP, TALL, WIDE, layout } from './letters.js';
 
 const { sqrt, min, max, floor, hypot } = Math;
 const INF = 1e20;
@@ -33,20 +34,11 @@ function* edt(grid, w, h, due) {
   }
 }
 
-export const FONT_PX = 96;
-const FONT = `900 ${FONT_PX}px system-ui, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Arabic", Tahoma, Arial, sans-serif`;
 // Generators, like the build, so a page without a worker can spread them over frames (`due`, as in mesher.js).
 export function* drawLetters(text, make, due = never) {
-  const s = String(text), words = s.split(' ');
-  let lines = [s];
-  if (Array.from(s).length > 12 && words.length > 1) {
-    let best = 1, gap = Infinity;
-    for (let i = 1; i < words.length; i++) { const d = Math.abs(words.slice(0, i).join(' ').length - s.length / 2); if (d < gap) { gap = d; best = i; } }
-    lines = [words.slice(0, best).join(' '), words.slice(best).join(' ')];
-  }
-  const step = Math.round(FONT_PX * 1.25);
   let g = make(8, 8);
   g.font = FONT;
+  const { lines } = layout(String(text), l => g.measureText(l).width), step = Math.round(FONT_PX * STEP);
   const w = Math.min(2200, Math.ceil(Math.max(...lines.map(l => g.measureText(l).width)) + 40)), h = step * lines.length + 30;
   g = make(w, h);
   g.font = FONT; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = '#fff';
@@ -80,7 +72,7 @@ export function* letterField({ w, h, data }, due = never) {
   return { w, h, sd, box: [x0, y0, x1 + 1, y1 + 1] };
 }
 
-export function keychain(field, { px = FONT_PX, tall = 4.2, wide = 17 } = {}) {
+export function keychain(field, { px = FONT_PX, tall = TALL, wide = WIDE } = {}) {
   // Letters that drew nothing (a font without them) leave a plain tag.
   if (!field) field = { w: 2, h: 2, sd: new Float32Array(4).fill(px), box: [0, 0, 1, 1] };
   const [bx0, by0, bx1, by1] = field.box;
@@ -103,5 +95,5 @@ export function keychain(field, { px = FONT_PX, tall = 4.2, wide = 17 } = {}) {
   const rx = left - 1.75, ry = bar + 1.15;
   const ring = cut(blend(0.3, box([0.9, 0.7, 0.42], [rx + 0.2, bar + 0.3, 0], 0.4), torus(1.15, 0.42, [rx, ry, 0], 'z')), (x, y) => hypot(x - rx, y - ry) - 0.72);
   const f = blend(0.25, union(letters, outline), base, ring);
-  return { f, bounds: [left - 3.6, 0, -1.2, W / 2 + 1.0, bar + max(H + 1.4, 3.0), 1.2], lip: 1.5 };
+  return { f, bounds: [left - 3.6, 0, -1.2, W / 2 + 1.0, bar + max(H + 1.4, 3.0), 1.2], lip: 1.5, em: px * k };
 }

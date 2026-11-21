@@ -9,6 +9,9 @@ export const SWATCHES = ['red', 'orange', 'gold', 'yellow', 'green', 'teal', 'bl
 // A few more models answer only to being typed.
 export const SHOWN = MODELS.filter(m => !m.hidden).map(m => m.id);
 export const MAX_TEXT = 24;
+// Centimetres. Models are drawn a little small and printed GROW times over, so they fill the 30 cm bed.
+export const REACH = 12, TALLEST = 20, GROW = 1.25;
+export const TOO_LONG = 'That is too long for a keychain. Try fewer letters.';
 const SPIKES = [4, 16, 8, 'spikes'];
 export const sidesOf = id => MODEL[id]?.sides || SPIKES;
 
@@ -19,10 +22,12 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // The joiners stay: Persian needs its half-space between letters, and an emoji family is held together by them.
 const ends = s => s.replace(/^[\s\u200c\u200d]+|[\s\u200c\u200d]+$/g, '');
-export function cleanText(t) {
+export function cleanText(t, max = MAX_TEXT) {
   const s = ends(String(t ?? '').normalize('NFC').replace(/\s+/g, ' ').replace(/(?![\u200c\u200d])\p{C}/gu, ''));
-  return ends(Array.from(s).slice(0, MAX_TEXT).join(''));
+  return ends(Array.from(s).slice(0, max).join(''));
 }
+// Words a keychain cannot hold all of.
+export const tooMany = t => Array.from(cleanText(t, Infinity)).length > MAX_TEXT;
 
 // The shapes the printer made before its models, so a print saved then comes back as the nearest one now.
 const OLD = { vase: 'vase', cup: 'mug', star: 'star', gear: 'gear', heart: 'heart', spiral: 'spiral', tower: 'rook', flower: 'flower' };
@@ -90,7 +95,8 @@ export function parsePrint(text, current = DEFAULT) {
   // Words in double quotes are always the keychain's, even a model's name.
   let quoted = null;
   const q = raw.match(/["“”«»]([^"“”«»]*)["“”«»]?/) || raw.match(/^\s*'(.*)'\s*$/);
-  if (q) { quoted = cleanText(q[1]); raw = raw.slice(0, q.index) + ' ' + raw.slice(q.index + q[0].length); }
+  let cut = false;
+  if (q) { quoted = cleanText(q[1]); cut = tooMany(q[1]); raw = raw.slice(0, q.index) + ' ' + raw.slice(q.index + q[0].length); }
   // Read word by word, punctuation at a word's ends set aside ("taller!" is taller); "<3" stays as it is.
   const spans = joinPairs(raw.toLowerCase()).split(/[\s()[\]{}]+/).filter(Boolean), words = spans.map(keyOf);
   let model = null, colour = null, sides = null, sideStep = 0;
@@ -121,6 +127,7 @@ export function parsePrint(text, current = DEFAULT) {
   else if (model) p = { ...DEFAULT, model, colour: null };
   else if (unknown.length) {
     const t = keychainText(raw);
+    cut = tooMany(keychainText(raw, Infinity));
     if (!t) return null;
     p = { ...DEFAULT, model: 'word', text: t, colour: null };
   } else { p = { ...current }; fresh = false; }
@@ -136,14 +143,15 @@ export function parsePrint(text, current = DEFAULT) {
   p = cleanPrint(p);
   const counted = sides !== null || sideStep ? ` with ${p.sides} ${sidesOf(p.model)[3]}` : '';
   const said = fresh ? `Printing ${describe(p)}${counted}.` : `Reprinting the ${nameOf(p)}${mods.length ? `, ${mods.join(', ')}` : ''}${colour ? ` in ${colour === 'gray' ? 'grey' : colour}` : ''}${counted}.`;
-  return { p, said };
+  // `cut`: the keychain's words were more than it holds, so only their start is in p.
+  return { p, said, cut };
 }
 
 // The asking round the words ("print me", "please") and colour or size words at either end are not printed.
-function keychainText(raw) {
+function keychainText(raw, max = MAX_TEXT) {
   const spans = raw.trim().split(/\s+/).filter(Boolean);
   const drop = (w, lead) => { const k = keyOf(w); return k !== '' && ((lead && LEAD.has(k)) || Object.hasOwn(COLOURS, k) || Object.hasOwn(MODS, k) || k === 'please' || k === 'again' || k === 'now'); };
   while (spans.length > 1 && drop(spans[0], true)) spans.shift();
   while (spans.length > 1 && drop(spans[spans.length - 1], false)) spans.pop();
-  return cleanText(spans.join(' '));
+  return cleanText(spans.join(' '), max);
 }

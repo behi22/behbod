@@ -4,9 +4,10 @@ import { rod, blend } from './sdf.js';
 import { MODEL } from './models.js';
 import { keychain } from './keychain.js';
 
+import { REACH, TALLEST, GROW } from './printer.js';
+
+export { REACH, TALLEST, GROW };
 const { PI, sin, cos, hypot, max, min, round, abs } = Math;
-// Centimetres. Models are drawn a little small and printed GROW times over, so they fill the 30 cm bed.
-export const REACH = 12, TALLEST = 20, GROW = 1.25;
 const KEY = (() => { const v = [-0.5, 0.75, 0.62], l = hypot(...v); return v.map(c => c / l); })();
 
 // Cones on a rough mesh's surface, spread evenly and none pointing into the bed, for models with nothing to sharpen.
@@ -53,7 +54,7 @@ function shapeOf(p, field) {
 }
 
 export function* buildPrint(p, { field = null, points = 240000, layerMm = 3, due = never } = {}) {
-  let { f, bounds, lip, own } = shapeOf(p, field);
+  let { f, bounds, lip, own, em = 0 } = shapeOf(p, field);
   // Spikes enlarge the box but keep the model's own grid step, or it would come out softer.
   const cell = Math.cbrt((bounds[3] - bounds[0]) * (bounds[4] - bounds[1]) * (bounds[5] - bounds[2]) / points);
   if (!own && p.depth > 0.001) {
@@ -126,7 +127,8 @@ export function* buildPrint(p, { field = null, points = 240000, layerMm = 3, due
   }
   const height = top * fit, radius = reach * fit;
   const path = yield* slice(Q, m.index, L, height, due);
-  return { pos: Q, colour, sphere: [scx, scy, scz, Math.sqrt(r2)], uv, index: m.index, height, radius, layers: L, path };
+  // A keychain's letters as printed: the font's size in cm, held to a size that reads (letters.js).
+  return { pos: Q, colour, sphere: [scx, scy, scz, Math.sqrt(r2)], uv, index: m.index, height, radius, layers: L, path, em: em * GROW * p.size * p.height * fit * 100 };
 }
 
 export const PATH = 48;

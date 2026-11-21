@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFAULT, COLOURS, parsePrint, cleanPrint, describe } from './pure/printer.js';
+import { DEFAULT, COLOURS, TOO_LONG, parsePrint, cleanPrint, cleanText, tooMany, describe } from './pure/printer.js';
+import { FONT, layout } from './pure/letters.js';
 
 // Models are built off the page's thread when first needed, never at the start; the page loads only this and the words it knows.
 const KEY = 'home.print', HEAT = 1.8, PRINT = 15, SLOW = 300, NEAR = 12;
@@ -12,6 +13,11 @@ let deadline = 0, pageWork = null, screenCode = null, idleAsked = false;
 const due = () => performance.now() > deadline;
 const loadPageWork = () => (pageWork ||= import('./printpage.js'));
 const warmScreen = () => { screenCode ||= import('./printscreen.js').catch(() => {}); };
+// A keychain's words are measured here, in the font they print in, to know before printing whether they will read.
+let ruler = null;
+const measure = s => { if (!ruler) { ruler = document.createElement('canvas').getContext('2d'); ruler.font = FONT; } return ruler.measureText(s).width; };
+const readable = text => layout(text, measure).fits;
+const fits = text => !tooMany(text) && readable(cleanText(text));
 function warmWhenIdle() {
   idleAsked = true;
   if (window.requestIdleCallback) requestIdleCallback(warmScreen, { timeout: 5000 }); else setTimeout(warmScreen, 500);
@@ -142,15 +148,19 @@ export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = nu
     get mine() { return mine; },
     get failed() { return failed; },
     get sounding() { return sounding; },
-    get built() { return built ? { height: built.height, radius: built.radius, layers: built.layers, tris: built.index.length / 3 } : null; },
+    get built() { return built ? { height: built.height, radius: built.radius, layers: built.layers, tris: built.index.length / 3, em: built.em } : null; },
+    fits,
     describe: () => describe(p),
     ask(text) {
       const r = parsePrint(text, p);
-      return r ? begin(r.p, r.said) : null;
+      if (!r) return null;
+      // New words that would not read on a keychain are not printed; the printer says why.
+      if (r.p.model === 'word' && (r.cut || ((p.model !== 'word' || r.p.text !== p.text) && !readable(r.p.text)))) return TOO_LONG;
+      return begin(r.p, r.said);
     },
     start(pick) {
       const q = cleanPrint({ model: pick.model, text: pick.text, colour: pick.colour, size: pick.size });
-      if (q.model !== pick.model) return null;
+      if (q.model !== pick.model || (q.model === 'word' && !fits(pick.text))) return null;
       return begin(q, `Printing ${describe(q)}.`);
     },
     hit(ray, blockers) {

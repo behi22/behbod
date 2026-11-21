@@ -1,5 +1,5 @@
 import { MODELS, MODEL } from './pure/catalog.js';
-import { COLOURS, SWATCHES, SHOWN, cleanText, describe, wordColour, parsePrint } from './pure/printer.js';
+import { COLOURS, SWATCHES, SHOWN, TOO_LONG, cleanText, describe, wordColour, parsePrint } from './pure/printer.js';
 
 // The pictures are one sheet, fetched the first time the screen opens.
 export const SHEET = { url: 'assets/printer/models.webp', cols: 6, tile: 128 };
@@ -120,14 +120,16 @@ export function printScreen(pr, { touch = false } = {}) {
     if (id === 'word') {
       if (!pick.text) pick.text = cleanText(box.value);
       if (!colourChosen && pick.text) pick.colour = wordColour(pick.text);
-      if (!pick.text) { said = 'Type the words for your keychain below.'; box.focus(); }
+      if (!pick.text) { said = 'Type the words for your keychain below.'; box.focus(); } else if (box.value.trim() && !pr.fits(box.value)) said = TOO_LONG;
     } else if (!colourChosen) pick.colour = MODEL[id].colour;
     show();
   }
   function print() {
     if (pick.model === 'word') {
-      const t = cleanText(box.value) || pick.text;
+      const typed = box.value.trim() ? box.value : pick.text, t = cleanText(typed);
       if (!t) { said = 'Type the words for your keychain first.'; box.focus(); show(); return; }
+      // Words that would print too small to read stay in the box, with the reason under the button.
+      if (!pr.fits(typed)) { said = TOO_LONG; show(); return; }
       pick.text = t;
     }
     said = pr.start({ model: pick.model, text: pick.text, colour: pick.colour, size: pick.size / 100 }) || 'That one would not print.';
@@ -142,8 +144,9 @@ export function printScreen(pr, { touch = false } = {}) {
     // Typed words work as at the terminal; with "Your word" picked they are the keychain's, unless they only adjust the one on the bed.
     const now = pr.print, r = parsePrint(t, now);
     if (pick.model === 'word' && !(now.model === 'word' && r?.p.model === 'word' && r.p.text === now.text)) { print(); return; }
-    said = pr.ask(t) || 'Nothing to print there. Try a model, or any word at all.';
-    box.value = '';
+    const answer = pr.ask(t);
+    said = answer || 'Nothing to print there. Try a model, or any word at all.';
+    if (answer !== TOO_LONG) box.value = '';
     const p = pr.print;
     Object.assign(pick, { model: p.model, text: p.model === 'word' ? p.text : '', colour: plainColour(p.colour), size: Math.round(p.size * 100) });
     size.value = pick.size; out.textContent = `${pick.size}%`;
@@ -153,6 +156,8 @@ export function printScreen(pr, { touch = false } = {}) {
     if (pick.model !== 'word') return;
     pick.text = cleanText(box.value);
     if (!colourChosen && pick.text) pick.colour = wordColour(pick.text);
+    // Said as soon as the words get too long, and taken back once they fit again.
+    if (pick.text && !pr.fits(box.value)) said = TOO_LONG; else if (said === TOO_LONG) said = '';
     show();
   });
 

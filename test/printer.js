@@ -99,7 +99,7 @@ const type = async (p, text) => { await p.keyboard.type(text); await p.keyboard.
 const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || '';
 
 (async () => {
-  const P = await import('../web/src/pure/printer.js');
+  const P = await import('../web/src/pure/printer.js'), L = await import('../web/src/pure/letters.js');
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
   try {
     // ---------- E opens the screen; a model, a colour and a size picked, then Print ----------
@@ -260,13 +260,22 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       await standAt(p, SPOT); await facePrinter(p);
       // With the screen open, so the pictures show the keychains from the screen's camera.
       await p.evaluate(() => __loft.act('printer'));
-      for (const [typed, text] of [['Behbod', 'Behbod'], ['سلام دنیا', 'سلام دنیا'], ['2026', '2026'], ['<3', '<3'], ['a really really long name for a keychain here', 'really really long name'], ['Ünïcödé 東京', 'Ünïcödé 東京']]) {
+      for (const [typed, text] of [['Behbod', 'Behbod'], ['سلام دنیا', 'سلام دنیا'], ['2026', '2026'], ['<3', '<3'], ['Ünïcödé 東京', 'Ünïcödé 東京']]) {
         const said = await p.evaluate(t => __loft.printer.ask(t), typed);
         await untilDone(p);
         const s = await state(p);
         check(`"${typed}" prints on a keychain`, s.print.model === 'word' && s.print.text === text && s.built?.tris > 500 && !s.failed && s.built.radius <= 0.121 && s.built.height <= 0.201, `${said} ${JSON.stringify(s.built)}`);
         if (typed === 'Behbod' || typed === 'سلام دنیا') { await p.waitForTimeout(400); await p.screenshot({ path: path.join(OUT, `words-${typed === 'Behbod' ? 'latin' : 'persian'}.png`) }); }
       }
+      // A long word goes on two lines, its letters still big enough to read; words too long even then are not printed, and it says so.
+      const longSaid = await p.evaluate(() => __loft.printer.ask('Supercalifragilistic'));
+      await untilDone(p);
+      const long = await state(p);
+      check('a long word prints on a keychain with letters big enough to read', long.print.text === 'Supercalifragilistic' && !long.failed && long.built?.tris > 500 && long.built.em >= L.MIN && long.built.radius <= 0.121, `${longSaid} ${JSON.stringify(long.built)}`);
+      await p.waitForTimeout(400); await p.screenshot({ path: path.join(OUT, 'words-long.png') });
+      const refused = [];
+      for (const t of ['W'.repeat(24), 'a really really long name for a keychain here', `"${'x'.repeat(P.MAX_TEXT + 1)}"`]) refused.push([t, await p.evaluate(x => __loft.printer.ask(x), t), (await state(p)).print.text]);
+      check('words too long for a keychain are not printed, and the printer says so', refused.every(([, said, now]) => said === P.TOO_LONG && now === 'Supercalifragilistic'), JSON.stringify(refused));
       const adj = await p.evaluate(() => { __loft.printer.ask('sam'); return __loft.printer.ask('taller wider twist spikier blue'); });
       await untilDone(p);
       const s = await state(p);
@@ -279,6 +288,16 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       const grown = await state(p);
       await p.fill('.ps-type input', 'Bob'); await p.press('.ps-type input', 'Enter'); await p.waitForTimeout(200);
       const bob = await state(p);
+      // Typed at the screen, too long words keep their place in the box and the reason shows as they are typed.
+      await p.click('.ps-tile >> text=Your word');
+      await p.fill('.ps-type input', 'W'.repeat(24)); await p.waitForTimeout(150);
+      const hint = await p.textContent('.pn-said');
+      await p.click('.ps-print'); await p.waitForTimeout(200);
+      const kept = await p.evaluate(() => ({ box: document.querySelector('.ps-type input').value, said: document.querySelector('.pn-said').textContent, text: __loft.printer.print.text }));
+      await p.fill('.ps-type input', 'Bo'); await p.waitForTimeout(150);
+      const cleared = await p.textContent('.pn-said');
+      check('at the screen, words too long for a keychain say so as they are typed, and Print leaves them be', hint === P.TOO_LONG && kept.said === P.TOO_LONG && kept.box === 'W'.repeat(24) && kept.text === 'Bob' && cleared === '', JSON.stringify({ hint, kept, cleared }));
+      await p.fill('.ps-type input', '');
       check('at the screen, bigger grows the keychain on the bed and a new word makes a new one', grown.print.model === 'word' && grown.print.text === 'sam' && grown.print.size > 1.1 && bob.print.text === 'Bob', `${JSON.stringify(grown.print)} then ${bob.print.text}`);
       await untilDone(p);
       check('the words: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
