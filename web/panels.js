@@ -418,9 +418,9 @@ export function makePanels(surface, ctx) {
       const steps = m.nardSteps(c.getContext('2d', { willReadFrequently: true }), 2);
       const step = () => {
         if (!steps.next().done) { later(step); return; }
-        // The finished board becomes the table's picture as it is, with no copy into the old canvas.
+        // Copied into the table's own canvas, the one its picture is sent from, so the scratch canvas can go.
         inlaid = true;
-        S.backgammon.t.image = c;
+        S.backgammon.g.drawImage(c, 0, 0);
         S.backgammon.t.needsUpdate = true;
       };
       step();

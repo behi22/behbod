@@ -87,6 +87,7 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       const { p, errs } = await open(b, DESK);
       const fetched = () => p.evaluate(() => performance.getEntriesByType('resource').find(e => /\/src\/khatam\.js/.test(e.name))?.startTime ?? null);
       check('the khatam board is not drawn while the house loads', (await fetched()) === null);
+      await p.evaluate(() => { window.__boardCanvas = __loft.screens.textures.backgammon.image; });
       // Painted a step at a time, it goes on the table in one go when whole: wait for green in its frame.
       await p.waitForFunction(() => { const d = __loft.screens.textures.backgammon.image.getContext('2d').getImageData(0, 0, 920, 26).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 47) + Math.abs(d[i + 1] - 106) + Math.abs(d[i + 2] - 76) < 40) n++; return n > 200; }, null, { timeout: 30000, polling: 100 });
       const up = await p.evaluate(() => window.__up), at = await fetched();
@@ -97,6 +98,24 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       check('its frame is khatam: bone, brass and green pieces in the band', band.bone > band.all * 0.06 && band.brass > band.all * 0.03 && band.green > band.all * 0.02, JSON.stringify(band));
       check('so is the bar down its middle', bar.bone > bar.all * 0.06 && bar.brass > bar.all * 0.03 && bar.green > bar.all * 0.02, JSON.stringify(bar));
       check('the fields between the points stay plain walnut', field.bone === 0 && field.green === 0, JSON.stringify(field));
+      // Painted into the table's own canvas, so whatever sends that canvas to the graphics card sends the khatam.
+      check('the khatam is painted into the table\'s own canvas', await p.evaluate(() => __loft.screens.textures.backgammon.image === window.__boardCanvas));
+      const onCard = await p.evaluate(async () => {
+        const THREE = await import('three'), r = __loft.renderer, t = __loft.screens.textures.backgammon;
+        const target = new THREE.WebGLRenderTarget(920, 640), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), scene = new THREE.Scene();
+        target.texture.colorSpace = THREE.SRGBColorSpace;
+        const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: t, toneMapped: false }));
+        scene.add(quad);
+        const was = r.getRenderTarget();
+        r.setRenderTarget(target); r.render(scene, cam); r.setRenderTarget(was);
+        const d = new Uint8Array(920 * 640 * 4);
+        r.readRenderTargetPixels(target, 0, 0, 920, 640, d);
+        target.dispose(); quad.geometry.dispose(); quad.material.dispose();
+        let green = 0;
+        for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 47) + Math.abs(d[i + 1] - 106) + Math.abs(d[i + 2] - 76) < 40) green++;
+        return green;
+      });
+      check('and the graphics card holds it: green pieces in the table\'s picture', onCard > 1500, `${onCard} green`);
       await standAt(p, [15.7, 16.05, 0], [15, 16.6]);
       await p.waitForTimeout(1200);
       await p.screenshot({ path: path.join(OUT, 'board-stand.png') });
