@@ -315,8 +315,14 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       const h = await o.p.evaluate(() => ({ holo: __loft.creatures.holo, toast: document.getElementById('toast').textContent, mood: __loft.creatures.mood }));
       await o.p.screenshot({ path: path.join(OUT, 'holo.png') });
       check('?holo: the hologram plays over its head, the message in the note too', h.holo && h.toast === `BH-22 plays a message: ${HOLO_TEXT.lines.join(' ')}` && h.mood === 'love', JSON.stringify(h));
+      // While it plays, BH-22 is not offered for E: the prompt sat on top of the message, and a pet talked over it.
+      const during = await o.p.evaluate(() => { __loft.creatures.act('bh22', { player: __loft.pos, mode: 'walk', facing: 0 }); return { near: __loft.near, state: __loft.creatures.bh22.state, holo: __loft.creatures.holo }; });
+      check('while it plays BH-22 is not offered for E, and E does nothing', during.near !== 'bh22' && during.state === 'talk' && during.holo, JSON.stringify(during));
       await o.p.waitForTimeout(HOLO_TIME * 1000);
       check('and ends after a few seconds', !(await o.p.evaluate(() => __loft.creatures.holo)));
+      await r2At(o.p, [s[0] + 0.6, s[1] + 0.1, s[2]]);
+      await o.p.waitForTimeout(300);
+      check('then it is offered again', (await o.p.evaluate(() => __loft.near)) === 'bh22');
       await o.p.evaluate(() => { Math.random = () => 0; for (let i = 0; i < 6; i++) __loft.creatures.act('bh22', { player: __loft.pos, mode: 'walk', facing: 0 }); });
       check('once a visit at most', !(await o.p.evaluate(() => __loft.creatures.holo)));
       check('holo: no error', errs.length === 0 && o.errs.length === 0, [...errs, ...o.errs].slice(0, 3).join(' | '));

@@ -1060,7 +1060,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       let best = null, bd = Infinity;
       for (const [a, id] of [[r2, 'bh22'], [pishi, 'pishi'], [jessi, 'jessi']]) {
         if (a.hop || Math.abs(p.y - a.pos.y) > 1.0 || (id === 'jessi' && a.state === 'fetch')) continue;
-        if (id === 'bh22' && r2.state.startsWith('keeper')) continue;
+        // In goal, or while its message plays (the prompt would cover it), it is not offered.
+        if (id === 'bh22' && (r2.state.startsWith('keeper') || holoT >= 0)) continue;
         const label = id === 'jessi' && jessi.state === 'nap' ? 'Wake Jessi' : id === 'bh22' && actionFor(id) === 'talk' && nearFire(p) ? 'Ask BH-22 for a story' : LABELS[id][actionFor(id)];
         const d = Math.hypot(p.x - a.pos.x, p.z - a.pos.z);
         if (d <= 1.1 && d < bd) { bd = d; best = items[id]; Object.assign(best, { label, x: a.pos.x, y: a.pos.y, z: a.pos.z }); }
@@ -1072,7 +1073,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       const what = actionFor(id);
       if (id === 'bh22') {
         if (r2.pos.distanceTo(ctx.player) > 2.5) { toast('BH-22 is out on patrol somewhere in the house.'); return null; }
-        if (r2.state.startsWith('keeper')) return null;
+        if (r2.state.startsWith('keeper') || holoT >= 0) return null;
         turnAt.bh22++;
         if (what !== 'talk') { r2Fun(what); return { crouch: what === 'pet' }; }
         if (nearFire(ctx.player)) { tellStory(true); return null; }
