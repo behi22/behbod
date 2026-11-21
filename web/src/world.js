@@ -230,6 +230,9 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   const gull = meta.points.gull ? gather(scene, named('gull_'), b2t(...meta.points.gull)) : null;
   // The 3D printer's moving parts, which the printer module drives.
   const printParts = { head: named('printer_head')[0], gantry: named('printer_gantry')[0], bed: named('printer_bed')[0] };
+  // The piano lamp's bulb (where its warm glow goes) and the metronome's arm (it swings) are kept out of the merge; the
+  // sheet music's turning page copies the desk sheet's look.
+  const pianoParts = { lamp: named('pianolamp_glow')[0], arm: named('metronome_arm')[0], sheet: named('screen_sheet')[0] };
   const wardrobeDoors = named('wardrobe_door').concat(named('wardrobe_handle')).map(o => ({ o, x: o.position.x, side: o.name.endsWith('-1') ? -1 : 1 }));
   let wardrobeOpen = 0, wardrobeK = 0;
   const fish = named('fish').map((o, i) => ({ o, x: o.position.x, ph: i * 1.7 }));
@@ -260,7 +263,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
 
   // Static pieces that share a look are drawn together: one draw call per colour instead of one per piece.
-  const keep = new Set([...leds, ...deskThings, ...(aria.eyes || []), aria.tip, ...lavas, ...Object.values(clockHands), ...pcGlow.map(([m]) => m), ...Object.values(printParts), mirrorMesh, deployBtn, cage]);
+  const keep = new Set([...leds, ...deskThings, ...(aria.eyes || []), aria.tip, ...lavas, ...Object.values(clockHands), ...pcGlow.map(([m]) => m), ...Object.values(printParts), ...Object.values(pianoParts), mirrorMesh, deployBtn, cage]);
   const pinned = o => keep.has(o) || keep.has(o.material) || o.parent?.isGroup && o.parent.parent === scene && !zones.includes(o.parent);
   const buckets = new Map();
   for (const o of loose) {
@@ -396,7 +399,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
 
   return {
-    tick, setGloss, deskThings, doors, merged, printParts, lights,
+    tick, setGloss, deskThings, doors, merged, printParts, pianoParts, lights,
     setMirror(on) { liveMirror = on; },
     toggleDoor(id) { const d = doors[id]; if (!d) return null; d.open = !d.open; return d; },
     openWardrobe(t) { wardrobeOpen = t + 6; },

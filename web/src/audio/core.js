@@ -144,3 +144,12 @@ export function makeClock() {
     remove(j) { jobs.delete(j); },
   };
 }
+
+// The sound's clock as it reaches the ears now: what plays out of the speakers was scheduled a little earlier.
+export function heard(ctx) {
+  const now = ctx.currentTime;
+  if (ctx.state !== 'running') return now;
+  const ts = ctx.getOutputTimestamp?.();
+  const t = ts && ts.contextTime > 0 && ts.performanceTime > 0 ? ts.contextTime + (performance.now() - ts.performanceTime) / 1000 : now - (ctx.outputLatency || ctx.baseLatency || 0);
+  return Math.min(now, Math.max(now - 0.5, t));
+}

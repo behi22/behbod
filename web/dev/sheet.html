@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sheet Music Bench</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; background: #101317; color: #e8e6e1; font: 13px/1.4 system-ui, sans-serif; }
+  h2 { font-weight: 600; font-size: 14px; margin: 18px 16px 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; padding: 0 16px 8px; }
+  canvas { width: 840px; max-width: calc(100vw - 32px); height: auto; box-shadow: 0 2px 12px rgba(0,0,0,.5); }
+</style>
+</head>
+<body>
+<script type="module">
+// Every open pair of pages of every song on the piano's music desk, as the piano shows them, to look at up close.
+import { SONGS } from '../src/audio/pure/songs.js';
+import { score } from '../src/pure/sheet.js';
+import { drawSpread, PAGE } from '../src/sheetdraw.js';
+for (const s of SONGS) {
+  const sc = score(s.id), h = document.createElement('h2'), row = document.createElement('div');
+  h.textContent = `${s.title}: ${sc.pages.length} pages, turns at ${sc.turns.slice(1).map(t => t.toFixed(1) + ' s').join(', ')}`;
+  row.className = 'row';
+  for (const sp of sc.spreads) {
+    const c = document.createElement('canvas');
+    c.width = PAGE.w * 2; c.height = PAGE.h;
+    drawSpread(c.getContext('2d'), sc, sp.left, sp.right);
+    row.append(c);
+  }
+  document.body.append(h, row);
+}
+</script>
+</body>
+</html>
