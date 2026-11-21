@@ -27,6 +27,7 @@ import { makeTvMatch } from './src/tvmatch.js';
 import { makePenalties } from './src/penalties.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
+import { makeSpots } from './src/spots.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
 import { makeHello } from './src/hello.js';
 import { makeLights } from './src/lightswitch.js';
@@ -301,6 +302,7 @@ const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
 things.items.push(...hello.spots);
 things.items.push(...lights.spots);
+const spots = makeSpots({ panels, desktop: screens.desktop }); things.items.push(...spots.items);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
@@ -489,6 +491,7 @@ function act(it) {
   { const said = hello.poke(it.id); if (said) return toast(said); }
   { const read = shah.read(it.id); if (read) return toast(read); }
   { const said = range.poke(it.id); if (said) return toast(said); }
+  if (spots.act(it.id)) return;
   toast(SAY[it.id] || it.label);
 }
 // YouTube's own player over the room, so nothing is copied; only real video ids ever reach the address.
@@ -682,6 +685,7 @@ function tapMove(e) {
     walkTo(a.pos.clone(), () => { const it = creatures.nearest(pos); if (it && it.id === who) act(it); });
     return;
   }
+  { const it = spots.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   // A gun on the range's wall, or its plaque: walk over and take it.
   const gun = range.wall?.hit(ray, walkable);
   // In reach is enough: on arrival the loadout room's own spot can still be nearer than the middle gun's.

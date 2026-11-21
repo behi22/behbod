@@ -60,6 +60,7 @@ export function makePanels(store) {
   return {
     get open() { return !!open; },
     close,
+    show,
     book() {
       let page = 0;
       show('THE STORY', render => {

@@ -1,12 +1,13 @@
-// The khatam on the backgammon boards in a real Chrome: the one on the balcony table and the one you play on.
+// The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards and the Shahnameh on the mezzanine
+// opening the reader, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8823 node test/lounge.js [outdir] [parts]
-// Parts: khatam, game.
+// Parts: khatam, game, reader, phone.
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/lounge';
-const ONLY = process.argv[3] || 'khatam,game';
+const ONLY = process.argv[3] || 'khatam,game,reader,phone';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
@@ -16,6 +17,7 @@ const DESK = { viewport: { width: 1280, height: 800 } };
 const UPRIGHT = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
 const SIDEWAYS = { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true };
 const OUTSIDE = /youtube|google|gstatic|ytimg|ggpht|doubleclick|open-meteo/;
+const BOOK = { spot: [5.0, 2.05, 3.0], at: [5.02, 2.7, 3.48] };
 
 function watch(p, errs) {
   p.on('pageerror', e => errs.push(e.message));
@@ -38,6 +40,18 @@ async function standAt(p, at, facing) {
   await p.evaluate(([v, f]) => { __loft.pos.set(v.x, v.y + 0.05, v.z); if (f) __loft.yaw = Math.atan2(-(f.x - v.x), -(f.z - v.z)); }, [b2t(...at), facing ? b2t(...facing) : null]);
   await p.waitForTimeout(500);
 }
+const prompt = p => p.evaluate(() => (document.getElementById('prompt').classList.contains('on') ? document.getElementById('prompt').lastChild.nodeValue : ''));
+const panel = p => p.evaluate(() => {
+  const r = document.querySelector('.pn');
+  if (!r) return null;
+  const box = r.querySelector('.pn-box').getBoundingClientRect();
+  return { title: r.querySelector('h2')?.firstChild?.nodeValue, box: [box.left, box.top, box.right, box.bottom], w: innerWidth, h: innerHeight, sideways: document.documentElement.scrollWidth > innerWidth + 1 };
+});
+// Where a point (Blender axes) lands on the screen.
+const onScreen = (p, at) => p.evaluate(v => {
+  const c = __loft.camera, q = c.position.clone().set(v.x, v.y, v.z).project(c);
+  return { x: (q.x + 1) / 2 * innerWidth, y: (1 - q.y) / 2 * innerHeight, z: q.z };
+}, b2t(...at));
 // A still from any eye with the character hidden, at w by h.
 const shot = async (p, name, eye, at, w = 960, h = 600, fov = 50) => {
   const url = await p.evaluate(async ([e, a, w, h, fov]) => {
@@ -102,6 +116,62 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       await p.screenshot({ path: path.join(OUT, 'game-desk.png') });
       check('game: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
+    }
+
+    if (want('reader')) {
+      const { p, errs } = await open(b, DESK);
+      await standAt(p, BOOK.spot, BOOK.at);
+      check('at the side table: E offers the Shahnameh', (await prompt(p)) === 'Read the Shahnameh', await prompt(p));
+      await p.evaluate(() => __loft.screens.desktop.readerGo('read:labours'));
+      const before = await p.evaluate(() => __loft.pos.toArray());
+      await p.keyboard.press('KeyE'); await p.waitForTimeout(500);
+      const r = await p.evaluate(() => {
+        const box = document.querySelector('.pn');
+        return box && { title: box.querySelector('h2').firstChild.nodeValue, tabs: [...box.querySelectorAll('.lp-tabs button')].map(b => b.textContent), on: box.querySelector('.lp-tabs button.on')?.textContent, story: box.querySelector('.lp-text h3 span')?.textContent, fa: box.querySelector('.lp-fa')?.textContent, paras: box.querySelectorAll('.lp-text p').length, pic: box.querySelector('canvas.lp-pic')?.getAttribute('aria-label') };
+      });
+      check('E opens the reader at the story the computer last showed', r?.title === 'SHAHNAMEH' && r.tabs.join() === 'Zal,Seven Labours,Siavash,Sohrab' && r.on === 'Seven Labours' && r.story === 'The Seven Labours of Rostam' && r.paras === 4 && /Rakhsh/.test(r.pic), JSON.stringify(r));
+      const lit = () => p.evaluate(() => { const c = document.querySelector('.pn canvas.lp-pic'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 16) if (d[i] + d[i + 1] + d[i + 2] > 150) n++; return n; });
+      check('its picture is painted', (await lit()) > 2000, `${await lit()}`);
+      await p.screenshot({ path: path.join(OUT, 'reader-desk.png') });
+      await p.click('.pn .lp-tabs button:text-is("Siavash")'); await p.waitForTimeout(400);
+      const s = await p.evaluate(() => [document.querySelector('.pn .lp-text h3 span')?.textContent, __loft.screens.desktop.reader.story, document.querySelector('.pn .lp-tabs button.on')?.getAttribute('aria-pressed')]);
+      check('a tab turns to that story, on the computer too', s[0] === 'Siavash and the Fire' && s[1] === 'siavash' && s[2] === 'true', s.join(' | '));
+      check('and its picture is painted', (await lit()) > 2000);
+      await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+      const after = await p.evaluate(() => [__loft.pos.toArray(), __loft.mode, !!document.querySelector('.pn')]);
+      check('Esc closes it and I am still at the table', !after[2] && after[1] === 'walk' && after[0].every((v, i) => Math.abs(v - before[i]) < 0.02), JSON.stringify(after));
+      // From across the mezzanine, a click on the book walks there and opens it.
+      await standAt(p, [3.2, 2.6, 3.0], BOOK.at);
+      await p.waitForTimeout(1200);
+      const at = await onScreen(p, BOOK.at);
+      await p.mouse.click(at.x, at.y);
+      await p.waitForFunction(() => document.querySelector('.pn h2')?.firstChild?.nodeValue === 'SHAHNAMEH', null, { timeout: 15000 }).catch(() => {});
+      check('a click on the book walks me over and opens the reader', (await panel(p))?.title === 'SHAHNAMEH', JSON.stringify(at));
+      await p.click('.pn .pn-box h2 button'); await p.waitForTimeout(300);
+      check('Close closes it', !(await panel(p)));
+      await shot(p, 'book-close', [5.45, 2.2, 3.95], [5.02, 2.7, 3.45], 960, 600, 45);
+      check('reader: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
+
+    if (want('phone')) {
+      for (const [name, opts] of [['upright', UPRIGHT], ['sideways', SIDEWAYS]]) {
+        const { p, errs } = await open(b, opts);
+        const use = async () => { const r = await p.evaluate(() => { const e = document.getElementById('use').getBoundingClientRect(); return [e.x + e.width / 2, e.y + e.height / 2]; }); await p.touchscreen.tap(...r); await p.waitForTimeout(500); };
+        for (const [spot, title] of [[BOOK.spot, 'SHAHNAMEH']]) {
+          await standAt(p, spot);
+          await use();
+          await p.waitForTimeout(900);
+          const pn = await panel(p);
+          check(`${name}: Use opens ${title}, inside the screen, nothing sideways`, pn?.title === title && pn.box[0] >= 0 && pn.box[2] <= pn.w + 0.5 && pn.box[3] <= pn.h + 0.5 && !pn.sideways, JSON.stringify(pn));
+          await p.screenshot({ path: path.join(OUT, `phone-${name}-${title.toLowerCase().replace(' ', '-')}.png`) });
+          const close = await p.evaluate(() => { const e = document.querySelector('.pn h2 button').getBoundingClientRect(); return [e.x + e.width / 2, e.y + e.height / 2, e.height]; });
+          await p.touchscreen.tap(close[0], close[1]); await p.waitForTimeout(300);
+          check(`${name}: Close is big enough to tap and closes ${title}`, !(await panel(p)) && close[2] >= 24, `${close[2]} px tall`);
+        }
+        check(`${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+        await p.close();
+      }
     }
   } finally {
     await b.close();
