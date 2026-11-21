@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BANDS, GOAL_TIME, GOAL_BEAT, settle, follow, kicked, fade, pulse, toBands, lively, goalFlash, goalStart, goalShows } from '../../web/src/pure/leds.js';
+import { BANDS, GOAL_TIME, GOAL_BEAT, GOAL_GAP, settle, follow, kicked, fade, pulse, toBands, lively, goalFlash, goalStart, goalView, unseen } from '../../web/src/pure/leds.js';
 
 test('with the music not counting, the strips are exactly the scene: 1, whatever the level or the beat', () => {
   for (const level of [0, 0.2, 0.7, 1]) for (const kick of [0, 0.6, 1]) assert.equal(pulse(level, 0.4, kick, 0), 1);
@@ -92,13 +92,17 @@ test('a goal flashes white and gold, the two strip colours out of step, one chan
   assert.ok(Math.abs(GOAL_TIME / GOAL_BEAT - Math.round(GOAL_TIME / GOAL_BEAT)) < 1e-9);
 });
 
+// Frame times: steady, or with the frame due at `when` held up `late` seconds (the ones it covers never come).
+const steady = (fps, offset) => Array.from({ length: Math.ceil((7 - offset) * fps) }, (_, i) => offset + i / fps);
+const held = (fps, offset, when, late) => { const ts = steady(fps, offset), i = ts.findIndex(t => t >= when); return [...ts.slice(0, i), ts[i] + late, ...ts.slice(i).filter(t => t > ts[i] + late)]; };
 // The strips as world.js drives them, frame by frame: every change of what they show (the scene, or a flash colour).
-function run(goals, fps, offset, still = false) {
-  let f = null, shown = 'scene', g = 0;
+function run(goals, fps, offset, still = false, times = steady(fps, offset)) {
+  let f = null, v = unseen(), shown = 'scene', g = 0;
   const at = [], frames = [];
-  for (let t = offset; t < 7; t += 1 / fps) {
+  for (const t of times) {
     while (g < goals.length && goals[g] <= t) f = goalStart(f, goals[g++]);
-    const c = goalShows(f, t, still), now = c ? c[0].join() : 'scene';
+    v = goalView(v, f, t, still);
+    const now = v.show ? v.show[0].join() : 'scene';
     frames.push([t, now]);
     if (now !== shown) { at.push(t); shown = now; }
   }
@@ -130,3 +134,24 @@ test('asked for less motion, a goal holds white and gold still, one change in an
     for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= GOAL_BEAT - 1 / 60 - 1e-9, `${goals}: ${at.join(' ')}`);
   }
 });
+
+test('a late frame never brings two changes closer than GOAL_GAP, and the flash still stays under three a second and ends on the scene', () => {
+  for (const goals of [[0], [0, 1], [0, 1.85]]) for (const fps of [144, 60, 30]) for (const late of [0.03, 0.06, 0.105, 0.2, 0.3]) {
+    for (let when = 0.02; when < GOAL_TIME + 2.1; when += 0.01) {
+      const { at, end, frames } = run(goals, fps, 0.004, false, held(fps, 0.004, when, late)), what = `${goals} at ${fps} fps, ${late} s late at ${when.toFixed(2)}: ${at.map(x => x.toFixed(3)).join(' ')}`;
+      assert.equal(end, 'scene', what);
+      for (let i = 0; i < at.length; i++) {
+        assert.ok(at.filter(x => x >= at[i] && x - at[i] <= 1).length <= 5, what);
+        if (i) assert.ok(at[i] - at[i - 1] >= GOAL_GAP - 1e-9, what);
+      }
+      for (const t of goals) assert.ok(frames.some(([x, c]) => x >= t && x <= t + GOAL_BEAT + late + 1 / fps + 1e-9 && c !== 'scene'), `${what}: the goal at ${t} never flashed`);
+    }
+  }
+});
+
+test('the frame after a late one waits: 105 ms late on a beat, the next change comes 200 ms after it, not 145', () => {
+  const { at } = run([0], 60, 0, false, held(60, 0, GOAL_BEAT, 0.105));
+  const late = at.find(x => x > GOAL_BEAT), next = at.find(x => x > late);
+  assert.ok(late >= GOAL_BEAT + 0.105 - 1e-9 && next - late >= GOAL_GAP - 1e-9 && next - late < GOAL_GAP + 1 / 60 + 1e-9, at.map(x => x.toFixed(3)).join(' '));
+});
+

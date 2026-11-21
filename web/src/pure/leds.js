@@ -56,3 +56,11 @@ export function goalStart(f, t) {
   return { at: f.at, from: t < f.until ? f.from : beat(t), until: beat(t + GOAL_TIME) };
 }
 export const goalShows = (f, t, still = false) => (f && t >= f.from && t < f.until ? goalFlash(t - f.at, still) : null);
+
+// What the strips show: a change waits until GOAL_GAP after the last one seen, so a late frame never brings two closer.
+export const GOAL_GAP = 0.2;
+export const unseen = () => ({ show: null, at: -Infinity });
+export function goalView(v, f, t, still = false) {
+  const want = goalShows(f, t, still);
+  return want?.[0] === v.show?.[0] || t - v.at < GOAL_GAP ? v : { show: want, at: t };
+}

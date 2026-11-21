@@ -332,21 +332,24 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       check('goals: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
-    // ---------- the goal flash's pace, frame by frame, also with a second goal while it runs ----------
+    // ---------- the goal flash's pace, frame by frame, also with a second goal while it runs, and with a late frame ----------
     if (want('flash')) {
-      // Every change of the purple strip's colour from a goal on (the change at the goal itself included), in ms.
-      const changes = (p, again) => p.evaluate(([again]) => new Promise(done => {
-        const t0 = performance.now(), at = [];
-        let prev = __strip.color.toArray().join(), second = again == null;
+      // Every change of the purple strip's colour from a goal on (the change at the goal itself included), in ms by each
+      // frame's own time. `stall`: the frame due just after the third beat is held up that long, as a busy moment would.
+      const changes = (p, again, stall = 0) => p.evaluate(([again, stall]) => new Promise(done => {
+        const t0 = performance.now(), at = [], frames = [];
+        let prev = __strip.color.toArray().join(), second = again == null, held = !stall;
         __loft.world.goal(t0 / 1000);
-        const rec = () => {
+        const rec = ts => {
           const now = performance.now(), c = __strip.color.toArray().join();
-          if (c !== prev) { at.push(now - t0); prev = c; }
+          frames.push(ts);
+          if (c !== prev) { at.push(ts - t0); prev = c; }
           if (!second && now - t0 >= again * 1000) { second = true; __loft.world.goal(now / 1000); }
-          if (now - t0 < 4600) requestAnimationFrame(rec); else done({ at, back: c, goal: __loft.world.leds.goal });
+          if (!held && now > t0 + 500 - 30) { held = true; while (performance.now() < t0 + 500 + stall) { /* a long task */ } }
+          if (now - t0 < 4600) requestAnimationFrame(rec); else done({ at, back: c, goal: __loft.world.leds.goal, frame: frames.slice(1).map((f, i) => f - frames[i]).sort((a, b) => a - b)[frames.length >> 1] });
         };
         requestAnimationFrame(rec);
-      }), [again]);
+      }), [again, stall]);
       const pace = at => {
         let most = 0, gap = Infinity;
         for (let i = 0; i < at.length; i++) { let n = 0; for (let j = i; j < at.length && at[j] - at[i] <= 1000; j++) n++; most = Math.max(most, n); if (i) gap = Math.min(gap, at[i] - at[i - 1]); }
@@ -356,11 +359,12 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       for (const motion of ['full', 'reduce']) {
         const { ctx, p, errs } = await open(b, { ...DESK, reducedMotion: motion === 'reduce' ? 'reduce' : 'no-preference' });
         await findStrip(p);
-        for (const again of [null, 1.0, 1.85, 1.95]) {
-          const r = await changes(p, again), f = pace(r.at);
-          const ok = motion === 'reduce' ? r.at.length === 2 : f.most <= 5 && f.gap >= 200;
-          check(`the goal flash (${motion} motion${again ? `, a second goal at ${again} s` : ''}): under three flashes in any second, never a quick flicker, then exactly the scene`,
-            ok && r.back === chill && !r.goal, `${r.at.length} changes, at most ${f.most} in a second, closest ${f.gap} ms apart: ${r.at.map(Math.round).join(' ')}`);
+        for (const [again, stall] of [[null, 0], [1.0, 0], [1.85, 0], [1.95, 0], [null, 105]]) {
+          const r = await changes(p, again, stall), f = pace(r.at);
+          // One frame of slack: the change is timed by its frame, the 200 ms by the moment the house drew it.
+          const ok = motion === 'reduce' ? r.at.length === 2 : f.most <= 5 && f.gap >= 200 - r.frame;
+          check(`the goal flash (${motion} motion${again ? `, a second goal at ${again} s` : ''}${stall ? `, a frame ${stall} ms late` : ''}): under three flashes in any second, never two changes under 200 ms apart, then exactly the scene`,
+            ok && r.back === chill && !r.goal, `${r.at.length} changes, at most ${f.most} in a second, closest ${f.gap} ms apart (a frame is ${r.frame.toFixed(1)} ms): ${r.at.map(Math.round).join(' ')}`);
           await p.waitForTimeout(300);
         }
         check(`flash (${motion}): no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
