@@ -357,10 +357,10 @@ const ART = {
     vgrad(g, 0, 0, w, h, ['#f4efe4', '#e6dccb', '#c9bba4']);
     glow(g, w * 0.72, h * 0.3, w * 0.4, 'rgba(255,240,210,.8)');
     // The bell tower, its banner, and the old roofs below.
-    const tx = w * 0.42, tw = w * 0.14, ttop = h * 0.16;
+    const tx = w * 0.42, tw = w * 0.14, ttop = h * 0.28;
     g.fillStyle = '#6a6258'; g.fillRect(tx, ttop, tw, h);
     poly(g, [[tx - w * 0.01, ttop], [tx + tw / 2, ttop - h * 0.12], [tx + tw + w * 0.01, ttop]], '#5a5249');
-    g.fillStyle = '#3a342e'; for (const y of [0.22, 0.34]) { g.beginPath(); g.moveTo(tx + tw * 0.3, h * (y + 0.06)); g.lineTo(tx + tw * 0.3, h * y + tw * 0.2); g.arc(tx + tw / 2, h * y + tw * 0.2, tw * 0.2, Math.PI, 0); g.lineTo(tx + tw * 0.7, h * (y + 0.06)); g.fill(); }
+    g.fillStyle = '#3a342e'; for (const y of [0.34, 0.46]) { g.beginPath(); g.moveTo(tx + tw * 0.3, h * (y + 0.06)); g.lineTo(tx + tw * 0.3, h * y + tw * 0.2); g.arc(tx + tw / 2, h * y + tw * 0.2, tw * 0.2, Math.PI, 0); g.lineTo(tx + tw * 0.7, h * (y + 0.06)); g.fill(); }
     g.strokeStyle = '#3a342e'; g.lineWidth = w * 0.006; g.beginPath(); g.moveTo(tx + tw / 2, ttop - h * 0.12); g.lineTo(tx + tw / 2, ttop - h * 0.2); g.stroke();
     poly(g, [[tx + tw / 2, ttop - h * 0.2], [tx + tw / 2 + w * 0.13, ttop - h * 0.18], [tx + tw / 2 + w * 0.1, ttop - h * 0.15], [tx + tw / 2, ttop - h * 0.14]], P.accent);
     for (let k = 0; k < 3; k++) {

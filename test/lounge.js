@@ -1,13 +1,13 @@
 // The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards, the game shelf and its covers, the
 // Shahnameh on the mezzanine opening the reader, and the project frames up the stairs, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8823 node test/lounge.js [outdir] [parts]
-// Parts: khatam, game, shelf, reader, frames, phone, smooth (smooth measures frames: run it alone, under `timing`).
+// Parts: covers, khatam, game, shelf, reader, frames, phone, smooth (smooth measures frames: run it alone, under `timing`).
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/lounge';
-const ONLY = process.argv[3] || 'khatam,game,shelf,reader,frames,phone';
+const ONLY = process.argv[3] || 'covers,khatam,game,shelf,reader,frames,phone';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
@@ -83,6 +83,30 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
   try {
+    if (want('covers')) {
+      // The covers on their own, as the games panel paints them: each scene's pieces inside the frame.
+      const p = await b.newPage(DESK), errs = [];
+      watch(p, errs);
+      await p.goto(`${BASE}/dev/lounge.html`);
+      const banner = await p.evaluate(async () => {
+        const { paintCover } = await import('/src/covers.js'), { GAMES } = await import('/src/pure/shelf.js');
+        const i = GAMES.findIndex(g => g.id === 'ac'), game = GAMES[i], c = document.createElement('canvas');
+        c.width = 320; c.height = 396;
+        const g = c.getContext('2d');
+        paintCover(g, game, i + 1, 320, 396);
+        const a = [1, 3, 5].map(k => parseInt(game.accent.slice(k, k + 2), 16)), count = (y0, y1) => {
+          const d = g.getImageData(0, y0, 320, y1 - y0).data;
+          let n = 0;
+          for (let k = 0; k < d.length; k += 4) if (Math.abs(d[k] - a[0]) + Math.abs(d[k + 1] - a[1]) + Math.abs(d[k + 2] - a[2]) < 40) n++;
+          return n;
+        };
+        return { inside: count(20, 100), edge: count(0, 8) };
+      });
+      check('the red banner on the bell tower flies inside the cover, not cut off at its top', banner.inside > 200 && banner.edge === 0, JSON.stringify(banner));
+      check('covers: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
+
     if (want('khatam')) {
       const { p, errs } = await open(b, DESK);
       const fetched = () => p.evaluate(() => performance.getEntriesByType('resource').find(e => /\/src\/khatam\.js/.test(e.name))?.startTime ?? null);
