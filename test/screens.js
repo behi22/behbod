@@ -95,6 +95,13 @@ const shades = p => p.evaluate(() => {
       const box = [];
       for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown']) { await ph.p.press('#cmd', k); box.push(await ph.p.inputValue('#cmd')); }
       check('phone: the command box walks the same way, and gives back what was being typed', box.join('|') === 'contact|whoami|contact|he', box.join(' | '));
+      // An arrow while a keyboard's input method is still choosing the word belongs to the input method.
+      const ime = await ph.p.evaluate(() => {
+        const el = document.getElementById('cmd'), ev = new KeyboardEvent('keydown', { key: 'ArrowUp', code: 'ArrowUp', isComposing: true, bubbles: true, cancelable: true });
+        el.value = 'にほ'; el.dispatchEvent(ev);
+        return { value: el.value, prevented: ev.defaultPrevented };
+      });
+      check('phone: an arrow while a word is still being composed leaves the line to the input method', ime.value === 'にほ' && !ime.prevented, JSON.stringify(ime));
       check('history (phone): no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
       await ph.ctx.close();
     }

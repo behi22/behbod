@@ -662,7 +662,7 @@ function goTo(name) {
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
 $('cmd').addEventListener('keydown', e => {
   if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); }
-  else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); const line = screens.recall(e.key === 'ArrowUp' ? -1 : 1, e.target.value); if (line !== null) e.target.value = line; }
+  else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.isComposing) { e.preventDefault(); const line = screens.recall(e.key === 'ArrowUp' ? -1 : 1, e.target.value); if (line !== null) e.target.value = line; }
 });
 $('use').addEventListener('click', () => {
   if (mode === 'desk') leaveDesk(); else if (mode === 'sit') stand(); else if (mode === 'range') range.exit(); else if (mode === 'scope') scope.exit(); else if (mode === 'pens') pens.exit(); else if (mode === 'saber') saber.exit(); else if (near) act(near);
