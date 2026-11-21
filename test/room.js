@@ -198,11 +198,18 @@ async function blurGuard(b) {
   await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
   const stubs = await p.evaluate(async () => {
     const { readyBlur } = await import('/src/range/room.js'), r = __loft.renderer, was = r.getRenderTarget(), out = [];
-    const f = () => {};
-    for (const [name, pmrem] of [['nothing', {}], ['a target with no dispose', { _setSize: f, _allocateTargets: () => ({}), compileCubemapShader: f }],
-      ['parts that throw', { _setSize: () => { throw new Error('no'); }, _allocateTargets: f, compileCubemapShader: f }],
-      ['no planes or materials', { _setSize: f, _allocateTargets: () => ({ dispose: f }), compileCubemapShader: f }]]) {
+    const f = () => {}, inner = { _lodPlanes: [], _cubemapMaterial: null, _blurMaterial: null };
+    for (const [name, pmrem] of [['nothing', {}], ['a target with no dispose', { ...inner, _setSize: f, _allocateTargets: () => ({}), compileCubemapShader: f }],
+      ['parts that throw', { ...inner, _setSize: () => { throw new Error('no'); }, _allocateTargets: f, compileCubemapShader: f }],
+      ['no planes or materials', { ...inner, _setSize: f, _allocateTargets: () => ({ dispose: f }), compileCubemapShader: f }]]) {
       try { await readyBlur(r, pmrem, 128); out.push(r.getRenderTarget() === was ? 'ok' : `${name}: target left changed`); } catch (e) { out.push(`${name}: threw ${e.message}`); }
+    }
+    // Every part three's own has, but one of the inner names it reads differs: nothing is touched at all.
+    for (const gone of ['_lodPlanes', '_cubemapMaterial', '_blurMaterial']) {
+      const called = [], pmrem = { ...inner, _setSize: () => called.push('size'), _allocateTargets: () => (called.push('targets'), { dispose: f }), compileCubemapShader: () => called.push('compile') };
+      delete pmrem[gone];
+      await readyBlur(r, pmrem, 128);
+      out.push(called.length ? `without ${gone}: ${called.join(' ')} called` : 'ok');
     }
     return out;
   });

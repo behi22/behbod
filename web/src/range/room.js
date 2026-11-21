@@ -78,6 +78,7 @@ export async function prepare(renderer, scene, camera, { screen = true, picture 
 export async function readyBlur(renderer, pmrem, size) {
   try {
     if (!renderer.compileAsync || ['_setSize', '_allocateTargets', 'compileCubemapShader'].some(k => typeof pmrem[k] !== 'function')) return;
+    if (!Array.isArray(pmrem._lodPlanes) || !('_cubemapMaterial' in pmrem) || !('_blurMaterial' in pmrem)) return;
     pmrem._setSize(size);
     pmrem._allocateTargets().dispose();
     const was = renderer.getRenderTarget(), mats = [];
