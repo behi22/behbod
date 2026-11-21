@@ -1,5 +1,7 @@
-// Backgammon against a bot on a walnut board. You play the ivory checkers, moving from your 24 point home to your 1 point.
+// Backgammon against a bot on a walnut board inlaid with khatam. You play the ivory checkers, moving from your 24 point
+// home to your 1 point.
 import * as B from './pure/backgammon.js';
+import * as K from '../khatam.js';
 import { h, button, fit, endCard, injectStyles, ACCENT, DIM, INK, MONO, reducedMotion } from './ui.js';
 
 const STYLE = { id: 'backgammon', css: `
@@ -112,7 +114,12 @@ export function mount(body, api) {
     tray.addColorStop(0, '#140b06'); tray.addColorStop(1, '#22150c');
     b.fillStyle = tray; b.fillRect(G.trayX, G.top, G.trayW, G.bottom - G.top);
     b.fillStyle = 'rgba(0,0,0,.35)'; b.fillRect(G.trayX, G.mid - 1, G.trayW, 2);
-    b.fillStyle = 'rgba(0,0,0,.25)'; b.fillRect(G.barX + G.barW / 2 - 1, G.top, 2, G.bottom - G.top);
+    // Khatam down both ends, beside the tray and along the bar; the top and bottom keep their numbers on plain walnut.
+    const kw = Math.round(fr * 0.78), kb = Math.round(G.barW * 0.62);
+    b.save(); round(b, 0, 0, W, H, Math.max(6, pw * 0.25)); b.clip();
+    for (const x of [0, G.fieldEnd, G.trayX + G.trayW]) K.bar(b, x + (fr - kw) / 2, 0, kw, H);
+    b.restore();
+    K.bar(b, G.barX + (G.barW - kb) / 2, G.top, kb, G.bottom - G.top);
     for (let i = 0; i < 24; i++) {
       const { x, top } = col(i), red = i % 2 === 0;
       const tip = top ? G.top + G.pointH : G.bottom - G.pointH, base = top ? G.top : G.bottom;

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lounge Bench</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; background: #101317; color: #e8e6e1; font: 13px/1.4 system-ui, sans-serif; }
+  main { padding: 16px; display: grid; gap: 18px; }
+  h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: .14em; color: #5fe3d0; font-weight: 600; }
+  canvas { display: block; max-width: 100%; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+  .zoom { image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<main id="m"></main>
+<script type="module">
+// The lounge's drawn pieces on their own: the khatam board from the balcony, a close crop of its corner, and khatam
+// strips at a few sizes.
+import { nardBoard, strip } from '../src/khatam.js';
+
+const m = document.getElementById('m');
+const section = (title, ...kids) => { const s = document.createElement('section'), h = document.createElement('h2'); h.textContent = title; const r = document.createElement('div'); r.className = 'row'; r.append(...kids); s.append(h, r); m.append(s); return s; };
+const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+const board = canvas(920, 640);
+const times = [];
+for (let i = 0; i < 4; i++) { const t0 = performance.now(); nardBoard(board.getContext('2d'), 2); times.push(performance.now() - t0); }
+window.__boardMs = times.map(t => t.toFixed(1)).join(', ');
+const crop = canvas(460, 320), cg = crop.getContext('2d');
+cg.imageSmoothingEnabled = false;
+cg.drawImage(board, 380, 0, 230, 160, 0, 0, 460, 320);
+crop.className = 'zoom';
+section(`The balcony board, 2 px to the mm (${window.__boardMs} ms)`, board, crop);
+
+const strips = [];
+for (const h of [12, 20, 32, 56]) { const c = canvas(600, h); strip(c.getContext('2d'), 600, h); strips.push(c); }
+section('Khatam strips', ...strips);
+window.__ready = true;
+</script>
+</body>
+</html>
