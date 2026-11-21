@@ -42,6 +42,8 @@ async function standAt(p, at, facing) {
   await p.waitForTimeout(500);
 }
 const prompt = p => p.evaluate(() => (document.getElementById('prompt').classList.contains('on') ? document.getElementById('prompt').lastChild.nodeValue : ''));
+// The prompt once it says `want`, or whatever it says after 3 s: a body landing on a busy machine can take a while.
+const promptIs = async (p, want) => { await p.waitForFunction(w => document.getElementById('prompt').classList.contains('on') && document.getElementById('prompt').lastChild.nodeValue === w, want, { timeout: 3000 }).catch(() => {}); return prompt(p); };
 const panel = p => p.evaluate(() => {
   const r = document.querySelector('.pn');
   if (!r) return null;
@@ -191,9 +193,10 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
         const ready = () => p.evaluate(async () => { const [c, s] = await Promise.all([import('./src/covers.js'), import('./src/pure/shelf.js')]); return s.GAMES.filter(g => c.coverReady(g)).length; });
         check('far from the shelf, no cover is drawn yet', (await ready()) === 0, `${await ready()} drawn`);
         await standAt(p, SHELF.spot);
-        await p.waitForFunction(async () => { const [c, s] = await Promise.all([import('./src/covers.js'), import('./src/pure/shelf.js')]); return s.GAMES.every(g => c.coverReady(g)); }, null, { timeout: 15000, polling: 250 }).catch(() => {});
+        // Only in quiet moments, so on a busy machine as slowly as one cover each 1.5 s.
+        await p.waitForFunction(async () => { const [c, s] = await Promise.all([import('./src/covers.js'), import('./src/pure/shelf.js')]); return s.GAMES.every(g => c.coverReady(g)); }, null, { timeout: 35000, polling: 250 }).catch(() => {});
         check('walking up to it draws all twenty covers ahead, in quiet moments', (await ready()) === 20, `${await ready()} drawn`);
-        check('by the shelf: E offers the games', (await prompt(p)) === 'Look at my games', await prompt(p));
+        { const said = await promptIs(p, 'Look at my games'); check('by the shelf: E offers the games', said === 'Look at my games', said); }
         const before = await p.evaluate(() => __loft.pos.toArray());
         await p.keyboard.press('KeyE'); await p.waitForTimeout(300);
         const pn = await panel(p);
@@ -205,7 +208,7 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
         await p.keyboard.press('Escape'); await p.waitForTimeout(300);
         const after = await p.evaluate(() => [__loft.pos.toArray(), __loft.mode, !!document.querySelector('.pn')]);
         check('Esc closes it and I am still where I stood', !after[2] && after[1] === 'walk' && after[0].every((v, i) => Math.abs(v - before[i]) < 0.02), JSON.stringify(after));
-        check('the prompt comes back', (await prompt(p)) === 'Look at my games');
+        check('the prompt comes back', (await promptIs(p, 'Look at my games')) === 'Look at my games');
         // Reopening costs nothing: the covers are kept.
         await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
         const kept = await p.evaluate(() => [...document.querySelectorAll('.pn .lp-cover')].filter(c => c.querySelector('canvas')).length);
@@ -248,7 +251,7 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
     if (want('reader')) {
       const { p, errs } = await open(b, DESK);
       await standAt(p, BOOK.spot, BOOK.at);
-      check('at the side table: E offers the Shahnameh', (await prompt(p)) === 'Read the Shahnameh', await prompt(p));
+      { const said = await promptIs(p, 'Read the Shahnameh'); check('at the side table: E offers the Shahnameh', said === 'Read the Shahnameh', said); }
       await p.evaluate(() => __loft.screens.desktop.readerGo('read:labours'));
       const before = await p.evaluate(() => __loft.pos.toArray());
       await p.keyboard.press('KeyE'); await p.waitForTimeout(500);
@@ -288,7 +291,7 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       for (let i = 0; i < names.length; i++) {
         const s = await p.evaluate(i => __loft.meta.screens[`proj${i}`].center, i);
         await standAt(p, [0.75, s[1], s[2] - 1.5], [0.03, s[1], s[2]]);
-        const label = await prompt(p);
+        const label = await promptIs(p, `See ${names[i]}`);
         // On a stair the body settles onto its step first.
         await p.waitForTimeout(800);
         const before = await p.evaluate(() => __loft.pos.toArray());
@@ -307,7 +310,7 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       }
       const foot = await p.evaluate(() => __loft.meta.interact.find(i => i.id === 'projects').at);
       await standAt(p, foot);
-      check('the foot of the stairs still offers my projects', (await prompt(p)) === 'See my projects', await prompt(p));
+      { const said = await promptIs(p, 'See my projects'); check('the foot of the stairs still offers my projects', said === 'See my projects', said); }
       await p.keyboard.press('KeyE'); await p.waitForTimeout(300);
       const all = await p.evaluate(() => [document.querySelector('.pn h2')?.firstChild?.nodeValue, document.querySelectorAll('.pn .lp-projects li').length, document.querySelectorAll('.pn li.lp-on').length]);
       check('and opens all five, none marked', all[0] === 'PROJECTS' && all[1] === 5 && all[2] === 0, all.join(' | '));
