@@ -18,9 +18,12 @@ let ruler = null;
 const measure = s => { if (!ruler) { ruler = document.createElement('canvas').getContext('2d'); ruler.font = FONT; } return ruler.measureText(s).width; };
 const readable = text => layout(text, measure).fits;
 const fits = text => !tooMany(text) && readable(cleanText(text));
+// The font, the letter splitter and the word patterns are slow the first time (about 30 ms on a slow phone), so not on a first keychain.
+const warmWords = () => { parsePrint('a keychain to warm up', DEFAULT); readable('a keychain to warm up'); };
 function warmWhenIdle() {
   idleAsked = true;
-  if (window.requestIdleCallback) requestIdleCallback(warmScreen, { timeout: 5000 }); else setTimeout(warmScreen, 500);
+  const warm = () => { warmScreen(); warmWords(); };
+  if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 5000 }); else setTimeout(warm, 500);
 }
 
 export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = null, coarse = false }) {

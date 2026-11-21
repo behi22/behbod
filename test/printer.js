@@ -448,7 +448,8 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       const still = await frameGaps(p, async () => { await p.touchscreen.tap(tile.x, tile.y); await p.waitForTimeout(700); await p.touchscreen.tap(gold.x, gold.y); await p.waitForTimeout(4300); });
       const building = await frameGaps(p, async () => { await p.touchscreen.tap(go.x, go.y); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000, polling: 100 }).catch(() => {}); await p.waitForTimeout(500); });
       const knight = await state(p);
-      const keyring = await frameGaps(p, async () => { await p.evaluate(() => __loft.printer.ask('a keychain to build')); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000, polling: 100 }).catch(() => {}); await p.waitForTimeout(500); });
+      let askMs = 0;
+      const keyring = await frameGaps(p, async () => { askMs = await p.evaluate(() => { const t = performance.now(); __loft.printer.ask('a keychain to build'); return +(performance.now() - t).toFixed(1); }); await p.waitForFunction(() => __loft.printer.built, null, { timeout: 60000, polling: 100 }).catch(() => {}); await p.waitForTimeout(500); });
       const word = await state(p);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       console.log('frame gaps with the processor 4x slower, phone size (ms):', JSON.stringify({ base, opening, still, building, keyring }));
@@ -457,6 +458,8 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       // Held to the house idle both as it was timed before (screen shut) and as the builds are (screen open, tapped), whichever is stricter.
       const limit = Math.min(base.worst, still.worst) + 25;
       check('4x slower phone: building a model or a keychain keeps frames coming', knight.print.model === 'knight' && !!knight.built && word.print.model === 'word' && !!word.built && building.worst < limit && keyring.worst < limit, `model worst ${building.worst} ms, keychain worst ${keyring.worst} ms, idle worst ${base.worst} ms shut and ${still.worst} ms open, so under ${limit} ms`);
+      // The first keychain is measured in its font to know it will read; the font and the words' patterns were readied when the house was quiet.
+      check('4x slower phone: the first keychain asked for is answered in less than a 60 Hz frame (16.7 ms)', askMs > 0 && askMs < 16.7, `${askMs} ms`);
       check('smooth: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
