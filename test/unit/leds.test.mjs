@@ -155,3 +155,17 @@ test('the frame after a late one waits: 105 ms late on a beat, the next change c
   assert.ok(late >= GOAL_BEAT + 0.105 - 1e-9 && next - late >= GOAL_GAP - 1e-9 && next - late < GOAL_GAP + 1 / 60 + 1e-9, at.map(x => x.toFixed(3)).join(' '));
 });
 
+test('any frame times and any goals (stalls, a hidden tab, goals between frames): never two changes under GOAL_GAP, at most five in a second', () => {
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let r = 0; r < 3000; r++) {
+    const times = [];
+    for (let t = rnd(); t < 12;) { times.push(t); const u = rnd(); t += u < 0.7 ? 0.004 + rnd() * 0.03 : u < 0.95 ? 0.03 + rnd() * 0.3 : 0.3 + rnd() * 4; }
+    const goals = Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => rnd() * 10).sort((a, b) => a - b);
+    const { at } = run(goals, 60, 0, rnd() < 0.2, times);
+    for (let i = 0; i < at.length; i++) {
+      assert.ok(at.filter(x => x >= at[i] && x - at[i] <= 1).length <= 5, `run ${r}: ${at.map(x => x.toFixed(3)).join(' ')}`);
+      if (i) assert.ok(at[i] - at[i - 1] >= GOAL_GAP - 1e-9, `run ${r}: ${at.map(x => x.toFixed(3)).join(' ')}`);
+    }
+  }
+});

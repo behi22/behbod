@@ -334,19 +334,25 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
     }
     // ---------- the goal flash's pace, frame by frame, also with a second goal while it runs, and with a late frame ----------
     if (want('flash')) {
-      // Every change of the purple strip's colour from a goal on (the change at the goal itself included), in ms by each
-      // frame's own time. `stall`: the frame due just after the third beat is held up that long, as a busy moment would.
+      // Every change of the purple strip's colour from a goal on (the change at the goal itself included), in ms by the
+      // house's own clock as it drew it, so a long task of the house's own before its frame cannot fake a short gap.
+      // `stall`: the frame due just after the third beat is held up that long, as a busy moment would.
       const changes = (p, again, stall = 0) => p.evaluate(([again, stall]) => new Promise(done => {
-        const t0 = performance.now(), at = [], frames = [];
+        const t0 = performance.now(), at = [], frames = [], W = __loft.world, tick = W.tick;
         let prev = __strip.color.toArray().join(), second = again == null, held = !stall;
-        __loft.world.goal(t0 / 1000);
+        W.tick = function (dt, t, ...rest) {
+          const out = tick.call(this, dt, t, ...rest), c = __strip.color.toArray().join();
+          if (c !== prev) { at.push(t * 1000 - t0); prev = c; }
+          return out;
+        };
+        W.goal(t0 / 1000);
         const rec = ts => {
-          const now = performance.now(), c = __strip.color.toArray().join();
+          const now = performance.now();
           frames.push(ts);
-          if (c !== prev) { at.push(ts - t0); prev = c; }
-          if (!second && now - t0 >= again * 1000) { second = true; __loft.world.goal(now / 1000); }
+          if (!second && now - t0 >= again * 1000) { second = true; W.goal(now / 1000); }
           if (!held && now > t0 + 500 - 30) { held = true; while (performance.now() < t0 + 500 + stall) { /* a long task */ } }
-          if (now - t0 < 4600) requestAnimationFrame(rec); else done({ at, back: c, goal: __loft.world.leds.goal, frame: frames.slice(1).map((f, i) => f - frames[i]).sort((a, b) => a - b)[frames.length >> 1] });
+          if (now - t0 < 4600) requestAnimationFrame(rec);
+          else { W.tick = tick; done({ at, back: __strip.color.toArray().join(), goal: W.leds.goal, frame: frames.slice(1).map((f, i) => f - frames[i]).sort((a, b) => a - b)[frames.length >> 1] }); }
         };
         requestAnimationFrame(rec);
       }), [again, stall]);
@@ -361,8 +367,7 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
         await findStrip(p);
         for (const [again, stall] of [[null, 0], [1.0, 0], [1.85, 0], [1.95, 0], [null, 105]]) {
           const r = await changes(p, again, stall), f = pace(r.at);
-          // One frame of slack: the change is timed by its frame, the 200 ms by the moment the house drew it.
-          const ok = motion === 'reduce' ? r.at.length === 2 : f.most <= 5 && f.gap >= 200 - r.frame;
+          const ok = motion === 'reduce' ? r.at.length === 2 : f.most <= 5 && f.gap >= 200;
           check(`the goal flash (${motion} motion${again ? `, a second goal at ${again} s` : ''}${stall ? `, a frame ${stall} ms late` : ''}): under three flashes in any second, never two changes under 200 ms apart, then exactly the scene`,
             ok && r.back === chill && !r.goal, `${r.at.length} changes, at most ${f.most} in a second, closest ${f.gap} ms apart (a frame is ${r.frame.toFixed(1)} ms): ${r.at.map(Math.round).join(' ')}`);
           await p.waitForTimeout(300);
