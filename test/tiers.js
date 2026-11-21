@@ -68,7 +68,8 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
           if (slowly && cam === out) { const t = performance.now(); while (performance.now() < t + 9); }
           if (armed && (part === 'the outside') === (cam === out)) {
             const waiting = [];
-            obj.traverse(o => { for (const m of [].concat(o.material || [])) { const pr = r.properties.get(m).currentProgram; if (pr && !pr.isReady()) waiting.push(pr); } });
+            // As on a slow phone, every shader of the piece is held unready: an earlier page may have left them built.
+            obj.traverse(o => { for (const m of [].concat(o.material || [])) { const pr = r.properties.get(m).currentProgram; if (pr && (slowly || !pr.isReady())) waiting.push(pr); } });
             if (waiting.length) {
               armed = false;
               if (slowly) for (const pr of waiting) { const until = performance.now() + 400, ready = pr.isReady; pr.isReady = () => performance.now() > until && ready.call(pr); }
