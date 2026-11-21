@@ -140,12 +140,13 @@ function drawVoice(g, sc, voice, staff, top, xa, xb, dir, ties, sysEnd) {
       head(g, x, ys[k], p.dur >= 2);
       if (signs[i][k] === '#') sharp(g, x - 1.5 * S, ys[k]); else if (signs[i][k] === 'n') natural(g, x - 1.4 * S, ys[k]);
       if (p.dur === 3 || p.dur === 1.5) dot(g, x + 1.05 * S, ys[k] - ((st - bottomStep) % 2 === 0 ? 0.5 * S : 0), 0.15);
-      if (p.tie) ties.push({ x, y: ys[k], dir: sDir, midi: p.midis[k], end: sysEnd, voice: top + ':' + dir });
+      // The tie coming in is taken before this note's own is added, or a note held over a system break finds its own.
       if (p.held) {
         const from = ties.findIndex(t => t.midi === p.midis[k] && t.voice === top + ':' + dir);
         const t = from >= 0 ? ties.splice(from, 1)[0] : { x: x - 3.2 * S, y: ys[k], dir: sDir };
         tie(g, t.x, x, ys[k], t.dir);
       }
+      if (p.tie) ties.push({ x, y: ys[k], dir: sDir, midi: p.midis[k], end: sysEnd, voice: top + ':' + dir });
     });
     if (p.dur >= 4) return;
     const sx = x + (sDir < 0 ? 0.56 * S : -0.56 * S), yFar = sDir < 0 ? Math.min(...ys) : Math.max(...ys), yNear = sDir < 0 ? Math.max(...ys) : Math.min(...ys);
