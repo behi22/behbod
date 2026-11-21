@@ -442,8 +442,8 @@ function playGame(name, actions) {
   openGame(name, {
     actions,
     onEvent: (type, d) => {
-      if (type === 'win' && GAME_WIN[d.game]) earn(GAME_WIN[d.game]);
-      if (type === 'goal' && d.by === 'you') { earn('goal'); world.goal(performance.now() / 1000); audio.sfx.goalHorn(); }
+      if (type === 'win' && GAME_WIN[d.game]) { earn(GAME_WIN[d.game]); creatures.feel('happy'); }
+      if (type === 'goal' && d.by === 'you') { earn('goal'); world.goal(performance.now() / 1000); audio.sfx.goalHorn(); creatures.feel('happy'); }
     },
   });
 }

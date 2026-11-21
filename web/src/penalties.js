@@ -164,6 +164,8 @@ export function makePenalties(scene, meta, { creatures, sfx, toast, onGoal, onDo
       ball.rotation.x += dt * 22;
       if (t >= 1) {
         kicks.push(r === 'goal' ? 'goal' : r);
+        // BH-22 is pleased with a save or a miss, and sees stars when one goes past it.
+        creatures.feel(r === 'goal' ? 'dizzy' : 'happy');
         if (r === 'goal') { onGoal?.(); toast('GOAL!'); sfx?.goalHorn?.(lineT); burst(); }
         else toast(r === 'saved' ? 'Saved by BH-22!' : r === 'wide' ? 'Wide of the post.' : 'Over the bar.');
         if (r === 'goal') ball.position.copy(flight.to).addScaledVector(mouth.normal, -0.25).setY(lineT.y + 0.075);
