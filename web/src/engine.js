@@ -4,6 +4,7 @@ import { TIERS, TIER_ORDER, effectsOf } from './pure/tier.js';
 import { makeRebuilder, STALE } from './pure/rebuild.js';
 import { inSlices, breathe as breath } from './pure/slices.js';
 import { useAhead } from './useahead.js';
+import { usePictures } from './canvastex.js';
 
 export { TIERS };
 
@@ -44,6 +45,7 @@ export function makeEngine(canvas, coarse) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.info.autoReset = false;
+  usePictures(renderer);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0f1c);
   scene.fog = new THREE.FogExp2(0x0a0f1c, 0.05);
