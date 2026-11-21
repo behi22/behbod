@@ -105,7 +105,7 @@ const LAMP_VIEW = [[18.9, 10.25, 1.45], [18.59, 10.66, 1.51]];
     // ---------- the lamp ----------
     if (want('lamp')) {
       const { ctx, p, errs } = await open(b, DESK, { extra: '&time=22:00' });
-      const bulbs = () => p.evaluate(() => { const out = []; __loft.scene.traverse(o => { if (o.isMesh && o.material?.userData?.lamp === 'bulb' && o.name !== 'pianolamp_warm') out.push(o.name + ':' + o.material.color.toArray().map(v => +v.toFixed(4)).join()); }); return out.join('|'); });
+      const bulbs = () => p.evaluate(() => { const out = []; __loft.scene.traverse(o => { if (o.isMesh && o.material?.userData?.lamp === 'bulb' && o.name !== 'pianolamp_glow_warm') out.push(o.name + ':' + o.material.color.toArray().map(v => +v.toFixed(4)).join()); }); return out.join('|'); });
       const rest = await p.evaluate(() => ({ k: __piano.lamp.k, shown: __piano.lamp.glow.visible, switched: __piano.lamp.glow.material.customProgramCacheKey?.() === 'lamp', built: !!__loft.renderer.properties.get(__piano.lamp.glow.material).currentProgram }));
       check('at rest the warm glow is not drawn at all; it is on the light switch, its shader built with the rest of the house', rest.k === 0 && !rest.shown && rest.switched && rest.built, JSON.stringify(rest));
       const bulbs0 = await bulbs();
@@ -122,11 +122,12 @@ const LAMP_VIEW = [[18.9, 10.25, 1.45], [18.59, 10.66, 1.51]];
       check('it eases back once the playing stops', cooling < 0.75 && cooling > 0, cooling.toFixed(3));
       // With the lamps off it stays dark, playing or not.
       await p.evaluate(() => __lights.set(false));
-      for (let i = 0; i < 8; i++) { await p.keyboard.press(['KeyA', 'KeyD', 'KeyG', 'KeyJ'][i % 4]); await p.waitForTimeout(180); }
-      await p.waitForTimeout(600);
-      const dark = region(await picture(p, ...LAMP_VIEW), 120, 75, 180, 125);
+      // Played until it is warm again, then looked at straight away.
+      for (let i = 0; i < 40 && (await p.evaluate(() => __piano.lamp.k)) < 0.9; i++) { await p.keyboard.press(['KeyA', 'KeyD', 'KeyG', 'KeyJ'][i % 4]); await p.waitForTimeout(120); }
+      await p.waitForTimeout(400);
       const k = await p.evaluate(() => [__piano.lamp.k, __lights.k]);
-      check('with the lamps off the warm lamp stays dark', k[0] > 0.6 && k[1] === 0 && dark.lum < hot.lum * 0.35 && dark.lum < cold.lum, `lum ${hot.lum.toFixed(0)} lit, ${dark.lum.toFixed(0)} off; ${JSON.stringify(k)}`);
+      const dark = region(await picture(p, ...LAMP_VIEW), 120, 75, 180, 125);
+      check('with the lamps off the warm lamp stays dark', k[0] > 0.8 && k[1] === 0 && dark.lum < hot.lum * 0.35 && dark.lum < cold.lum, `lum ${hot.lum.toFixed(0)} lit, ${dark.lum.toFixed(0)} off; ${JSON.stringify(k)}`);
       await p.evaluate(() => __lights.set(true));
       // It settles back to exactly nothing: not drawn again.
       await p.keyboard.press('Escape');

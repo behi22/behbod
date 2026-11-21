@@ -17,7 +17,8 @@ export function makePianoLamp({ scene, bulb }) {
   const mat = new THREE.MeshBasicMaterial({ map, color: 0x000000, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
   mat.userData.lamp = 'bulb';
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), mat);
-  glow.name = 'pianolamp_warm';
+  // Named as one of the lamp's own glows, so everything that sorts the lamps on the switch counts it as this lamp.
+  glow.name = 'pianolamp_glow_warm';
   // Just under the shade's lip, where its light comes out.
   new THREE.Box3().setFromObject(bulb).getCenter(glow.position).y -= 0.035;
   glow.renderOrder = 3;
