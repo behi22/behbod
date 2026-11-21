@@ -288,3 +288,13 @@ test('the mini BH-22 prints black, like the robot in the house', () => {
   assert.equal(parsePrint('bh22').said, 'Printing a black mini BH-22.');
   assert.equal(cleanPrint({ model: 'bh22' }).colour, 'black');
 });
+
+test('a flower always has five petals or more, so none of them makes a cross with one down the stem', () => {
+  let p = parsePrint('flower').p;
+  for (let i = 0; i < 10; i++) p = parsePrint('fewer petals', p).p;
+  assert.equal(p.sides, 5);
+  assert.equal(cleanPrint({ model: 'flower', sides: 4 }).sides, 5);
+  assert.equal(cleanPrint({ model: 'flower', sides: 3 }).sides, 5);
+  assert.ok(parsePrint('a 4 petal flower').p.sides >= 5);
+  assert.ok(parsePrint('3 petals', parsePrint('flower').p).p.sides >= 5);
+});

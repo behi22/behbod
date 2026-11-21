@@ -26,7 +26,7 @@ export const MODELS = [
   { id: 'heart', name: 'heart', words: ['heart', 'love', 'hearts'], colour: 'pink' },
   { id: 'star', name: 'star', words: ['star', 'stars'], colour: 'gold', sides: [3, 12, 5, 'points'], spiky: true },
   { id: 'gear', name: 'gear', words: ['gear', 'cog', 'gears'], colour: 'silver', sides: [6, 20, 12, 'teeth'], spiky: true },
-  { id: 'flower', name: 'flower', words: ['flower', 'rose', 'bloom', 'daisy', 'flowers'], colour: 'pink', sides: [4, 12, 7, 'petals'] },
+  { id: 'flower', name: 'flower', words: ['flower', 'rose', 'bloom', 'daisy', 'flowers'], colour: 'pink', sides: [5, 12, 7, 'petals'] },
   { id: 'vase', name: 'vase', words: ['vase', 'jar', 'urn'], colour: 'gold', sides: [3, 12, 6, 'sides'], spiky: true },
   { id: 'mug', name: 'mug', words: ['mug', 'cup', 'glass', 'coffee'], colour: 'white' },
   { id: 'spiral', name: 'spiral', words: ['spiral', 'swirl', 'twister'], colour: 'teal', sides: [3, 8, 4, 'arms'], spiky: true, hidden: true },
