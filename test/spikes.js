@@ -15,6 +15,7 @@ const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${name
     const p = await b.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
     const errs = [];
     p.on('pageerror', e => errs.push(e.message));
+    p.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200)); });
     await p.goto(`${BASE}/?auto&q=ultra`);
     await p.waitForFunction(() => window.__loft, null, { timeout: 120000 });
     await p.waitForFunction(() => __loft.range.ready && !__loft.range.building, null, { timeout: 120000, polling: 250 });

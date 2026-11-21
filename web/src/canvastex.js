@@ -47,10 +47,10 @@ function send(pic) {
 
 function makeBlit() {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 3, -1, -1, 3]), 2));
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
   const material = new THREE.RawShaderMaterial({
     glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false, uniforms: { src: { value: null }, flip: { value: false } },
-    vertexShader: 'in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }',
+    vertexShader: 'in vec3 position; void main() { gl_Position = vec4(position, 1.0); }',
     // Decoded here because the sRGB picture encodes what is written to it.
     fragmentShader: `precision highp float; uniform sampler2D src; uniform bool flip; out vec4 colour;
       void main() {
