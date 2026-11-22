@@ -25,12 +25,15 @@ export function roughGraphemes(s) {
   return out;
 }
 export const graphemes = s => (SEG ? Array.from(SEG.segment(s), g => g.segment) : roughGraphemes(s));
-// A word broken over two lines takes a hyphen in scripts that use one, and a joiner each side in scripts whose letters join.
-const HYPHEN = /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]$/u, JOINED = /\p{Script=Arabic}|\p{Script=Syriac}/u;
+// A word broken over two lines takes a hyphen in scripts that use one, and a joiner each side where its two letters join.
+const HYPHEN = /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]$/u, JOINED = /^(?=\p{L})[\p{Script=Arabic}\p{Script=Syriac}]$/u;
+// Letters that never join the one after them (alef, dal, re, waw and their kin, and hamza): a joiner there would join what is apart.
+const APART = /[\u0621-\u0625\u0627\u0629\u062f-\u0632\u0648\u0671-\u0673\u0675-\u0677\u0688-\u0699\u06c0\u06c3-\u06cb\u06cd\u06cf\u06d2\u06d3\u06d5\u06ee\u06ef\u0710\u0715-\u0719\u071e\u0728\u072a\u072c\u072f\u074d]/u;
 function broken(a, b) {
-  const x = Array.from(a).pop(), y = Array.from(b)[0];
+  // The letter before the break is the one under any marks it carries.
+  const x = Array.from(a.replace(/\p{M}+$/u, '') || a).pop(), y = Array.from(b)[0];
   if (HYPHEN.test(x) && HYPHEN.test(y)) return [a + '-', b];
-  if (JOINED.test(x) && JOINED.test(y)) return [a + '\u200d', '\u200d' + b];
+  if (JOINED.test(x) && JOINED.test(y) && !APART.test(x) && y !== '\u0621') return [a + '\u200d', '\u200d' + b];
   return [a, b];
 }
 

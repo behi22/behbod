@@ -84,3 +84,18 @@ test('a keychain is never cut short without saying so: more than it holds is mar
   assert.equal(parsePrint('taller', parsePrint('sam').p).cut, false);
   assert.ok(tooMany('x'.repeat(MAX_TEXT + 1)) && !tooMany(` ${'x'.repeat(MAX_TEXT)} `));
 });
+
+test('a joiner goes only where the two letters join: never after alef, dal, re or waw, and a letter under a mark still joins', () => {
+  // Broken after re, which never joins the letter after it: a joiner there would draw the next letter joined to nothing.
+  const uni = 'دانشگاهبریتیشکلمبیا', u = layout(uni, measure);
+  assert.deepEqual(u.lines, ['دانشگاهبر', 'یتیشکلمبیا']);
+  for (const end of ['ا', 'د', 'ر', 'و', 'ز', 'ژ']) {
+    const word = 'سسسسسسسسس' + end + 'سسسسسسسسسس', l = layout(word, measure);
+    assert.equal(l.lines[0].replace(ZWJ, ''), 'سسسسسسسسس' + end, `split after ${end}`);
+    assert.ok(!l.lines.join('').includes(ZWJ), `no joiner after ${end}`);
+  }
+  // A letter that joins keeps joined across the break, also when it carries a vowel mark.
+  const marked = 'سُ'.repeat(20), m = layout(marked, measure);
+  assert.ok(m.lines[0].endsWith(ZWJ) && m.lines[1].startsWith(ZWJ), m.lines.join(' / '));
+  assert.equal(m.lines.join('').split(ZWJ).join(''), marked);
+});
