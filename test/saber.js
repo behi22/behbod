@@ -37,7 +37,7 @@ const toStand = p => p.evaluate(v => { __loft.pos.set(v.x, v.y + 0.05, v.z); }, 
       const mine = o => { for (let q = o; q; q = q.parent) if (q.name === 'knight' || q.name === 'saber_drone') return true; return false; };
       const v = k.root.position.clone();
       __loft.scene.traverse(o => {
-        if (!o.isMesh || !o.visible || mine(o) || o.isSkinnedMesh) return;
+        if (!o.isMesh || !o.visible || mine(o) || o.isSkinnedMesh || !o.geometry.attributes.position) return;
         const pos = o.geometry.attributes.position, idx = o.geometry.index, n = idx ? idx.count : pos.count;
         o.updateWorldMatrix(true, false);
         for (let i = 0; i < n; i += 3) {
