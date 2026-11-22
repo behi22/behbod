@@ -390,14 +390,41 @@ export function makePanels(surface, ctx) {
       text(g, label, 130, 64, 18, got ? '#ffe9a8' : '#9be3ff', 400, MONO, 'center');
     });
   }
-  add('backgammon', 460, 320, g => {
+  // The board on the balcony table, 2 px to the mm: plain at first, then inlaid in khatam a step at a time in the page's
+  // quiet moments once the house has been up a few seconds, and put on the table in one go when it is whole.
+  let inlaid = false, khatamAt = 0;
+  add('backgammon', 920, 640, g => {
+    if (inlaid) return;
+    g.save(); g.scale(2, 2);
     g.fillStyle = '#5a3a1e'; g.fillRect(0, 0, 460, 320);
     for (let i = 0; i < 12; i++) {
       const x = 14 + i * 36 + (i >= 6 ? 12 : 0);
       for (const top of [true, false]) { g.fillStyle = (i + (top ? 0 : 1)) % 2 ? '#e8dcc0' : '#8b1e1e'; g.beginPath(); g.moveTo(x, top ? 8 : 312); g.lineTo(x + 32, top ? 8 : 312); g.lineTo(x + 16, top ? 140 : 180); g.fill(); }
     }
     g.fillStyle = '#3a2412'; g.fillRect(224, 0, 12, 320);
+    g.restore();
   });
+  const later = typeof requestIdleCallback === 'function' ? f => requestIdleCallback(f, { timeout: 2500 }) : f => setTimeout(f, 1200);
+  live.push({ every: 0, last: 0, f(now) {
+    if (khatamAt === Infinity) return;
+    khatamAt ||= now + 3000;
+    if (now < khatamAt) return;
+    khatamAt = Infinity;
+    later(() => import('./src/khatam.js').then(m => {
+      // On the processor, so each step's drawing is done in its own quiet moment, not saved up for the upload.
+      const c = document.createElement('canvas');
+      c.width = 920; c.height = 640;
+      const steps = m.nardSteps(c.getContext('2d', { willReadFrequently: true }), 2);
+      const step = () => {
+        if (!steps.next().done) { later(step); return; }
+        // Copied into the table's own canvas, the one its picture is sent from, so the scratch canvas can go.
+        inlaid = true;
+        S.backgammon.g.drawImage(c, 0, 0);
+        S.backgammon.t.needsUpdate = true;
+      };
+      step();
+    }).catch(e => console.warn('[loft] the khatam board could not be drawn', e)));
+  } });
 
   // The project frames up the stairs.
   (ctx.projects || []).forEach((name, i) => { const [line, kind] = PROJECTS[name] || ['', 'grid']; add(`proj${i}`, 600, 450, () => drawProject(S[`proj${i}`], name, line, kind)); });

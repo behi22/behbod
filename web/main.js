@@ -32,6 +32,7 @@ import { makeDeskBits, FAN_SPOT } from './src/deskbits.js';
 import { makeTreatJar } from './src/treatjar.js';
 import { makeFilm } from './src/film.js';
 import { makeKnight, makeSaber } from './src/saber.js';
+import { makeSpots } from './src/spots.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
 import { makeHello } from './src/hello.js';
 import { makeLights } from './src/lightswitch.js';
@@ -318,6 +319,7 @@ const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
 things.items.push(...hello.spots);
 things.items.push(...lights.spots);
+const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, adopt: o => lights.adopt(o), renderer, coarse }); things.items.push(...spots.items);
 // What the residents need to know about me each frame.
 const cctx = { player: pos, mode: 'walk', facing, stand: null };
 me.root.position.copy(pos);
@@ -446,7 +448,6 @@ const SAY = {
   resume: 'My resume is coming with the LinkedIn update.',
   secret_room: 'Locked. Three stars on every stage of the range, on Hard, opens it.',
   loadout: 'The gun wall. More guns hang here as you earn stars at the line.',
-  projects: 'My projects, all the way up the stairs.',
   claude: 'A tribute to Claude, who helped me bring this idea to life.',
   wall: 'The weather and this month, holidays circled.',
   trophies: 'The trophy shelf.',
@@ -514,6 +515,7 @@ function act(it) {
   { const said = hello.poke(it.id); if (said) return toast(said); }
   { const read = shah.read(it.id); if (read) return toast(read); }
   { const said = range.poke(it.id); if (said) return toast(said); }
+  if (spots.act(it.id)) return;
   toast(SAY[it.id] || it.label);
 }
 // YouTube's own player over the room, so nothing is copied; only real video ids ever reach the address.
@@ -711,6 +713,7 @@ function tapMove(e) {
     walkTo(a.pos.clone(), () => { const it = creatures.nearest(pos); if (it && it.id === who) act(it); });
     return;
   }
+  { const it = spots.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   // A gun on the range's wall, or its plaque: walk over and take it.
   const gun = range.wall?.hit(ray, walkable);
   // In reach is enough: on arrival the loadout room's own spot can still be nearer than the middle gun's.
@@ -891,6 +894,7 @@ function step() {
   fleet.tick(dt, t, camera.position);
   printer?.tick(dt, camera.position);
   rubik?.tick(dt, camera.position);
+  spots.tick(out3d ? out3d.light.dayK : 0, pos);
   persia.tick(dt, t);
   tvMatch?.tick(dt, camera);
   pens?.tick(dt);
