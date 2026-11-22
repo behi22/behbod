@@ -498,19 +498,20 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   await p.evaluate(() => __loft.leaveDesk()); await p.waitForTimeout(2500);
   console.log('walk to the desk: mode', seated[0], 'off the chair by', seated[1].toFixed(2), 'm, prompt shown', seated[2], seated[0] === 'desk' && seated[1] < 0.05 && !seated[2] ? 'PASS' : 'FAIL');
 
-  // The 3D printer: type a word, it prints a layer at a time with the head moving, then keeps the print for next time.
+  // The 3D printer: E opens its screen, typing to it prints a layer at a time with the head moving, then the print is kept.
   await spot('printer');
   await p.evaluate(() => __loft.act('printer'));
-  await p.waitForTimeout(300);
-  const headRest = await p.evaluate(() => __loft.world.printParts.head.position.toArray());
+  await p.waitForTimeout(400);
   await p.keyboard.type('a teal star'); await p.keyboard.press('Enter');
-  await p.waitForTimeout(2500);
-  const mid = await p.evaluate(() => ({ name: __loft.printer.print.name, colour: __loft.printer.print.colour, k: __loft.printer.progress, head: __loft.world.printParts.head.position.toArray(), said: document.querySelector('.pn-said')?.textContent }));
-  const headMoved = Math.hypot(...mid.head.map((v, i) => v - headRest[i]));
+  await p.waitForFunction(() => __loft.printer.progress > 0.1, null, { timeout: 30000 }).catch(() => {});
+  const headWas = await p.evaluate(() => __loft.world.printParts.head.position.toArray());
+  await p.waitForTimeout(300);
+  const mid = await p.evaluate(() => ({ model: __loft.printer.print.model, colour: __loft.printer.print.colour, k: __loft.printer.progress, head: __loft.world.printParts.head.position.toArray(), said: document.querySelector('.pn-said')?.textContent }));
+  const headMoved = Math.hypot(...mid.head.map((v, i) => v - headWas[i]));
   await p.keyboard.press('Escape');
-  await p.waitForFunction(() => __loft.printer.progress === 1, null, { timeout: 20000 }).catch(() => {});
-  const kept = await p.evaluate(() => [__loft.printer.progress, JSON.parse(localStorage.getItem('home.print') || 'null')?.name, !!document.querySelector('.pn')]);
-  const printOk = mid.name === 'star' && mid.colour === 'teal' && mid.k > 0.05 && mid.k < 0.5 && headMoved > 0.02 && /teal star/.test(mid.said || '') && kept[0] === 1 && kept[1] === 'star' && !kept[2];
+  await p.waitForFunction(() => __loft.printer.progress === 1, null, { timeout: 30000 }).catch(() => {});
+  const kept = await p.evaluate(() => [__loft.printer.progress, JSON.parse(localStorage.getItem('home.print') || 'null')?.model, !!document.querySelector('.pn')]);
+  const printOk = mid.model === 'star' && mid.colour === 'teal' && mid.k > 0.1 && mid.k < 0.6 && headMoved > 0.005 && /teal star/.test(mid.said || '') && kept[0] === 1 && kept[1] === 'star' && !kept[2];
   console.log('3D printer:', mid.said, '| part way', mid.k.toFixed(2), '| head moved', headMoved.toFixed(3), 'm | done', kept[0], 'kept', kept[1], printOk ? 'PASS' : 'FAIL');
 
   // The Rubik's cube on the desk turns its layers while you are near it.

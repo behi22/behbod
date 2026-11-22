@@ -1,78 +1,228 @@
 import * as THREE from 'three';
-import { DEFAULT, COLOURS, parsePrint, cleanPrint, buildPrint, nozzleAt } from './pure/printer.js';
+import { DEFAULT, TOO_LONG, parsePrint, cleanPrint, cleanText, tooMany, describe, printColour } from './pure/printer.js';
+import { FONT, layout } from './pure/letters.js';
 
-// The 3D printer on the rack. Type to it and it prints what you asked for a layer at a time: the gantry rises, the head
-// runs along it and the bed slides under the nozzle, so the nozzle traces each layer. Your last print stays on the bed
-// for next time; with none, it is always part way through a slow vase.
-const KEY = 'home.print', LAYERS = 40, QUICK = 14, SLOW = 300;
+// Models are built off the page's thread when first needed, never at the start; the page loads only this and the words it knows.
+const KEY = 'home.print', HEAT = 1.8, PRINT = 15, SLOW = 300, NEAR = 12;
+// The models' fronts face the room (-x), where a visitor stands.
+const FACE = -Math.PI / 2, UP = new THREE.Vector3(0, 1, 0);
 
-export function makePrinter({ scene, meta, parts, store, b2t }) {
+// Work on the page (no worker, or a worker without a canvas) takes SLICE ms of a frame at most, and its code is fetched only then.
+const SLICE = 5, SETTLE = 6;
+let deadline = 0, pageWork = null, screenCode = null, idleAsked = false;
+const due = () => performance.now() > deadline;
+const loadPageWork = () => (pageWork ||= import('./printpage.js'));
+const warmScreen = () => { screenCode ||= import('./printscreen.js').catch(() => {}); };
+// A keychain's words are measured here, in the font they print in, to know before printing whether they will read.
+let ruler = null;
+const measure = s => { if (!ruler) { ruler = document.createElement('canvas').getContext('2d'); ruler.font = FONT; } return ruler.measureText(s).width; };
+const readable = text => layout(text, measure).fits;
+const fits = text => !tooMany(text) && readable(cleanText(text));
+// The font, the letter splitter and the word patterns are slow the first time (about 30 ms on a slow phone), so not on a first keychain:
+// they are readied when the house is quiet, a piece at a time (each a few ms there), or together they would hold up a frame.
+const PHRASE = 'a keychain to warm up';
+const WARM = [warmScreen, () => measure('a'), () => measure(PHRASE), () => parsePrint('rocket', DEFAULT), () => parsePrint(PHRASE, DEFAULT), () => readable(PHRASE)];
+let warmed = 0;
+const later = (f, timeout) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout }) : setTimeout(f, 500));
+function warmWords() { WARM[warmed++](); if (warmed < WARM.length) later(warmWords, 1000); }
+function warmWhenIdle() {
+  idleAsked = true;
+  later(warmWords, 5000);
+}
+
+export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = null, coarse = false }) {
   if (!meta.points.print_bed || !meta.points.printer) return null;
   const bedTop = b2t(...meta.points.print_bed), headRest = b2t(...meta.points.printer);
   const home = Object.fromEntries(Object.entries(parts).filter(([, o]) => o).map(([k, o]) => [k, o.position.clone()]));
-  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: true });
-  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
-  mesh.name = 'print_part';
-  mesh.position.copy(bedTop);
-  scene.add(mesh);
+  if (renderer) renderer.localClippingEnabled = true;
+  // Cut at the layer being printed; the inside is drawn flat, so the cut looks like a solid top, as on a real print.
+  const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+  const stripes = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255, 222, 222, 222, 255]), 1, 2);
+  stripes.wrapS = stripes.wrapT = THREE.RepeatWrapping;
+  stripes.minFilter = THREE.LinearMipmapLinearFilter; stripes.magFilter = THREE.LinearFilter; stripes.generateMipmaps = true;
+  stripes.needsUpdate = true;
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, map: stripes, fog: true, clippingPlanes: [cutPlane] });
+  const capMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: true, clippingPlanes: [cutPlane] });
+  const group = new THREE.Group();
+  group.name = 'print_part';
+  group.position.copy(bedTop); group.rotation.y = FACE;
+  // Until a print is built the meshes hold nothing, but stay in the scene, so their shaders are made with the house's.
+  const EMPTY = new THREE.BufferGeometry(), mesh = new THREE.Mesh(EMPTY, mat), cap = new THREE.Mesh(EMPTY, capMat);
+  mesh.frustumCulled = cap.frustumCulled = false;
+  group.add(mesh, cap);
+  scene.add(group);
 
-  let p = DEFAULT, build = null, start = 0, mine = false;
-  try { const saved = JSON.parse(store.get(KEY) || 'null'); if (saved) { p = cleanPrint(saved); mine = true; } } catch (e) { /* a broken save prints the default */ }
-  let clock = 0, done = mine;
-  function load() {
-    build = buildPrint(p, LAYERS);
+  let p = DEFAULT, mine = false;
+  try { const saved = JSON.parse(store.get(KEY) || 'null'); if (saved) { p = cleanPrint(saved); mine = true; } } catch { /* a broken save prints the default */ }
+  let built = null, asked = false, failed = false, worker = null, slow = null, job = 0;
+  let clock = 0, start = 0, printFrom = 0, done = mine, sounding = false;
+  // The print's own colour is in its vertices (printbuild.js); the flat cut on top matches a lit face of it.
+  const paint = () => { const { base, sheen } = printColour(p.colour); capMat.color.setRGB(...base.map(c => c * 0.9 + sheen * 0.81), THREE.LinearSRGBColorSpace); };
+  paint();
+
+  function take(id, b) {
+    if (id !== job) return;
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(build.pos, 3));
-    const c = new Float32Array(build.shade.length * 3);
-    build.shade.forEach((s, i) => c.set([s, s, s], i * 3));
-    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
-    g.setIndex(new THREE.BufferAttribute(build.index, 1));
-    mesh.geometry.dispose();
-    mesh.geometry = g;
-    mat.color.set(COLOURS[p.colour]);
+    g.setAttribute('position', new THREE.BufferAttribute(b.pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(b.colour, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(b.uv, 2));
+    g.setIndex(new THREE.BufferAttribute(b.index, 1));
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(b.sphere[0], b.sphere[1], b.sphere[2]), b.sphere[3]);
+    clear();
+    mesh.geometry = cap.geometry = g;
+    mesh.frustumCulled = cap.frustumCulled = true;
+    built = b;
   }
-  load();
+  function clear() {
+    if (mesh.geometry !== EMPTY) mesh.geometry.dispose();
+    mesh.geometry = cap.geometry = EMPTY;
+    mesh.frustumCulled = cap.frustumCulled = false;
+  }
+  function fail(id, why) {
+    if (id !== job) return;
+    console.warn('[loft] printer:', why);
+    failed = true; slow = null;
+  }
+  const points = coarse ? 150000 : 240000;
+  let busy = false;
+  function build() {
+    const id = ++job, print = { ...p };
+    asked = true; built = null; slow = null; failed = false;
+    clear();
+    if (typeof Worker === 'function' && worker !== false) {
+      try {
+        // A print asked for while another is still being made replaces it: the old one is not finished first.
+        if (worker && busy) { worker.terminate(); worker = null; }
+        if (!worker) {
+          worker = new Worker(new URL('./printwork.js', import.meta.url), { type: 'module' });
+          worker.onmessage = ({ data }) => {
+            busy = data.letters;
+            if (data.error) fail(data.id, data.error);
+            // A worker without a canvas of its own gets the letters drawn here, a slice a frame.
+            else if (data.letters) { if (data.id === job) lettersFor(data.id, { ...p }); }
+            else take(data.id, data.b);
+          };
+          // Where the worker cannot run, the latest print is built here instead, a little each frame.
+          worker.onerror = e => { e.preventDefault?.(); worker.terminate(); worker = false; if (!built) slowly(job, { ...p }); };
+        }
+        worker.postMessage({ id, print, points });
+        busy = true;
+        return;
+      } catch { worker = false; }
+    }
+    slowly(id, print);
+  }
+  function onPage(id, then, make) {
+    const s = slow = { id, gen: null, then };
+    loadPageWork().then(m => { if (slow === s) s.gen = make(m); }, e => { if (slow === s) fail(id, e.message); });
+  }
+  const slowly = (id, print) => onPage(id, b => take(id, b), m => m.onPage(print, points, due));
+  const lettersFor = (id, print) => onPage(id, bitmap => { if (id === job && worker) worker.postMessage({ id, print, bitmap, points }, [bitmap.data.buffer]); }, m => m.letters(print.text, due));
+  function stepSlow() {
+    const s = slow;
+    if (!s.gen) return;
+    deadline = performance.now() + SLICE;
+    try {
+      const r = s.gen.next();
+      if (r.done) { slow = null; s.then(r.value); }
+    } catch (e) { slow = null; fail(s.id, e.message); }
+  }
 
-  // How far along the print is, 0 to 1. A visitor's print takes a few seconds; the default one never quite ends.
-  const progress = () => (done ? 1 : mine ? Math.min(1, (clock - start) / QUICK) : (0.45 + clock / SLOW) % 1);
-  const at = new THREE.Vector3(), target = { head: new THREE.Vector3(), gantry: new THREE.Vector3(), bed: new THREE.Vector3() };
+  const heating = () => mine && !done && !failed && (!built || clock - start < HEAT);
+  function progress() {
+    if (done) return 1;
+    if (!mine) return (0.45 + clock / SLOW) % 1;
+    if (failed || heating()) return 0;
+    printFrom ||= clock;
+    return Math.min(1, (clock - printFrom) / PRINT);
+  }
+  function begin(q, said) {
+    p = cleanPrint(q); mine = true; done = false; start = clock; printFrom = 0;
+    paint(); build();
+    store.set(KEY, JSON.stringify(p));
+    return said;
+  }
+
+  const tmp = new THREE.Vector3(), nz = new THREE.Vector3(), mid = new THREE.Vector3(), right = new THREE.Vector3(), upv = new THREE.Vector3();
+  const target = { head: new THREE.Vector3(), gantry: new THREE.Vector3(), bed: new THREE.Vector3() };
+  const lastHead = new THREE.Vector3(), lastBed = new THREE.Vector3(), soundAt = new THREE.Vector3();
+  const box = new THREE.Box3().setFromCenterAndSize(bedTop.clone().add(new THREE.Vector3(0, 0.13, 0)), new THREE.Vector3(0.5, 0.42, 0.5));
 
   return {
-    mesh,
+    group, mesh, cap,
     get print() { return { ...p }; },
     get progress() { return progress(); },
-    // Takes what was typed; returns what the printer says, or null when there was nothing to print.
+    get heating() { return heating(); },
+    get mine() { return mine; },
+    get failed() { return failed; },
+    get sounding() { return sounding; },
+    get built() { return built ? { height: built.height, radius: built.radius, layers: built.layers, tris: built.index.length / 3, em: built.em } : null; },
+    fits,
+    describe: () => describe(p),
     ask(text) {
       const r = parsePrint(text, p);
       if (!r) return null;
-      p = r.p; mine = true; done = false; start = clock;
-      load();
-      store.set(KEY, JSON.stringify(p));
-      return r.said;
+      // New words that would not read on a keychain are not printed; the printer says why.
+      if (r.p.model === 'word' && (r.cut || ((p.model !== 'word' || r.p.text !== p.text) && !readable(r.p.text)))) return TOO_LONG;
+      return begin(r.p, r.said);
+    },
+    start(pick) {
+      const q = cleanPrint({ model: pick.model, text: pick.text, colour: pick.colour, size: pick.size });
+      if (q.model !== pick.model || (q.model === 'word' && !fits(pick.text))) return null;
+      return begin(q, `Printing ${describe(q)}.`);
+    },
+    hit(ray, blockers) {
+      const h = ray.ray.intersectBox(box, tmp);
+      if (!h) return null;
+      const d = ray.ray.origin.distanceTo(h);
+      if (blockers && ray.intersectObjects(blockers, true)[0]?.distance < d - 0.05) return null;
+      return meta.interact.find(i => i.id === 'printer') || null;
+    },
+    view(eye, look, camera, cover = { right: 0, bottom: 0 }) {
+      const h = built ? built.height : 0.15;
+      mid.copy(bedTop).add(nz.set(0, Math.max(0.08, h * 0.52), 0));
+      const vf = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), hf = vf * camera.aspect, half = Math.max(0.17, h * 0.5 + 0.08);
+      const dist = Math.min(1.7, Math.max(0.62, half / Math.max(0.2, (1 - cover.bottom) * vf), half / Math.max(0.2, (1 - cover.right) * hf)));
+      const yaw = Math.PI - 0.3, rise = 0.4;
+      eye.set(Math.cos(yaw) * Math.cos(rise), Math.sin(rise), Math.sin(yaw) * Math.cos(rise)).multiplyScalar(dist).add(mid);
+      const fwd = nz.copy(mid).sub(eye).normalize();
+      right.crossVectors(fwd, UP).normalize(); upv.crossVectors(right, fwd);
+      look.copy(mid).addScaledVector(right, cover.right * hf * dist).addScaledVector(upv, -cover.bottom * vf * dist);
     },
     tick(dt, cam) {
       clock += dt;
-      const k = progress();
+      const near = cam.distanceToSquared(bedTop) < NEAR * NEAR;
+      if (near && !asked) { build(); warmScreen(); }
+      if (!idleAsked && clock > SETTLE) warmWhenIdle();
+      if (slow) stepSlow();
+      const k = progress(), warm = heating();
       if (mine && k >= 1) done = true;
-      const printing = k < 1, layer = Math.min(LAYERS, Math.floor(k * LAYERS));
-      mesh.geometry.setDrawRange(0, printing ? build.bottom + build.perLayer * layer : Infinity);
-      if (cam.distanceToSquared(bedTop) > 144) return;
+      const printing = k < 1 && !!built && !warm, layers = built ? built.layers : 1, layer = Math.min(layers, Math.floor(k * layers));
+      cutPlane.constant = !built || warm ? bedTop.y - 1 : k < 1 ? bedTop.y + (layer / layers) * built.height + 1e-4 : bedTop.y + 10;
+      const run = mine && !done && !failed;
+      if (!near && !run) { if (sounding) { sounding = false; sfx?.printer(false); } return; }
       // The nozzle follows this layer's outline; when nothing is printing the head parks and the bed comes home.
       if (printing) {
-        const n = nozzleAt(build, p, Math.min(LAYERS, layer + 1), k * LAYERS - layer);
-        target.head.set(0, n.y + 0.037 + bedTop.y - headRest.y, n.z);
-        target.bed.set(-n.x, 0, 0);
+        const P = built.path, N = P.length / 2 / layers, f = (k * layers - layer) * N, i = Math.min(N - 1, Math.floor(f)), j = Math.min(N - 1, i + 1), w = f - i, o = layer * N;
+        nz.set(P[(o + i) * 2] * (1 - w) + P[(o + j) * 2] * w, 0, P[(o + i) * 2 + 1] * (1 - w) + P[(o + j) * 2 + 1] * w).applyAxisAngle(UP, FACE);
+        target.head.set(0, ((layer + 1) / layers) * built.height + 0.037 + bedTop.y - headRest.y, nz.z);
+        target.bed.set(-nz.x, 0, 0);
       } else {
         target.head.set(0, 0, 0);
         target.bed.set(0, 0, 0);
       }
       target.gantry.set(0, target.head.y, 0);
       const f = Math.min(1, dt * (printing ? 25 : 4));
-      for (const [name, o] of Object.entries(parts)) {
-        if (!o) continue;
-        o.position.lerp(at.copy(home[name]).add(target[name]), f);
-      }
-      mesh.position.set(bedTop.x + (parts.bed ? parts.bed.position.x - home.bed.x : 0), bedTop.y, bedTop.z);
+      for (const [name, o] of Object.entries(parts)) if (o) o.position.lerp(tmp.copy(home[name]).add(target[name]), f);
+      group.position.set(bedTop.x + (parts.bed ? parts.bed.position.x - home.bed.x : 0), bedTop.y, bedTop.z);
+      // Only a print of yours is heard, so the desk stays quiet the rest of the time.
+      if (run && sfx) {
+        const step = Math.max(dt, 1e-3), hv = parts.head ? parts.head.position.distanceTo(lastHead) / step : 0, bv = parts.bed ? parts.bed.position.distanceTo(lastBed) / step : 0;
+        sounding = true;
+        sfx.printer(true, soundAt.copy(bedTop).setY(bedTop.y + 0.12), { a: printing ? Math.min(1, hv / 1.2) : 0, b: printing ? Math.min(1, bv / 1.2) : 0 });
+      } else if (sounding) { sounding = false; sfx?.printer(false); }
+      if (parts.head) lastHead.copy(parts.head.position);
+      if (parts.bed) lastBed.copy(parts.bed.position);
     },
   };
 }

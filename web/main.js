@@ -196,7 +196,7 @@ const panels = makePanels(store);
 const liveVideo = makeLiveVideo({ scene, camera, meta, videos, canvas });
 const fleet = makeFleet(scene, meta, { sound });
 const persia = makePersia(scene, { feast: persiaAt.feast, day: () => out3d?.light.dayK ?? 0 }); window.__persia = persia;
-const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t });
+const printer = makePrinter({ scene, meta, parts: world.printParts, store, b2t, renderer, sfx: audio.sfx, coarse });
 const rubik = meta.points.rubik ? makeRubik(scene, b2t(...meta.points.rubik)) : null;
 const aria = makeAria(scene, meta);
 const shah = makeShahnameh(scene, meta);
@@ -255,6 +255,14 @@ function enterScope() {
   me.root.visible = false; $('prompt').classList.remove('on');
   scope.enter();
 }
+// The printer's screen: the camera leans in to the printer and the screen docks beside it.
+function enterPrinter() {
+  if (mode !== 'walk' || !printer) return;
+  wardrobe.hide();
+  mode = 'printer'; route = null; keys.clear();
+  me.root.visible = false; $('prompt').classList.remove('on');
+  panels.printer(printer, { onClose: () => { if (mode === 'printer') { mode = 'walk'; me.root.visible = true; } } });
+}
 // The crate plays my four records in turn, then switches off.
 let recAt = -1;
 function playRecord() {
@@ -283,7 +291,7 @@ screens.command('coolant', (say, arg) => say(world.coolant(arg) ? `coolant: ${ar
 screens.command('fan', say => say(deskBits.toggleFan(performance.now() / 1000) ? 'fan on.' : 'fan off.'));
 screens.command('print', (say, arg) => {
   const r = printer?.ask(arg);
-  say(...(r ? [r.toLowerCase()] : ['print <shape or any word>: vase  star  heart  gear  spiral  tower  flower  cup', '  then: taller  wider  twist  more points  spikier  or a colour']));
+  say(...(r ? [r.toLowerCase()] : ['print <model>: rocket  pishi  bh22  knight  car  duck  skull  dino', '  any other word prints on a keychain, and the printer has more', '  then: taller  wider  twist  spikier  more points  or a colour']));
 });
 screens.command('music', (say, arg) => {
   const recs = audio.music.records;
@@ -505,7 +513,7 @@ function act(it) {
   if (it.id === 'tea') { earn('tea'); audio.sfx.pour(at); }
   if (it.id === 'book') { earn('book'); return panels.book(); }
   if (it.id === 'about' || it.id === 'guestbook' || it.id === 'mailbox') return panels[it.id]();
-  if (it.id === 'printer' && printer) return panels.printer(printer);
+  if (it.id === 'printer' && printer) return enterPrinter();
   if (it.id === 'secret_room' && progress.unlocked().includes('vault')) { earn('vault'); return toast('The secret room is yours. It opens in the next build.'); }
   // The TV shows the live match: join it as striker or keeper, switch to my videos (it flips through them in turn), or play my film.
   if (it.id === 'tv') return playGame('tv', { videos: () => { const n = videos().length; playVideo(n ? tvNext++ % n : 0); }, film: () => playFilm() });
@@ -706,6 +714,7 @@ function tapMove(e) {
   { const it = deskBits.hit(ray, walkable) ? deskBits.spot : jar.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   { const it = lights.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
+  { const it = printer?.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   // Clicking a resident walks me over to them and says hello on arrival.
   const who = creatures.hit(ray);
   if (who) {
@@ -810,9 +819,8 @@ function walk(dt, now) {
   return hs;
 }
 
-// ---------- sound of the room: the city through the glass, the sea and wind outside, rain, the fire, the printer ----------
-let ambT = 0, printing = false;
-const printerAt = meta.points.printer ? b2t(...meta.points.printer) : null;
+// ---------- sound of the room: the city through the glass, the sea and wind outside, rain, the fire ----------
+let ambT = 0;
 let pianoPlaced = false, musicDucked = false;
 function ambience(dt) {
   if ((ambT -= dt) > 0) return;
@@ -828,8 +836,6 @@ function ambience(dt) {
   audio.ambience.set('wind', out ? 0.5 : 0);
   audio.ambience.set('rain', rainy ? (out ? 1 : 0.45) : 0);
   audio.ambience.set('fire', Math.max(0, 1 - Math.hypot(pos.x - 4.35, north - 10.6) / 5));
-  const nearPrinter = !!printerAt && pos.distanceTo(printerAt) < 3.5;
-  if (nearPrinter !== printing) { printing = nearPrinter; audio.sfx.printer(printing, printerAt); }
 }
 
 // ---------- frame loop ----------
@@ -885,6 +891,10 @@ function step() {
       const k = dt * 0.5;
       scope.nudge((keys.has('ArrowRight') || keys.has('KeyD') ? k : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? k : 0), (keys.has('ArrowUp') || keys.has('KeyW') ? k : 0) - (keys.has('ArrowDown') || keys.has('KeyS') ? k : 0));
       scope.view(camera.position, camLook);
+    } else if (mode === 'printer') {
+      printer.view(tmpP, tmpL, camera, panels.cover());
+      camera.position.lerp(tmpP, Math.min(1, 4 * dt));
+      camLook.lerp(tmpL, Math.min(1, 5 * dt));
     }
   }
   // At the firing line the range holds the camera (my eye, the aim, the kick of each shot).
