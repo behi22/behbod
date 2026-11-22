@@ -90,11 +90,11 @@ const printOnScreen = p => p.evaluate(() => {
   const x = (c.x + 1) / 2 * innerWidth, y = (1 - c.y) / 2 * innerHeight, top = document.elementFromPoint(x, y);
   return { x: Math.round(x), y: Math.round(y), z: +c.z.toFixed(3), top: top ? top.tagName : null };
 });
-// The house's sound level over about a second, in dB.
+// The house's sound level over about three seconds, in dB (the room alone moves by up to 0.9 dB over one second).
 const level = p => p.evaluate(async () => {
   const an = window.__ear, buf = new Float32Array(an.fftSize);
   let s = 0, n = 0;
-  for (let k = 0; k < 12; k++) { an.getFloatTimeDomainData(buf); for (const v of buf) s += v * v; n += buf.length; await new Promise(r => setTimeout(r, 90)); }
+  for (let k = 0; k < 36; k++) { an.getFloatTimeDomainData(buf); for (const v of buf) s += v * v; n += buf.length; await new Promise(r => setTimeout(r, 90)); }
   return +(10 * Math.log10(s / n + 1e-12)).toFixed(1);
 });
 // The gaps between frames while run() runs: how many, the median and the worst, in ms.

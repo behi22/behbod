@@ -277,7 +277,8 @@ const ones = s => s.room.every(v => v === 1) && s.bulb.every(v => v === 1) && s.
       await p.waitForTimeout(800);
       const s = await lightsNow(p), B = await picture(p, ...LOUNGE), fOff = await frames(), w = L.roomLight(s.day, 0);
       const drop = 1 - B.mean / A.mean;
-      check(`${part}: off, the room at its level for the time of day (${s.day.toFixed(2)})`, s.room.every((v, i) => Math.abs(v - w[i]) < 1e-6) && (part === 'day' ? s.day > 0.5 : s.day < 0.05), JSON.stringify(s.room));
+      // The daylight drifts between the switch's last frame and this reading; a lamp left on would be off by far more.
+      check(`${part}: off, the room at its level for the time of day (${s.day.toFixed(2)})`, s.room.every((v, i) => Math.abs(v - w[i]) < 0.003) && (part === 'day' ? s.day > 0.5 : s.day < 0.05), JSON.stringify(s.room));
       check(`${part}: the room dims ${part === 'day' ? 'some, the daylight still filling it' : 'to dark'}`, part === 'day' ? drop > 0.1 && drop < 0.55 : drop > 0.5, `${(drop * 100).toFixed(0)}% darker`);
       console.log(`${part}: frame median ${fOn} ms on, ${fOff} ms off`);
       await p.screenshot({ path: path.join(OUT, `${part}-off.png`) });
