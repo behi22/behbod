@@ -1,5 +1,5 @@
 // The 3D printer in a real Chrome: its screen, its prints, its sound, typing to it, at a computer and on phones.
-//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth,fail,keys,fallback]
+//   LOFT_URL=http://127.0.0.1:8815 node test/printer.js [outdir] [only: screen,hum,keep,terminal,words,phone,side,click,smooth,fail,keys,fallback,warm]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -49,17 +49,27 @@ function failOnce() {
     }
   };
 }
-async function open(b, opts, { auto = true, save, ear = false, init = null, route = null } = {}) {
+// Times each piece of the printer's quiet-moment warm-up (its callbacks named warmWords), in ms.
+function timeWarm() {
+  window.__warm = [];
+  const wrap = cb => (typeof cb === 'function' && /warmWords/.test(String(cb)) ? function (...a) { const t = performance.now(); try { return cb.apply(this, a); } finally { window.__warm.push(+(performance.now() - t).toFixed(1)); } } : cb);
+  const ric = window.requestIdleCallback, st = window.setTimeout;
+  if (ric) window.requestIdleCallback = (cb, o) => ric.call(window, wrap(cb), o);
+  window.setTimeout = (cb, ...r) => st.call(window, wrap(cb), ...r);
+}
+async function open(b, opts, { auto = true, save, ear = false, init = null, route = null, slow = 0 } = {}) {
   const ctx = await b.newContext(opts);
   if (ear) await ctx.addInitScript(tap);
   if (init) await ctx.addInitScript(init);
   if (route) await ctx.route(...route);
   if (save !== undefined) await ctx.addInitScript(s => { try { if (s === null) localStorage.removeItem('home.print'); else localStorage.setItem('home.print', s); } catch { /* none */ } }, save);
   const p = await ctx.newPage(), errs = [], asked = [];
+  // The processor slowed from the very start, for what happens while the house loads and settles.
+  if (slow) await (await ctx.newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: slow });
   watch(p, errs);
   p.on('request', r => { const m = r.url().match(/\/src\/(.+\.js)(\?|$)/); if (m) asked.push(m[1]); });
   await p.goto(`${BASE}/?${auto ? 'auto&' : ''}q=${opts.isMobile ? 'medium' : 'high'}`);
-  await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0 && (document.getElementById('enter').classList.contains('ready')), null, { timeout: 120000 });
+  await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0 && (document.getElementById('enter').classList.contains('ready')), null, { timeout: slow ? 300000 : 120000 });
   if (!auto) { await p.click('#enter'); }
   await p.waitForTimeout(800);
   return { ctx, p, errs, asked };
@@ -432,6 +442,16 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
         check(`${way}: no error`, errs.filter(e => !/printwork\.js/.test(e)).length === 0, errs.slice(0, 3).join(' | '));
         await ctx.close();
       }
+    }
+    // ---------- a slow phone: the keychain's font and words are readied in quiet moments, a piece at a time ----------
+    if (want('warm')) {
+      const { ctx, p, errs } = await open(b, UPRIGHT, { save: null, init: timeWarm, slow: 4 });
+      await p.waitForFunction(() => window.__warm.length > 0, null, { timeout: 60000, polling: 200 }).catch(() => {});
+      await p.waitForTimeout(8000);
+      const pieces = await p.evaluate(() => window.__warm.slice());
+      check('4x slower phone: readying the keychain\'s font and words when the house is quiet takes less than a 60 Hz frame (16.7 ms) at a time', pieces.length > 0 && Math.max(...pieces) < 16.7, `pieces ${JSON.stringify(pieces)} ms`);
+      check('the warm-up: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
     }
     // ---------- smooth on a slow phone: no long frames when the screen opens or a model is built ----------
     if (want('smooth')) {
