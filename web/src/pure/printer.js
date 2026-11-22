@@ -98,11 +98,11 @@ const PAIRS = new Set(['rubberduck', 'gamecontroller', 'chessknight', 'racecar',
 const joinPairs = s => s.replace(/\bbh[\s_-]*22\b/g, 'bh22').replace(/\bt[\s_-]*rex\b/g, 'trex')
   .replace(/\b(rubber|game|chess|race|rocket|space)\s+(duck|controller|knight|car|ship)\b/g, (m, a, b) => (PAIRS.has(a + b) ? a + b : m));
 const nameWords = m => m.name.toLowerCase().split(/[\s-]+/);
-// A model's full name of two words or more is read whole first, the longest first: "chess king" is the king, though "chess" alone is the knight.
+// A model's full name of two words or more (or more than one of it) is read whole first, the longest first: "chess king" is the king, though "chess" alone is the knight.
 const NAMES = MODELS.filter(m => /[\s-]/.test(m.name))
   .map(m => ({ w: nameWords(m), id: m.id }))
   .sort((a, b) => b.w.length - a.w.length || b.w.join('').length - a.w.join('').length)
-  .map(({ w, id }) => ({ re: new RegExp(`\\b${w.join('[\\s_-]*')}\\b`, 'g'), id }));
+  .map(({ w, id }) => ({ re: new RegExp(`\\b${w.join('[\\s_-]*')}s?\\b`, 'g'), id }));
 const joinNames = s => NAMES.reduce((t, { re, id }) => t.replace(re, id), s);
 // A model word that names one model (its id, a word only its name has, a joined one like t-rex) beats one that only stands for it.
 const SHARED = new Set(MODELS.flatMap(nameWords).filter((w, i, all) => all.indexOf(w) !== i));

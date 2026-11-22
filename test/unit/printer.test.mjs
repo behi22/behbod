@@ -387,3 +387,11 @@ test('a model named in two words is read whole: a chess king is the king, though
   }
   assert.equal(parsePrint('print a chess king taller').said, 'Printing a black chess king.');
 });
+
+test('a full name asked for more than once is still that model: chess kings are kings, not the knight chess alone means', () => {
+  for (const [typed, id] of [['chess kings', 'king'], ['print two chess kings', 'king'], ['Chess Kings', 'king'], ['chess knights', 'knight'],
+    ['rubber ducks', 'duck'], ['game controllers', 'controller'], ['puzzle cubes', 'cube']]) assert.equal(parsePrint(typed).p.model, id, typed);
+  // A word that only starts like a name is not it.
+  assert.equal(parsePrint('chess kingdom').p.model, 'knight');
+  assert.equal(parsePrint('chess kingss').p.model, 'knight');
+});
