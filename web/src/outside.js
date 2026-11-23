@@ -20,10 +20,12 @@ export function makeOutside(scene, meta, screens, { traffic: withTraffic = true 
   const traffic = new THREE.Points(carGeo, new THREE.PointsMaterial({ size: 0.11, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   if (CARS) scene.add(traffic);
 
-  const state = { weather: 'clear' };
+  // Clear until the real weather is known; `known` says when it is.
+  const state = { weather: 'clear', known: false };
   let rain = null, snow = null;
   weatherNow().then(w => {
     state.weather = w;
+    state.known = true;
     screens.outside.weather = w;
     screens.outside.draw(new Date());
     if (w === 'rain') {
@@ -70,5 +72,5 @@ export function makeOutside(scene, meta, screens, { traffic: withTraffic = true 
       a.needsUpdate = true;
     }
   }
-  return { tick, get weather() { return state.weather; } };
+  return { tick, get weather() { return state.weather; }, get known() { return state.known; } };
 }
