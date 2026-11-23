@@ -284,8 +284,8 @@ export function makeRange({ engine, camera, meta, canvas, coarse, visible, sfx, 
     const lines = [];
     if (res.failed) lines.push('Out of shields.');
     else if (res.stars < 3) lines.push(`${marks[res.stars]} for ${res.stars + 1} star${res.stars ? 's' : ''}.`);
-    const B = res.bolts;
-    if (B?.launched) lines.push(`Bolts: ${B.dodged} dodged, ${B.parried} shot down, ${B.taken} took a shield.`);
+    const tally = res.bolts;
+    if (tally?.launched) lines.push(`Bolts: ${tally.dodged} dodged, ${tally.parried} shot down, ${tally.taken} took a shield.`);
     if (got.best) lines.push('A new best.');
     for (const name of got.guns) lines.push(`Unlocked: the ${name}. Pick it here, or take it from the gun wall.`);
     for (const name of more) lines.push(`Unlocked: ${name}.`);

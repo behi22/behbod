@@ -158,7 +158,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
   const home = holidayRGB ? 'holiday' : 'chill', was = [new THREE.Color(), new THREE.Color()];
-  let sceneName = home, picked = false, fade = 1, deployUntil = 0, goalBeats = null, flashing = false, coolantName = 'teal';
+  let sceneName = home, picked = false, sceneK = 1, deployUntil = 0, goalBeats = null, flashing = false, coolantName = 'teal';
   function paintRGB(a, b) {
     for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
     for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
@@ -416,10 +416,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     }
     tickClocks(t);
     // A game day comes in, and goes, as a slow fade rather than a jump; a record, a goal or DEPLOY takes over at once.
-    if (fade < 1) {
+    if (sceneK < 1) {
       const busy = mk || flashing || deployUntil;
-      fade = busy ? 1 : Math.min(1, fade + dt / 2);
-      if (!busy) { sceneColours(t); paintRGB(A.lerpColors(was[0], A, fade), B.lerpColors(was[1], B, fade)); }
+      sceneK = busy ? 1 : Math.min(1, sceneK + dt / 2);
+      if (!busy) { sceneColours(t); paintRGB(A.lerpColors(was[0], A, sceneK), B.lerpColors(was[1], B, sceneK)); }
     }
   }
 
@@ -434,7 +434,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     get coolantName() { return coolantName; },
     scene(name) {
       if (!Object.hasOwn(SCENES, name)) return false;
-      sceneName = name; picked = true; fade = 1;
+      sceneName = name; picked = true; sceneK = 1;
       // Built when first picked, so the house never pays for it otherwise.
       if (name === 'visualizer') viz ||= stripViz([...(emits.E_purple || []), ...(emits.E_teal || [])].filter(m => !pcFam.has(m)));
       applyScene();
@@ -444,7 +444,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     matchday(on) {
       if (picked) return;
       sceneColours(0); was[0].copy(A); was[1].copy(B);
-      sceneName = on ? 'matchday' : home; fade = 0;
+      sceneName = on ? 'matchday' : home; sceneK = 0;
     },
     coolant(name) {
       if (!Object.hasOwn(COOLANT, name)) return false;
