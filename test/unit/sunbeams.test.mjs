@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { astro, makeAstro, vanDate } from '../../web/src/pure/outside.js';
 import { GLASS, sunThrough, landing, throughGlass, glassView, midsummer } from '../../web/src/pure/sunbeams.js';
 
@@ -78,4 +79,15 @@ test('the view along the light puts each point at its place on the glass, and or
   assert.deepEqual(m.slice(12), [0, 0, 0, 1], 'no perspective: every ray of sunlight is parallel');
   const det = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]);
   assert.ok(det > 0, 'a mirror image of a camera looking into the room, so its front faces are those turned away from the sun');
+});
+
+// The low setting draws straight to the screen, and so does a setting moved up from low until its effects are built; a
+// program three has not built for the way it draws is built inside that frame.
+test('the beams\' shaders are built both ways three draws them, so a change of quality builds none in a frame', () => {
+  const src = readFileSync(new URL('../../web/src/sunbeams.js', import.meta.url), 'utf8');
+  const build = src.slice(src.indexOf('async function build()'), src.indexOf('function drawReach()'));
+  assert.match(build, /\[target, \[\[group, camera, scene\], \[reachScene, eye\]\]\]/, 'into a picture, the beams and the map');
+  assert.match(build, /\[null, \[\[group, camera, scene\]\]\]/, 'to the screen, the beams');
+  assert.match(build, /renderer\.setRenderTarget\(to\);\s*for \(const args of list\) jobs\.push\(renderer\.compileAsync\(\.\.\.args\)\);/);
+  assert.match(build, /await Promise\.all\(jobs\);\s*\}/, 'each way waited for before the next');
 });

@@ -179,15 +179,19 @@ export function makeSunbeams({ scene, renderer, camera, sky, weather, lamps, qua
     // Each point of the glass in clip space, with how far along the light as depth: an oblique projection, set per sun.
     const eye = new THREE.Camera();
     reachScene.updateMatrixWorld(true);
-    // Their shaders are built off the frame, the way they will draw: into a picture (the effects chain, the mirror), with
-    // the house's lights counted as the house is drawn with them.
+    // Their shaders are built off the frame, both ways they may draw, with the house's lights counted as the house is
+    // drawn with them: into a picture (the effects chain, the mirror), and to the screen, where the low setting draws as
+    // they fade out, and a setting moved up from low until its effects are built. One way at a time: three waits only on
+    // the programs it was last asked for.
     renderer.initRenderTarget(target);
-    const was = renderer.getRenderTarget(), jobs = [];
-    try {
-      renderer.setRenderTarget(target);
-      jobs.push(renderer.compileAsync(group, camera, scene), renderer.compileAsync(reachScene, eye));
-    } finally { renderer.setRenderTarget(was); }
-    await Promise.all(jobs);
+    for (const [to, list] of [[target, [[group, camera, scene], [reachScene, eye]]], [null, [[group, camera, scene]]]]) {
+      const was = renderer.getRenderTarget(), jobs = [];
+      try {
+        renderer.setRenderTarget(to);
+        for (const args of list) jobs.push(renderer.compileAsync(...args));
+      } finally { renderer.setRenderTarget(was); }
+      await Promise.all(jobs);
+    }
     scene.add(group);
     built = { group, land, shaft, target, reachScene, eye, shared, zones };
     last.set(0, 0, 0);
