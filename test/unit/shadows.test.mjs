@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // A name a file imports and then declares again inside a function hides the import there: world.js once declared its
-// own `fade` beside leds.js's, and the first record played threw on every frame and froze the house.
+// own `fade` beside leds.js's, and the first frame a record was heard threw, which stopped the frame loop for good.
 const WEB = fileURLToPath(new URL('../../web/', import.meta.url));
 const files = d => readdirSync(d, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? files(join(d, e.name)) : e.name.endsWith('.js') ? [join(d, e.name)] : []));
 
