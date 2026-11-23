@@ -28,7 +28,8 @@ async function open(b, opts, { ctx = null, query = '', init = null } = {}) {
   if (init) await ctx.addInitScript(init);
   const p = await ctx.newPage(), errs = [];
   watch(p, errs);
-  await p.goto(`${BASE}/?auto&q=${opts.isMobile ? 'medium' : 'high'}${query}`);
+  // The studio's own scenes whatever the date: on a Real Madrid game day the strips would turn white and gold by themselves.
+  await p.goto(`${BASE}/?auto&matchday=off&q=${opts.isMobile ? 'medium' : 'high'}${query}`);
   await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
   await p.waitForTimeout(800);
   return { ctx, p, errs };

@@ -421,11 +421,11 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
       const calm = 1 - 0.7 * a, strafe = input.strafe || 0;
       st.bob += Math.abs(strafe) * dt * 7;
       const bx = Math.cos(st.bob) * 0.005 * Math.min(1, Math.abs(strafe)), by = Math.sin(st.bob * 2) * 0.004 * Math.min(1, Math.abs(strafe));
-      const breath = Math.sin(st.t * 1.25) * 0.0016 * calm, drift = Math.sin(st.t * 0.83 + 1.3) * 0.0012 * calm;
+      const breathY = Math.sin(st.t * 1.25) * 0.0016 * calm, drift = Math.sin(st.t * 0.83 + 1.3) * 0.0012 * calm;
 
       rig.position.set(
         HIP.p[0] + (ADS.p[0] - HIP.p[0]) * a + drift + bx * calm + sp.lagX.x * 0.35 + G[0],
-        HIP.p[1] + (ADS.p[1] - HIP.p[1]) * a + breath + by * calm - 0.26 * (1 - up) - 0.03 * (input.crouch || 0) * (1 - a) + sp.bump.x + sp.lagY.x * 0.3 + G[1],
+        HIP.p[1] + (ADS.p[1] - HIP.p[1]) * a + breathY + by * calm - 0.26 * (1 - up) - 0.03 * (input.crouch || 0) * (1 - a) + sp.bump.x + sp.lagY.x * 0.3 + G[1],
         HIP.p[2] + (ADS.p[2] - HIP.p[2]) * a + sp.back.x + G[2]);
       e.set(HIP.r[0] * (1 - a) + sp.up.x - 0.95 * (1 - up) + sp.lagY.x, HIP.r[1] * (1 - a) + sp.side.x + sp.lagX.x, HIP.r[2] * (1 - a) + sp.roll.x - strafe * 0.012 * calm, 'YXZ');
       rig.quaternion.setFromEuler(e);

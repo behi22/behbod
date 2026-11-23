@@ -42,6 +42,8 @@ import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
+import { makeSunbeams } from './src/sunbeams.js';
+import { makeMatchday } from './src/matchday.js';
 import { hoodUp, wornColours } from './src/pure/look.js';
 import { tierStep, ease, makeQualityNotice, refreshFrom } from './src/pure/tier.js';
 import { lastMoved, waits } from './src/pure/still.js';
@@ -239,6 +241,7 @@ const knight = makeKnight(scene, meta, [scene], { renderer });
 const lights = makeLights(scene, world, { sfx: audio.sfx, skip: [knight?.root] }); window.__lights = lights;
 const pishiCam = makePishiCam({ renderer, scene, screen: scene.getObjectByName('screen_pishi'), texture: screens.textures.pishi, pishi: creatures.pishi, me, coarse }); window.__pishiCam = pishiCam;
 persia.tableReady.then(() => lights.adopt());
+const sunbeams = makeSunbeams({ scene, renderer, camera, sky: out3d, weather: () => (outside.known ? outside.weather : null), lamps: lights.uniforms.room, quality: () => tierName }); window.__sunbeams = sunbeams;
 const saber = makeSaber({ engine, camera, canvas, coarse, knight, meta, audio: audio.saber, store, onExit: () => { mode = 'walk'; me.root.visible = true; } });
 const saberEye = new THREE.Vector3();
 window.__saber = saber;
@@ -936,6 +939,8 @@ function step() {
   }
   hello.tick();
   lights.tick(dt, out3d ? out3d.light.dayK : 0, pos);
+  // After the switch, so the sun takes this frame's lamp level back out, not the last one's.
+  if (out3d) sunbeams.tick(dt);
   metronome.tick(dt); pianoLamp.tick(dt, audio.piano.playing, pianoMode.struck); sheetMusic.tick(dt, audio.piano.song || pianoMode.lesson, pianoMode.active);
   audio.setListener(camera.position, camera.getWorldDirection(tmpP));
   audio.tick();
@@ -1000,6 +1005,7 @@ $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag
 function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }
 $('enter').classList.add('ready');
 $('film').classList.add('ready');
+const matchday = makeMatchday({ world, store, clock: () => (out3d ? out3d.clock() : new Date()) }); matchday.start(); window.__matchday = matchday;
 $('enter').addEventListener('click', goIn);
 // The film first, then in. The house's sound is started by this click (browsers allow sound only from one) and waits, silent, for the film to end.
 $('film').addEventListener('click', () => { if (film.playing) return; sound.start(); playFilm('Skip', false).then(goIn); });
