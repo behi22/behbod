@@ -44,6 +44,7 @@ import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
 import { hoodUp, wornColours } from './src/pure/look.js';
 import { tierStep, ease, makeQualityNotice, refreshFrom } from './src/pure/tier.js';
+import { lastMoved, waits } from './src/pure/still.js';
 import { makeCanvases } from './screens.js';
 import { Sound } from './sound.js';
 
@@ -843,6 +844,9 @@ const tmpP = new THREE.Vector3(), tmpL = new THREE.Vector3();
 const FOG_NIGHT = new THREE.Color(0x0a0f1c), FOG_DAY = new THREE.Color(0x6f8197);
 const clock = new THREE.Clock();
 let frameTimes = [], tierChecked = 0, tierState = {}, lastFrame = performance.now();
+// An automatic change of quality waiting for a still view ({ to, at }, see still.js), and when the view last moved.
+let heldTier = null, viewMoved = 0;
+const lastEye = new THREE.Vector3(), lastDir = new THREE.Vector3(), eyeDir = new THREE.Vector3();
 // The judge looks away for its quiet seconds from the first frame and after anything that spends a burst of work
 // (a new mode, a video or a game opening or closing, the film, a return to the tab, the range being built behind the
 // scenes), so the burst is not judged.
@@ -858,7 +862,7 @@ function notice(text) {
 }
 const qualityNotice = makeQualityNotice({ seen: () => !!store.get('home.qnote'), remember: () => store.set('home.qnote', '1'), show: notice });
 // The automatic quality moves to another level (the judge in the frame loop calls this).
-function autoTierTo(next) { qualityNotice.stepped(tierName, next); tierName = next; engine.setTier(next); }
+function autoTierTo(next) { heldTier = null; qualityNotice.stepped(tierName, next); tierName = next; engine.setTier(next); }
 function step() {
   // While my film plays over the room, the room stops drawing so a weak phone spends itself on the film; the pause
   // must not count as slow frames, or the automatic quality would step down.
@@ -940,12 +944,21 @@ function step() {
 
   if (houseLoading) { houseLoading = false; tierState = { ...tierState, refresh: refreshFrom(loadFrames) }; }
   if (judgeRest || mode !== judgedMode || range.building) { judgeRest = false; judgedMode = mode; tierState = { ...tierState, from: now }; frameTimes = []; tierChecked = now; }
+  camera.getWorldDirection(eyeDir);
+  viewMoved = lastMoved(viewMoved, camera.position.distanceTo(lastEye), eyeDir.angleTo(lastDir), (now - lastFrame) / 1000, now);
+  lastEye.copy(camera.position); lastDir.copy(eyeDir);
   frameTimes.push(now - lastFrame); lastFrame = now;
-  if (autoTier && frameTimes.length > 40 && now - tierChecked > 2500) {
+  // The frames while a change waits are the old tier's, so they are not judged.
+  if (autoTier && !heldTier && frameTimes.length > 40 && now - tierChecked > 2500) {
     tierChecked = now;
     tierState = tierStep(tierName, frameTimes, now, tierState);
-    if (tierState.tier !== tierName) autoTierTo(tierState.tier);
+    if (tierState.tier !== tierName) heldTier = { to: tierState.tier, at: now };
     frameTimes = [];
+  }
+  // The quiet seconds after a switch run from when it lands.
+  if (heldTier && !waits(heldTier, now, viewMoved, renderer.getPixelRatio(), devicePixelRatio)) {
+    autoTierTo(heldTier.to);
+    tierState = { ...tierState, from: now }; frameTimes = []; tierChecked = now;
   }
   if (showStats) $('stats').textContent = `${(1 / Math.max(dt, 1e-3)).toFixed(0)} fps · ${renderer.info.render.calls} calls · ${(renderer.info.render.triangles / 1000).toFixed(0)}k tris · ${physName} · ${outside.weather}${screens.holiday ? ' · ' + screens.holiday.id : ''}`;
   requestAnimationFrame(step);
@@ -953,6 +966,7 @@ function step() {
 
 function setQuality(next) {
   if (next !== 'auto' && !Object.hasOwn(TIERS, next)) return;
+  heldTier = null;
   autoTier = next === 'auto';
   tierName = autoTier ? startTier() : next;
   tierState = { top: tierName, refresh: tierState.refresh };
@@ -990,7 +1004,7 @@ if (params.has('auto')) { $('gate').classList.add('gone'); qualityNotice.opened(
 window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, printer, rubik, act: id => act(things.items.find(i => i.id === id)), stand,
   walkTo: (x, y, z) => walkTo(b2t(x, y, z)), goTo, chair, get route() { return route ? route.points.length : 0; }, wardrobe,
   get near() { return near?.id ?? null; }, get facing() { return facing; },
-  get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, autoTierTo, get physics() { return physName; },
+  get head() { return me.head; }, get mode() { return mode; }, get tier() { return tierName; }, get tierHeld() { return heldTier?.to ?? null; }, setQuality, autoTierTo, get physics() { return physName; },
   get weights() { return me.weights; }, get headVisible() { return me.root.visible; }, get headMeshesShown() { return me.headMeshesShown; },
   set yaw(v) { yaw = v; lastLook = performance.now(); }, screens, deskView, screenCentre: () => b2t(...meta.screens.main.center),
   playFilm, get filmPlaying() { return film.playing; }, get houseGain() { return sound.ctx ? sound.master.gain.value : null; } };
