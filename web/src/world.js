@@ -148,7 +148,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   // The studio's RGB: light scenes from the terminal, holiday colours by default on a holiday, a green sweep on DEPLOY.
   const CHILL = [[0.55, 0.15, 1.0], [0.1, 0.9, 0.8]];
-  const SCENES = { chill: CHILL, focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[0.1, 0.85, 0.25], [0.95, 0.95, 0.95]], movie: [[0.16, 0.05, 0.3], [0.03, 0.2, 0.18]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null, visualizer: CHILL };
+  const SCENES = { chill: CHILL, focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[1, 0.72, 0.18], [0.95, 0.95, 0.95]], movie: [[0.16, 0.05, 0.3], [0.03, 0.2, 0.18]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null, visualizer: CHILL };
   const COOLANT = { teal: [0.1, 0.9, 0.8], purple: [0.55, 0.15, 1.0], red: [1.0, 0.12, 0.1], gold: [1.0, 0.7, 0.15], white: [0.9, 0.95, 1.0] };
   // The PC's lights are one mesh per channel, so the whole glass case is three draw calls.
   for (const [fam, list] of Object.entries(pcParts)) {
@@ -157,7 +157,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   }
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
-  let sceneName = holidayRGB ? 'holiday' : 'chill', deployUntil = 0, goalBeats = null, flashing = false, coolantName = 'teal';
+  const home = holidayRGB ? 'holiday' : 'chill', was = [new THREE.Color(), new THREE.Color()];
+  let sceneName = home, picked = false, fade = 1, deployUntil = 0, goalBeats = null, flashing = false, coolantName = 'teal';
   function paintRGB(a, b) {
     for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
     for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
@@ -414,6 +415,12 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       if (d.solid !== solid) { d.solid = solid; onDoor?.(d.collider, solid); }
     }
     tickClocks(t);
+    // A game day comes in, and goes, as a slow fade rather than a jump; a record, a goal or DEPLOY takes over at once.
+    if (fade < 1) {
+      const busy = mk || flashing || deployUntil;
+      fade = busy ? 1 : Math.min(1, fade + dt / 2);
+      if (!busy) { sceneColours(t); paintRGB(A.lerpColors(was[0], A, fade), B.lerpColors(was[1], B, fade)); }
+    }
   }
 
   return {
@@ -427,11 +434,17 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     get coolantName() { return coolantName; },
     scene(name) {
       if (!Object.hasOwn(SCENES, name)) return false;
-      sceneName = name;
+      sceneName = name; picked = true; fade = 1;
       // Built when first picked, so the house never pays for it otherwise.
       if (name === 'visualizer') viz ||= stripViz([...(emits.E_purple || []), ...(emits.E_teal || [])].filter(m => !pcFam.has(m)));
       applyScene();
       return true;
+    },
+    // Real Madrid's game days turn the room white and gold by itself, unless a scene was picked by hand this visit.
+    matchday(on) {
+      if (picked) return;
+      sceneColours(0); was[0].copy(A); was[1].copy(B);
+      sceneName = on ? 'matchday' : home; fade = 0;
     },
     coolant(name) {
       if (!Object.hasOwn(COOLANT, name)) return false;

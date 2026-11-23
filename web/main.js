@@ -42,6 +42,7 @@ import { makeCollision } from './src/pure/collide.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
+import { makeMatchday } from './src/matchday.js';
 import { hoodUp, wornColours } from './src/pure/look.js';
 import { tierStep, ease, makeQualityNotice, refreshFrom } from './src/pure/tier.js';
 import { lastMoved, waits } from './src/pure/still.js';
@@ -997,6 +998,7 @@ $('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag
 function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }
 $('enter').classList.add('ready');
 $('film').classList.add('ready');
+const matchday = makeMatchday({ world, store, clock: () => (out3d ? out3d.clock() : new Date()) }); matchday.start(); window.__matchday = matchday;
 $('enter').addEventListener('click', goIn);
 // The film first, then in. The house's sound is started by this click (browsers allow sound only from one) and waits, silent, for the film to end.
 $('film').addEventListener('click', () => { if (film.playing) return; sound.start(); playFilm('Skip', false).then(goIn); });
