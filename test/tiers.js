@@ -133,6 +133,39 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
       check('the switch waiting for a still view: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }
+    // Through the telescope zoomed in to a degree or two, a slow pan (half a degree a second, still in the house's
+    // 55 degrees) sweeps the picture, so a switch asked for then waits too. Before, it landed the frame it was asked.
+    {
+      const { p, errs } = await open(b, 'auto', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+      await p.evaluate(() => { const L = __loft, it = L.meta.interact.find(i => i.id === 'telescope'); L.pos.set(it.at[0], 0.05, -it.at[1]); });
+      await p.waitForTimeout(500);
+      await p.evaluate(() => { __loft.act('telescope'); for (let i = 0; i < 12; i++) __loft.scope.zoom(-1); });
+      await p.waitForTimeout(1500);
+      const r = await p.evaluate(() => new Promise(done => {
+        const L = __loft, from = L.tier, t0 = performance.now(), dir = L.camera.getWorldDirection(L.camera.position.clone()), prev = dir.clone();
+        let last = t0, swung = 0, way = 1, turned = 0, asked = null, landed = null, fov = null;
+        const frame = () => {
+          const now = performance.now(), dt = Math.max(now - last, 1) / 1000, d = 0.5 * Math.PI / 180 * dt;
+          last = now;
+          L.camera.getWorldDirection(dir);
+          if (asked !== null) turned += dir.angleTo(prev);
+          prev.copy(dir);
+          // Back and forth across two degrees, never stopping.
+          if ((swung += d) > Math.PI / 90) { swung = 0; way = -way; }
+          L.scope.nudge(way * d * 16 / L.scope.fov, 0);
+          if (asked === null && (L.tierHeld || L.tier !== from)) { asked = now; fov = L.camera.fov; }
+          if (asked === null) { const until = performance.now() + 35; while (performance.now() < until); }
+          // How the view moved while the switch waited: its mean turn and how far its width drifted (degrees).
+          if (!landed && asked !== null && L.tier !== from) landed = { after: now - asked, pan: +(turned * 180 / Math.PI / ((now - asked) / 1000)).toFixed(2), zoom: +Math.abs(L.camera.fov - fov).toFixed(4) };
+          if (asked === null ? now - t0 < 45000 : !landed && now - asked < 4000) return requestAnimationFrame(frame);
+          done({ mode: L.mode, from, to: L.tier, fov: fov && +fov.toFixed(2), landed });
+        };
+        requestAnimationFrame(frame);
+      }));
+      check('in the telescope zoomed in, a switch asked for during a slow pan waits for the cap', r.mode === 'scope' && r.from === 'ultra' && r.fov < 5 && r.landed?.after >= 2950 && r.landed.after < 3300 && r.landed.pan > 0.3 && r.landed.pan < 1.5 && r.landed.zoom < 0.01, JSON.stringify(r));
+      check('the telescope: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
     // The graphics context lost while the house loads, as a phone switched away from may lose it, and given back.
     // Regression: the shaders' first use while loading read their compile logs, which a lost context does not have,
     // and three threw, so the house never opened.

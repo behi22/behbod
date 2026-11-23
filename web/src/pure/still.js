@@ -8,9 +8,12 @@ import { ratioOf } from './tier.js';
 export const MOVE = 0.05, TURN = Math.PI / 120, SETTLE = 300, CAP = 3000;
 
 // When the view last moved, after a frame of `dt` seconds in which the camera went `moved` metres and turned `turned`
-// radians; `last` is when it moved before.
-export function lastMoved(last, moved, turned, dt, now) {
-  return moved > MOVE * dt || turned > TURN * dt ? now : last;
+// radians while its field of view went from `was` to `fov` degrees (`normal` is its usual one); `last` is when it moved
+// before. A view narrower than normal (the telescope, a gun's zoom) shows a turn larger, so the turn limit comes down
+// in proportion; a change of width moves the picture's edges by half of it, and counts as that much turning.
+export function lastMoved(last, moved, turned, dt, now, { fov, was, normal }) {
+  const narrow = Math.min(1, fov / normal), zoom = Math.abs(fov - was) * Math.PI / 360;
+  return moved > MOVE * dt || turned + zoom > TURN * narrow * dt ? now : last;
 }
 
 // Whether the automatic change to tier `to`, asked for at `at`, still waits at `now`: only one that changes the pixel
