@@ -847,6 +847,8 @@ let frameTimes = [], tierChecked = 0, tierState = {}, lastFrame = performance.no
 // An automatic change of quality waiting for a still view ({ to, at }, see still.js), and when the view last moved.
 let heldTier = null, viewMoved = 0;
 const lastEye = new THREE.Vector3(), lastDir = new THREE.Vector3(), eyeDir = new THREE.Vector3();
+// The camera's field of view now and on the frame before, against its usual one (the telescope and a gun's zoom narrow it).
+const lens = { fov: camera.fov, was: camera.fov, normal: camera.fov };
 // The judge looks away for its quiet seconds from the first frame and after anything that spends a burst of work
 // (a new mode, a video or a game opening or closing, the film, a return to the tab, the range being built behind the
 // scenes), so the burst is not judged.
@@ -945,7 +947,8 @@ function step() {
   if (houseLoading) { houseLoading = false; tierState = { ...tierState, refresh: refreshFrom(loadFrames) }; }
   if (judgeRest || mode !== judgedMode || range.building) { judgeRest = false; judgedMode = mode; tierState = { ...tierState, from: now }; frameTimes = []; tierChecked = now; }
   camera.getWorldDirection(eyeDir);
-  viewMoved = lastMoved(viewMoved, camera.position.distanceTo(lastEye), eyeDir.angleTo(lastDir), (now - lastFrame) / 1000, now);
+  lens.was = lens.fov; lens.fov = camera.fov;
+  viewMoved = lastMoved(viewMoved, camera.position.distanceTo(lastEye), eyeDir.angleTo(lastDir), (now - lastFrame) / 1000, now, lens);
   lastEye.copy(camera.position); lastDir.copy(eyeDir);
   frameTimes.push(now - lastFrame); lastFrame = now;
   // The frames while a change waits are the old tier's, so they are not judged.
