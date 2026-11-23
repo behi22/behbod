@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { EffectComposer, RenderPass, Pass, EffectPass, Effect, EffectAttribute, BloomEffect, SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction } from 'postprocessing';
-import { TIERS, TIER_ORDER, effectsOf } from './pure/tier.js';
+import { TIERS, TIER_ORDER, effectsOf, ratioOf } from './pure/tier.js';
 import { makeRebuilder, STALE } from './pure/rebuild.js';
 import { inSlices, breathe as breath } from './pure/slices.js';
 import { useAhead } from './useahead.js';
@@ -165,7 +165,7 @@ export function makeEngine(canvas, coarse) {
   }
   function apply(name) {
     tier = TIERS[name];
-    renderer.setPixelRatio(Math.min(devicePixelRatio, tier.ratio));
+    renderer.setPixelRatio(ratioOf(name, devicePixelRatio));
   }
   function swapChain(c) {
     const old = composer;

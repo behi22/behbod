@@ -8,6 +8,9 @@ export const TIERS = {
   ultra: { ratio: 2, post: true, bloom: true, smaa: true, grain: true },
 };
 
+// The pixel ratio a tier draws at on a screen of `dpr` device pixels to each CSS pixel: never sharper than the screen.
+export const ratioOf = (name, dpr) => Math.min(dpr, TIERS[name].ratio);
+
 // A tier's set of effects by name: tiers with the same set share one effects chain, so a switch between them
 // changes only the sharpness.
 const EFFECTS = ['post', 'bloom', 'smaa', 'grain'];

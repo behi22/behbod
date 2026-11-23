@@ -88,6 +88,51 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
       check(`${part}: and what was on screen stays`, now.tier === 'ultra' && now.outside === 'high', JSON.stringify(now));
       await p.close();
     }
+    // At 1440x900 on a 2x screen a switch between ultra and high resizes the picture, and the browser holds the frame
+    // it lands on, so the automatic quality's switch waits for a still view. The view is turned at 34 degrees a second
+    // and a busy loop slows every frame until the judge asks for a switch; then the frames run free. Each part reports
+    // when the switch landed, the camera's turning as it did and the longest frame just after. Before this, a switch
+    // landed the frame the judge asked for it, mid-turn.
+    {
+      const { p, errs } = await open(b, 'auto', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+      // stop: ms after the ask the turning stops (never, if null); pick: a quality chosen in Settings 500 ms after it.
+      const watch = ({ busy, stop = null, pick = null }) => p.evaluate(([busy, stop, pick]) => new Promise(done => {
+        const L = __loft, from = L.tier, t0 = performance.now(), dir = L.camera.getWorldDirection(L.camera.position.clone()), prev = dir.clone();
+        let yaw = 0, last = t0, turning = true, turn = 0, asked = null, stopped = null, landed = null, picked = null;
+        const frame = () => {
+          const now = performance.now(), dt = Math.max(now - last, 1) / 1000;
+          last = now;
+          L.camera.getWorldDirection(dir);
+          turn = dir.angleTo(prev) / dt * 180 / Math.PI;
+          prev.copy(dir);
+          if (turning) L.yaw = yaw += 0.6 * dt;
+          if (asked === null && (L.tierHeld || L.tier !== from)) asked = now;
+          if (busy && asked === null) { const until = performance.now() + 35; while (performance.now() < until); }
+          if (asked !== null && stop !== null && turning && now - asked >= stop) { turning = false; stopped = now; }
+          if (asked !== null && pick && !picked && now - asked >= 500) { L.setQuality?.(pick); picked = { tier: L.tier, held: L.tierHeld ?? null }; }
+          if (landed) landed.after.push(dt * 1000);
+          else if (L.tier !== from && !picked) landed = { at: now, turning, turn, after: [] };
+          const end = asked === null ? now - t0 > 45000 : pick ? now - asked > 4500 : landed ? landed.after.length >= 4 : now - asked > 6000;
+          if (!end) return requestAnimationFrame(frame);
+          done({ from, to: L.tier, held: L.tierHeld ?? null, asked: asked && asked - t0, stopped: stopped && stopped - (asked ?? 0), picked,
+            landed: landed && { after: landed.at - asked, stopped: stopped === null ? null : landed.at - stopped, turning: landed.turning, turn: +landed.turn.toFixed(1), frame: +Math.max(...landed.after).toFixed(1) } });
+        };
+        requestAnimationFrame(frame);
+      }), [busy, stop, pick]);
+      const say = r => JSON.stringify(r);
+      const down = await watch({ busy: true, stop: 1500 });
+      check('an automatic switch from ultra down to high asked for while the camera turns is not made until it stops',
+        down.from === 'ultra' && down.landed && !down.landed.turning && down.landed.stopped >= 0, say(down));
+      check('and is made once the view is still, within a second of the turning stopping', down.landed?.stopped != null && down.landed.stopped < 1000 && down.landed.turn < 1.5, say(down));
+      const up = await watch({ busy: false });
+      check('an automatic switch back up to ultra while the camera never stops turning waits 3 s at most',
+        up.from === 'high' && up.to === 'ultra' && up.landed?.after >= 2950 && up.landed.after < 3300, say(up));
+      const pick = await watch({ busy: true, pick: 'medium' });
+      check('a quality picked in Settings while a switch waits is made at once, and the waiting switch is dropped',
+        pick.from === 'ultra' && pick.landed === null && pick.picked?.tier === 'medium' && pick.picked.held === null && pick.to === 'medium' && pick.held === null, say(pick));
+      check('the switch waiting for a still view: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
     // The graphics context lost while the house loads, as a phone switched away from may lose it, and given back.
     // Regression: the shaders' first use while loading read their compile logs, which a lost context does not have,
     // and three threw, so the house never opened.
