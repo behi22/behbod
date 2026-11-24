@@ -9,13 +9,15 @@
 //   holo     its rare hologram
 //   jar      the pets' treat jar
 //   smooth   the first of each new thing costs no long frame (it measures frames: run it alone, under the timing lock)
+//   view     seated, the whole main monitor fills most of the view with its bottom and the keyboard below, at each shape;
+//            the glides in and out are smooth (the body no longer jumps mid glide in: failed before these changes)
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -463,6 +465,70 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       }
       check('smooth: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
+    }
+    // ---------- seated: the whole main monitor, bezel and all, fills most of the view; its bottom and the keyboard show ----------
+    if (want('view')) {
+      const { seatView } = await import('../web/src/pure/seatview.js');
+      const SIDEWAYS = { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true };
+      // The frame round the screen as the camera sees it (0 to 1 across and down the view), measured here on its own,
+      // where the keyboard's back edge is, and how the desktop is laid on the screen.
+      const seen = p => p.evaluate(() => {
+        const L = __loft, s = L.meta.screens.main, V = L.camera.position.constructor, c = new V(s.center[0], s.center[2], -s.center[1]);
+        const half = s.w / 2 / s.r * 1.025, at = v => { const q = v.clone().project(L.camera); return [(q.x + 1) / 2, (1 - q.y) / 2]; }, pts = [];
+        for (let i = 0; i <= 8; i++) for (const y of [-1, 1]) { const a = -half + 2 * half * i / 8; pts.push(at(new V(c.x - s.r * (1 - Math.cos(a)), c.y + y * (s.h / 2 + 0.014), c.z + s.r * Math.sin(a)))); }
+        const kb = L.world.deskThings.find(o => o.name === 'kb_glow');
+        kb.geometry.computeBoundingBox();
+        const box = kb.geometry.boundingBox.clone().applyMatrix4(kb.matrixWorld), key = at(new V(box.max.x, box.max.y + 0.03, (box.min.z + box.max.z) / 2));
+        const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), dt = document.querySelector('.dt.on');
+        return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), key, fov: L.camera.fov, cam: L.camera.position.toArray(), dt: dt ? (dt.classList.contains('narrow') ? 'narrow' : 'on the screen') : 'none' };
+      });
+      // The camera's path through a glide, one sample each frame the glide moves it (it sets the lens every frame).
+      const track = (p, ms, how) => p.evaluate(async ([w, h]) => {
+        const cam = __loft.camera, out = [];
+        cam.updateProjectionMatrix = function () { out.push([this.fov, ...this.position.toArray()]); return Object.getPrototypeOf(this).updateProjectionMatrix.call(this); };
+        __loft[h]();
+        await new Promise(r => setTimeout(r, w));
+        delete cam.updateProjectionMatrix;
+        return out;
+      }, [ms, how]);
+      // A glide has no jump in it. The lens widens or narrows in step with the glide's progress, so the camera's move
+      // against the lens's change in a frame is its speed along the glide, whatever the frame took: no frame's may be
+      // much above the frames either side of it (against at least a fifth of the fastest).
+      const jumpy = pts => {
+        const v = [];
+        for (let i = 1; i < pts.length; i++) {
+          const df = Math.abs(pts[i][0] - pts[i - 1][0]);
+          if (df > 1e-3) v.push(Math.hypot(pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2], pts[i][3] - pts[i - 1][3]) / df);
+        }
+        const top = Math.max(...v);
+        return Math.max(...v.map((x, i) => x / Math.max(v[i - 1] ?? 0, v[i + 1] ?? 0, top / 5)));
+      };
+      const shapes = [['16:9', { viewport: { width: 1600, height: 900 } }, 'wide'], ['16:10', { viewport: { width: 1440, height: 900 } }, 'wide'], ['a phone on its side', SIDEWAYS, 'side'], ['an upright phone', UPRIGHT, 'up']];
+      for (const [name, opts, kind] of shapes) {
+        const { ctx, p, errs } = await open(b, opts);
+        await standAt(p, W.points.desk_use, Math.PI / 2);
+        const glideIn = await track(p, 2600, 'useDesk');
+        await p.waitForTimeout(700);
+        const r = await seen(p), v = seatView(W.screens.main, opts.viewport.width / opts.viewport.height);
+        const c = b2t(...W.screens.main.center), want = [c.x - v.back, c.y + v.up, c.z - v.range];
+        check(`${name}: the glide in ends at the seat's eye, in one smooth move`, Math.hypot(...r.cam.map((x, i) => x - want[i])) < 0.002 && Math.abs(r.fov - v.fov) < 0.01 && jumpy(glideIn) < 1.25, `eye ${r.cam.map(x => x.toFixed(3))}, fov ${r.fov.toFixed(1)}, fastest frame ${jumpy(glideIn).toFixed(2)} times its neighbours`);
+        const w = r.x1 - r.x0, h = r.y1 - r.y0, d = `${(w * 100).toFixed(1)}% wide, ${(h * 100).toFixed(1)}% tall, top ${(r.y0 * 100).toFixed(1)}%, bottom ${(r.y1 * 100).toFixed(1)}%, keyboard ${(r.key[1] * 100).toFixed(1)}% down, desktop ${r.dt}`;
+        if (kind === 'wide') check(`${name}: the monitor fills 80 to 85% of the width, its top and bottom in view, the keyboard below, the desktop on its screen`, w > 0.8 && w < 0.85 && r.x0 > 0 && r.x1 < 1 && r.y0 > 0.03 && r.y1 < 0.8 && r.key[1] > r.y1 && r.key[1] < 0.98 && r.dt === 'on the screen', d);
+        if (kind === 'side') check(`${name}: the whole monitor in view, as tall as leaves the keyboard showing below`, w > 0.6 && w < 0.85 && r.x0 > 0 && r.x1 < 1 && r.y0 > 0.03 && r.y1 < 0.8 && r.key[1] > r.y1 && r.key[1] < 0.98 && r.dt === 'narrow', d);
+        if (kind === 'up') {
+          check(`${name}: the monitor's whole height in view, the keyboard below, dragged across its width`, r.y0 > 0.03 && r.y1 < 0.65 && r.key[1] > r.y1 && r.key[1] < 0.98 && v.range > 0 && r.dt === 'narrow', d);
+          // Turned on its side while I sit: fitted again to the new shape.
+          await p.setViewportSize(SIDEWAYS.viewport);
+          await p.waitForTimeout(500);
+          const t = await seen(p), vs = seatView(W.screens.main, SIDEWAYS.viewport.width / SIDEWAYS.viewport.height);
+          check('the phone turned on its side while seated: the view fits the new shape at once', Math.abs(t.fov - vs.fov) < 0.01 && t.x0 > 0 && t.x1 < 1 && t.y1 < 0.8 && t.key[1] < 0.98, `${((t.x1 - t.x0) * 100).toFixed(1)}% wide, bottom ${(t.y1 * 100).toFixed(1)}%, keyboard ${(t.key[1] * 100).toFixed(1)}%`);
+        }
+        await p.screenshot({ path: path.join(OUT, `view-${kind}-${opts.viewport.width}.png`) });
+        const glideOut = await track(p, 2000, 'leaveDesk');
+        check(`${name}: and the glide out is one smooth move too`, jumpy(glideOut) < 1.25, `fastest frame ${jumpy(glideOut).toFixed(2)} times its neighbours`);
+        check(`${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+        await ctx.close();
+      }
     }
   } finally {
     await b.close();

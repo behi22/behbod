@@ -377,10 +377,11 @@ function useDesk() {
   mode = 'desk';
   route = null;
   sound.chair();
-  me.playOnce('Sitting_Enter');
+  me.playOnce('Sitting_Enter', true);
   me.root.position.copy(chair);
   me.root.rotation.set(0, Math.PI / 2, 0);
-  setTimeout(() => { if (mode === 'desk') me.holdPose('Sitting_Idle_Loop'); }, 900);
+  // Held to its last frame, then the seated loop takes over from there: cut short, the body jumped mid glide.
+  setTimeout(() => { if (mode === 'desk') me.holdPose('Sitting_Idle_Loop'); }, me.acts.Sitting_Enter.getClip().duration * 1000);
   desk.enter(camera.position, camLook);
   $('prompt').classList.remove('on');
   screens.focusTerminal(true);
