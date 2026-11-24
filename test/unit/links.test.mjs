@@ -9,7 +9,7 @@ test('the link commands go to his own accounts and projects only, over https, ne
   for (const [name, { title, url }] of Object.entries(LINKS)) {
     assert.match(url, allowed, name);
     assert.doesNotMatch(url, /github\.com\/behbod-babai/i, name);
-    assert.ok(title && !/[—–]/.test(title), name);
+    assert.ok(title && !/[\u2014\u2013]/.test(title), name);
   }
   assert.equal(LINKS.github.url, GITHUB);
   for (const id of ['meet-bex', 'profile-art', 'aic-voice-microsite', 'visitor-classifier']) assert.equal(LINKS[id].url, PROJECTS[id].site, id);
@@ -20,7 +20,7 @@ test('the lines a link command prints are short and plain', () => {
   for (const { title } of Object.values(LINKS)) {
     for (const l of [opening(title), blocked(title)]) {
       assert.ok(l.length <= 66, l);
-      assert.doesNotMatch(l, /[—–]|\p{Extended_Pictographic}/u, l);
+      assert.doesNotMatch(l, /[\u2014\u2013]|\p{Extended_Pictographic}/u, l);
     }
   }
 });
