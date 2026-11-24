@@ -4,7 +4,9 @@ import { piece, mesh, glow, sph, cyl, box, rbox, torus, PAINT } from './shapes.j
 import { b2t } from './engine.js';
 import { firesideAt, byFire } from './pure/shahnameh.js';
 import { MOODS, heart, arch, cross, holoNow, HOLO_TIME, HOLO_TEXT } from './pure/bh22.js';
-import { TREE, inPocket } from './pure/residents.js';
+import { makeMoments, MOMENTS, pickMoment, zoomiesBoost, lowPower } from './pure/moments.js';
+import { TREE, inPocket, PIANO, SEATS, PEN, PLANTS, SCOPE, TOY, HOWL, STALK_HIT, BACK_SLEEP, SUN_SPOTS, STILL, AWAY, atTea, sunSpot, pawNotes } from './pure/residents.js';
+import { vanTime } from './pure/calendar.js';
 
 // The loft's residents, built from simple shapes: BH-22 the droid, the mouse droid it chases, Pishi the grey tabby
 // and Jessi the white Shih Tzu. They walk the same path grid I do and run small daily routines.
@@ -92,8 +94,9 @@ function legs(parent, mat, spots, hipY, len, r, color, paw) {
   });
 }
 
-// The poses a pet can ease into on top of walking, sitting and sleeping (see animatePet).
-const POSES = ['bow', 'paw', 'roll', 'beg', 'groom', 'lean', 'blink'];
+// The poses a pet can ease into on top of walking, sitting and sleeping (see animatePet): `up` lifts the head (a yawn, a
+// howl), `back` is asleep on her back.
+const POSES = ['bow', 'paw', 'roll', 'beg', 'groom', 'lean', 'blink', 'up', 'back'];
 
 // Eyelids in the fur's colour, shown only while the eyes close.
 function lids(head, color, x, y, z, r) {
@@ -206,8 +209,9 @@ const WORDS = ['beep', 'boop', 'bwee!', 'brrt', 'dweet', 'bip bip'];
 // `findPath(from, to)` resolves to a path or null (planned off the main thread); `clear(from, to)` says whether a straight
 // line between two points stays on walkable floor.
 // `fan`: where BH-22 stands to switch the desk fan on (Blender axes) and the fan itself (three's); `holo` shows its rare
-// hologram on the first chat (?holo).
-export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {}, fan = null, holo = false }) {
+// hologram on the first chat (?holo). `house`: the piano (its notes), and what is going on: music(), 'piano' or 'record'
+// or null; sun(), the sun's direction while its beams shine in, or null; dark() and clear(), the sky outside.
+export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, fx, keyboard, onEvent = () => {}, toast = () => {}, fan = null, holo = false, house = {} }) {
   const P = meta.points, agents = [], waits = [], lastPlayer = new THREE.Vector3();
   const items = Object.fromEntries(['bh22', 'pishi', 'jessi'].map(id => [id, { id, r: 1.1, label: '', x: 0, y: 0, z: 0 }]));
   // Pressing E takes turns through each one's things to do, so a visit is never the same thing twice running.
@@ -221,6 +225,17 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   // Up on the sill or the tree, Pishi can only be petted.
   const actionFor = id => (id === 'pishi' && !pishi.onFloor ? 'pet' : TURNS[id][turnAt[id] % TURNS[id].length]);
   let now = 0, lastMode = 'walk', lastCtx = null, playerSpeed = 0;
+  // One showy moment at a time across all three (see pure/moments.js): `cur` is the one running, its resident and the
+  // states that belong to it; it ends as soon as that resident is doing something else.
+  const moments = makeMoments();
+  let cur = null;
+  // Vancouver's hour, read twice a minute at most (`hourPin` holds it for the tests).
+  let hourPin = null, hourAt = -99, hourVal = 12;
+  function hourNow() {
+    if (hourPin !== null) return hourPin;
+    if (now - hourAt > 30 || now < hourAt) { hourAt = now; const v = vanTime(new Date()); hourVal = v.h + v.min / 60; }
+    return hourVal;
+  }
   const blip = (fn, a, player) => { if (!player || a.pos.distanceTo(player) < 9) fn(a.pos); };
   let purring = 0;
   const sfx = {
@@ -266,7 +281,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       if (!a.route.length) { a.then = null; then?.(true); }
     });
   }
-  function hop(a, to, then, dur = 0.45, h = 0.22) { a.route = []; a.pending = null; a.epoch++; a.hop = { a: a.pos.clone(), b: to.clone(), k: 0, dur, h, then }; a.onFloor = false; }
+  function hop(a, to, then, dur = 0.45, h = 0.22, walk = false) { a.route = []; a.pending = null; a.epoch++; a.hop = { a: a.pos.clone(), b: to.clone(), k: 0, dur, h, then, walk }; a.onFloor = false; }
   function hops(a, list, then) { if (!list.length) { then?.(); return; } hop(a, list[0], () => hops(a, list.slice(1), then)); }
   function wait(a, sec, fn) { waits.push({ a, epoch: a.epoch, at: now + sec, fn }); }
   function turn(a, dx, dz, dt, k = 10) {
@@ -280,7 +295,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       h.k = Math.min(1, h.k + dt / h.dur);
       a.pos.lerpVectors(h.a, h.b, h.k); a.pos.y += Math.sin(Math.PI * h.k) * h.h;
       turn(a, h.b.x - h.a.x, h.b.z - h.a.z, dt, 14);
-      a.moving = false;
+      a.moving = h.walk;
       if (h.k >= 1) { a.hop = null; a.pos.copy(h.b); h.then?.(); }
       return;
     }
@@ -496,7 +511,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   function endR2Fun() {
     if (r2.eyeWas !== undefined) { r2.eyeMat.color.copy(r2.eyeLit); r2.eyeWas = undefined; }
     r2.dome.rotation.z = 0; r2.tip.scale.setScalar(1);
-    if ((r2.state === 'play' || r2.state === 'petted') && r2.baseY !== undefined) r2.pos.y = r2.baseY;
+    if ((r2.state === 'play' || r2.state === 'petted' || r2.state === 'dance') && r2.baseY !== undefined) r2.pos.y = r2.baseY;
   }
   function r2Fun(kind) {
     endR2Fun();
@@ -525,10 +540,154 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (r2.state === 'play') { love(r2.pos.clone().add(new THREE.Vector3(0, 0.45, 0))); r2.bub.say('again?', now); }
     r2.state = 'pause'; r2.timer = 1.5;
   }
+  // ---------- BH-22's moments ----------
+  // Every errand starts clean: no pet or play left over, no walk or tea in hand.
+  function r2Fresh() { endR2Fun(); r2.route = []; r2.then = null; r2.pending = null; r2.epoch++; r2.cup.visible = false; r2.speed = r2.base; }
+  // Music on: it dances, a sway in time, a hop on each beat and one spin, its eyes running through the colours.
+  function dance() {
+    r2Fresh();
+    Object.assign(r2, { state: 'dance', timer: 6, funT: 0, baseY: r2.pos.y, eyeWas: true });
+    r2.bub.say('dance!', now); blip(p => sfx.word('yay', p), r2, lastPlayer);
+  }
+  function tickDance(dt) {
+    const f = (r2.funT += dt);
+    r2.dome.rotation.z = Math.sin(f * 6.3) * 0.22;
+    if (f > 2.4 && f < 3.6) r2.facing += dt * 5.2;
+    r2.pos.y = r2.baseY + Math.abs(Math.sin(f * 6.3)) * 0.04;
+    r2.eyeMat.color.setHSL((f * 0.5) % 1, 0.9, 0.6);
+    if ((r2.timer -= dt) > 0) return;
+    endR2Fun(); r2.state = 'pause'; r2.timer = 1.5;
+  }
+  // Pishi's zoomies race past: a jump back, x x for a moment.
+  function r2Startle() {
+    r2Fresh();
+    r2.state = 'startle'; r2.timer = 1.6; feel('dizzy', 1.6);
+    r2.bub.say('!?', now); blip(sfx.alert, r2, lastPlayer);
+    const away = r2.pos.clone().sub(pishi.pos).setY(0).normalize().multiplyScalar(0.25).add(r2.pos);
+    away.y = groundAt(away.x, away.z, r2.pos.y + 0.1);
+    if (Math.abs(away.y - r2.pos.y) < 0.05 && clear(tb(r2.pos), tb(away))) hop(r2, away, null, 0.3, 0.1);
+  }
+  // Vacuuming: a slow zig-zag over the floor nearby, a brush spinning under it and a soft hum.
+  let brush = null;
+  function sweep() {
+    for (let tries = 0; tries < 4; tries++) {
+      const a = rnd(0, Math.PI * 2), ax = Math.cos(a), az = Math.sin(a), out = [];
+      let from = r2.pos.clone();
+      for (let k = 1; k <= 6; k++) {
+        const side = k % 2 ? 0.45 : -0.45, p = r2.pos.clone().add(V.set(ax * 0.5 * k - az * side, 0, az * 0.5 * k + ax * side));
+        p.y = groundAt(p.x, p.z, from.y + 0.2);
+        if (Math.abs(p.y - from.y) > 0.05 || !clear(tb(from), tb(p))) break;
+        out.push(p); from = p;
+      }
+      if (out.length >= 3) return out;
+    }
+    return null;
+  }
+  function vacuum() {
+    r2Fresh();
+    const pts = sweep();
+    if (!pts) { r2.state = 'pause'; r2.timer = 1; return; }
+    brush ||= mesh([piece(cyl(0.07, 0.07, 0.01, 18), '#2a2e35'), ...[0, 1, 2].map(i => piece(box(0.13, 0.006, 0.012), '#8a919c', [0, 0.006, 0], [0, i * Math.PI / 3, 0]))], PAINT, r2.body);
+    brush.position.set(0, 0.008, 0.07); brush.visible = true;
+    Object.assign(r2, { state: 'vacuum', speed: 0.45, route: pts, humAt: 0 });
+    r2.then = () => { stopVacuum(); r2.state = 'pause'; r2.timer = 2; r2.bub.say('all clean', now); };
+    r2.bub.say('tidy time', now);
+  }
+  function tickVacuum(dt) {
+    brush.rotation.y += dt * 18;
+    if (fx?.hum && (r2.humAt -= dt) < 0) { r2.humAt = 0.45; blip(fx.hum, r2, lastPlayer); }
+  }
+  function stopVacuum() {
+    r2.speed = r2.base;
+    if (brush) brush.visible = false;
+  }
+  // Watering a plant: over to the pot with a little can on its head, a tilt, a thin stream into the soil.
+  let can = null, stream = null;
+  function water() {
+    r2Fresh();
+    const plant = PLANTS.reduce((b, p) => (r2.pos.distanceTo(b2t(...p.stand)) < r2.pos.distanceTo(b2t(...b.stand)) ? p : b));
+    Object.assign(r2, { state: 'water', plant, waterT: -1 });
+    goTo(r2, plant.stand, ok => {
+      if (r2.state !== 'water') return;
+      if (!ok) { r2.state = 'pause'; r2.timer = 1; return; }
+      // The walk grid keeps clear of the pot, so it rolls the last bit straight up to it.
+      const pot = b2t(...plant.pot), d = r2.pos.clone().sub(pot).setY(0).normalize();
+      r2.route = [pot.clone().addScaledVector(d, 0.4).setY(r2.pos.y)];
+      r2.then = () => {
+        can ||= mesh([piece(cyl(0.03, 0.034, 0.05, 14), '#3f8f7a', [0, 0.025, 0]), piece(cyl(0.005, 0.007, 0.07, 8), '#3f8f7a', [0, 0.04, 0.045], [1.0, 0, 0]), piece(torus(0.018, 0.004, 6, 14), '#2f6f5e', [0, 0.04, -0.03], [0, Math.PI / 2, 0])], PAINT, r2.dome);
+        can.position.set(0, 0.15, 0); can.rotation.x = 0; can.visible = true;
+        if (!stream) {
+          stream = new THREE.Mesh(cyl(0.003, 0.003, 1, 6), new THREE.MeshBasicMaterial({ color: '#9fd3ff', transparent: true, opacity: 0.6, depthWrite: false }));
+          scene.add(stream);
+        }
+        stream.visible = false;
+        r2.waterT = 0; r2.bub.say('glug glug', now);
+        fx?.pour?.(r2.pos);
+      };
+    });
+  }
+  function tickWater(dt) {
+    if (r2.waterT < 0) return;
+    faceTo(r2, b2t(...r2.plant.pot), dt);
+    const t = (r2.waterT += dt), tilt = Math.min(1, t / 0.5) * Math.max(0, Math.min(1, (3 - t) / 0.4));
+    can.rotation.x = tilt * 0.75;
+    const pour = t > 0.6 && t < 2.7;
+    stream.visible = pour;
+    if (pour) {
+      // From the spout straight down into the pot.
+      can.updateMatrixWorld(true);
+      const tip = can.localToWorld(V.set(0, 0.06, 0.08));
+      stream.position.set(tip.x, tip.y - 0.07, tip.z); stream.scale.set(1, 0.14, 1);
+    }
+    if (t < 3.3) return;
+    stopWater(); r2.state = 'pause'; r2.timer = 2;
+  }
+  function stopWater() { if (can) can.visible = false; if (stream) stream.visible = false; r2.waterT = -1; }
+  // A clear night: out to the telescope on the balcony, looking up a while.
+  function stargaze() {
+    r2Fresh();
+    Object.assign(r2, { state: 'scope', atScope: false });
+    goTo(r2, SCOPE.stand, ok => {
+      if (r2.state !== 'scope') return;
+      if (!ok) { r2.state = 'pause'; r2.timer = 1; return; }
+      Object.assign(r2, { atScope: true, timer: 11 });
+      r2.bub.say('stars!', now); blip(sfx.chirp, r2, lastPlayer);
+    });
+  }
+  function tickScope(dt) {
+    if (!r2.atScope) return;
+    faceTo(r2, b2t(...SCOPE.look), dt);
+    if ((r2.timer -= dt) > 0) return;
+    r2.atScope = false; r2.state = 'pause'; r2.timer = 2; r2.stops = Math.min(r2.stops, 1);
+  }
+  // The pen Pishi knocked off: it rolls over, picks it up and puts it back on the desk.
+  function r2Pen() {
+    r2Fresh();
+    Object.assign(r2, { state: 'pen', penT: -1 });
+    if (cur?.id === 'knock') Object.assign(cur, { a: r2, states: ['pen'] });
+    r2.bub.say('!', now); blip(sfx.chirp, r2, lastPlayer);
+    goTo(r2, PEN.reach, ok => {
+      if (r2.state !== 'pen') return;
+      if (!ok) { penHome(); r2.state = 'pause'; r2.timer = 1; return; }
+      r2.route = [b2t(...PEN.pick)];
+      r2.then = () => { penSt.at = 'carry'; r2.penT = 0; r2.bub.say('got it', now); };
+    });
+  }
+  function tickR2Pen(dt) {
+    if (r2.penT < 0) return;
+    faceTo(r2, V.set(PEN_HOME.x, r2.pos.y, PEN_HOME.z), dt);
+    const t = (r2.penT += dt);
+    r2.tip.scale.setScalar(t > 0.8 && t < 1.3 ? 1.8 : 1);
+    if (t > 1 && penSt.at === 'carry') penThrow();
+    if (t < 2.4) return;
+    r2.tip.scale.setScalar(1);
+    r2.bub.say('there', now); blip(sfx.chirp, r2, lastPlayer);
+    r2.state = 'pause'; r2.timer = 2; r2.stops = Math.min(r2.stops, 1);
+  }
   function tickR2(dt, ctx) {
     if (storyEarn && r2.state !== 'story') { storyEarn = false; onEvent('bh22'); }
     r2.chaseCool -= dt;
-    const look = r2.moving || r2.state === 'fanOn' ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
+    const look = r2.moving || r2.state === 'fanOn' || r2.atScope ? 0 : r2.state === 'talk' ? null : Math.sin(now * (r2.state === 'dock' ? 0.4 : 1.3)) * 0.9;
     if (look !== null) r2.dome.rotation.y += (look - r2.dome.rotation.y) * Math.min(1, dt * 3);
     r2.body.rotation.x += ((r2.moving ? 0.07 : 0) - r2.body.rotation.x) * Math.min(1, dt * 5);
     // Wheels roll with the ground covered; the body bobs a little on its legs; the LED eyes blink.
@@ -546,15 +705,26 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       r2.body.rotation.z += ((k.dive ? Math.sign(k.dy) * 0.45 : 0) - r2.body.rotation.z) * Math.min(1, dt * 10);
       return;
     }
-    // It looks up at the fan while it switches it on, and reels for a moment when walked into.
-    r2.dome.rotation.x += ((r2.state === 'fanOn' ? -0.42 : 0) - r2.dome.rotation.x) * Math.min(1, dt * 5);
+    // It looks up at the fan while it switches it on, and at the sky through the telescope; it reels for a moment when
+    // walked into.
+    r2.dome.rotation.x += ((r2.state === 'fanOn' || r2.atScope ? -0.42 : 0) - r2.dome.rotation.x) * Math.min(1, dt * 5);
     const reel = now - bumpAt;
     r2.body.rotation.z = reel < 0.7 ? Math.sin(reel * 20) * 0.22 * (1 - reel / 0.7) : 0;
     if (r2.state === 'dock' && !r2.moving) turn(r2, 1, 0, dt, 3);
-    if (r2.state === 'dock' && (r2.timer -= dt) < 0) { r2.stops = 2 + Math.floor(rnd(0, 3)); r2Next(); }
+    if (r2.state === 'dock' && (r2.timer -= dt) < 0) {
+      // Low on power at night, it mostly stays docked.
+      if (lowPower(hourNow()) && Math.random() < 0.8) r2.timer = rnd(40, 70);
+      else { r2.stops = 2 + Math.floor(rnd(0, 3)); r2Next(); }
+    }
     else if (r2.state === 'pause' && (r2.timer -= dt) < 0) r2Next();
     else if (r2.state === 'petted' || r2.state === 'play') tickR2Fun(dt, ctx);
     else if (r2.state === 'fanOn') tickFanOn(dt, ctx);
+    else if (r2.state === 'dance') tickDance(dt);
+    else if (r2.state === 'pen') tickR2Pen(dt);
+    else if (r2.state === 'vacuum') tickVacuum(dt);
+    else if (r2.state === 'water') tickWater(dt);
+    else if (r2.state === 'scope') tickScope(dt);
+    else if (r2.state === 'startle') { if ((r2.timer -= dt) < 0) { r2.state = 'pause'; r2.timer = 1.5; } }
     else if (r2.state === 'story') {
       faceTo(r2, ctx.player, dt);
       // Walking off ends the story; the lines not yet told are dropped.
@@ -606,7 +776,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   // ---------- Pishi ----------
   const pishi = agent(buildPishi(), 0.75, 0.48, 0.16);
   const catWindow = b2t(...P.cat_window), windowFloor = [5.4, 13.9, 0];
-  place(pishi, catWindow); pishi.facing = Math.PI; pishi.state = 'window'; pishi.timer = rnd(40, 70); pishi.onFloor = false;
+  place(pishi, catWindow); pishi.facing = Math.PI; pishi.state = 'window'; pishi.timer = rnd(40, 70); pishi.onFloor = false; pishi.puffK = 0;
   // Up the cat tree's three decks, along the wall shelves, to the perch over the fire.
   const treeFoot = b2t(...TREE.foot);
   const climbUp = [[0.8, 14.05, 0.625], [0.88, 14.2, 1.225], [0.72, 14.05, 1.825]].map(p => b2t(...p));
@@ -623,6 +793,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
   function pishiNext() {
     pishi.speed = pishi.base;
+    // On a clear morning she may pick a patch of sun by the glass for her nap instead.
+    const spot = sunSpot(house.sun?.());
+    if (spot && Math.random() < 0.6 && moments.start('sunnap', now)) { sunNap(spot); return; }
     const r = Math.random();
     if (r < 0.35) {
       pishi.state = 'towindow';
@@ -650,6 +823,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     wandLine.visible = feather.visible = treat.visible = false;
     for (const k of POSES) pishi.want[k] = 0;
     pishi.blinkOff = pishi.leanOff = pishi.groomUntil = 0;
+    pishi.wiggle = 0; pishi.after = null;
   }
   function pishiPlay(ctx) {
     stopPishi(); freshPishi();
@@ -699,7 +873,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
   // Called by the treat jar: down from wherever she is, then a trot over to `spot` (Blender axes) and a treat there.
   function pishiCome(spot) {
-    if (pishi.hop || ['keys', 'todesk', 'flee', 'down', 'totreat', 'treat'].includes(pishi.state)) return false;
+    if (pishi.hop || ['keys', 'todesk', 'flee', 'down', 'totreat', 'treat', 'keywalk', 'knock', 'stretch'].includes(pishi.state)) return false;
     const from = pishi.state;
     stopPishi(); freshPishi();
     pishi.bub.say('!', now);
@@ -710,7 +884,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     const land = () => { pishi.onFloor = true; go(); };
     // The jump down is part of her way to the treat.
     pishi.state = 'totreat';
-    if (from === 'window') hop(pishi, b2t(...windowFloor), land);
+    if (from === 'window' || from === 'chatter') hop(pishi, b2t(...windowFloor), land);
+    else if (from === 'seat') hop(pishi, floorAt(SEATS[pishi.seat].reach), land);
     else if (from === 'perch') hops(pishi, [...walkUp].reverse().slice(1).concat(treeFoot.clone()), land);
     else if (from === 'treesit') hops(pishi, [climbUp[0], treeFoot.clone()], land);
     else go();
@@ -722,6 +897,201 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     pishiDown([b2t(...deskFloor())], () => { pishi.onFloor = true; pishi.pos.y = groundAt(pishi.pos.x, pishi.pos.z, pishi.pos.y + 0.1); pishiNext(); });
     return true;
   }
+  // ---------- Pishi's moments ----------
+  // After a nap: a long stretch, front paws out and her back end up, then a yawn. Then `then`.
+  const STRETCH_T = 2.6;
+  function stretchThen(then) {
+    stopPishi(); freshPishi();
+    Object.assign(pishi, { state: 'stretch', timer: STRETCH_T, after: then, yawned: false });
+  }
+  function tickStretch(dt) {
+    const t = STRETCH_T - pishi.timer;
+    pishi.want.bow = t < 1.3 ? 1 : 0;
+    pishi.want.up = t > 1.3 && t < 2.4 ? 1 : 0;
+    if (t > 1.35 && !pishi.yawned) { pishi.yawned = true; pishi.bub.say('*yawn*', now, 1.6, true); }
+    if ((pishi.timer -= dt) > 0) return;
+    pishi.want.bow = pishi.want.up = 0;
+    const then = pishi.after;
+    pishi.after = null;
+    then?.();
+  }
+  // A clear morning: a nap in a patch of sun on the floor by the glass.
+  function sunNap(spot) {
+    stopPishi(); freshPishi();
+    pishi.state = 'tosun';
+    goTo(pishi, spot, ok => {
+      if (pishi.state !== 'tosun') return;
+      if (!ok) { pishiNext(); return; }
+      Object.assign(pishi, { state: 'sunnap', timer: rnd(60, 100), zz: 3 });
+    });
+  }
+  // Across the piano keys: up on the bench, onto the keys at the top end, a careful walk down them (each paw a real
+  // note, softly) and off the bench at the other end.
+  const floorAt = p => { const v = b2t(...p); v.y = groundAt(v.x, v.z, v.y + 0.3); return v; };
+  const noteOffs = [];
+  function paw(x) {
+    if (!house.piano) return;
+    for (const m of pawNotes(x, Math.random())) { house.piano.noteOn(m, rnd(0.16, 0.28)); noteOffs.push({ m, at: now + 0.4 }); }
+  }
+  function keyWalk() {
+    stopPishi(); freshPishi();
+    pishi.state = 'topiano';
+    goTo(pishi, PIANO.reach, ok => {
+      if (pishi.state !== 'topiano') return;
+      if (!ok) { pishiNext(); return; }
+      pishi.state = 'keywalk';
+      const k = PIANO.keys, xs = [];
+      for (let x = k.x1 - 0.08; x > k.x0 + 0.06; x -= 0.14) xs.push(x);
+      const step = i => {
+        if (pishi.state !== 'keywalk') return;
+        if (i < xs.length) { hop(pishi, b2t(xs[i], k.y, k.z), () => { paw(xs[i]); step(i + 1); }, i ? 0.3 : 0.4, i ? 0.03 : 0.15, i > 0); return; }
+        hop(pishi, b2t(...PIANO.benchW), () => hop(pishi, floorAt(PIANO.off), () => { pishi.onFloor = true; pishiNext(); }, 0.4, 0.15), 0.35, 0.08);
+      };
+      hop(pishi, b2t(...PIANO.bench), () => step(0), 0.45, 0.25);
+    });
+  }
+  // At the window: birds or a plane go by, and she chatters at them, jaw going, tail twitching, a soft "ek ek".
+  function chatter() {
+    Object.assign(pishi, { state: 'chatter', windowLeft: Math.max(pishi.timer, 12), timer: 4.5 });
+    pishi.bub.say('ek ek', now, 2.4, true);
+    blip(p => (fx?.chatter ? fx.chatter(p) : sound.tone(1900, 1500, 0.05, 0.012, 0, 'triangle')), pishi, lastPlayer);
+  }
+  // She takes the desk chair or the piano bench for a nap, and hops off when I come to sit there.
+  const sat = (ctx, which) => { const s = SEATS[which].seat; return Math.hypot(ctx.player.x - s[0], -ctx.player.z - s[1]) < 0.9 || (which === 'chair' && ctx.mode === 'desk'); };
+  const freeSeat = ctx => {
+    const ok = Object.keys(SEATS).filter(k => !sat(ctx, k) && Math.hypot(ctx.player.x - SEATS[k].seat[0], -ctx.player.z - SEATS[k].seat[1]) > 2.5);
+    return ok.length ? pick(ok) : null;
+  };
+  function stealSeat(ctx) {
+    const which = freeSeat(ctx);
+    stopPishi(); freshPishi();
+    if (!which) { pishiNext(); return; }
+    Object.assign(pishi, { state: 'toseat', seat: which });
+    goTo(pishi, SEATS[which].reach, ok => {
+      if (pishi.state !== 'toseat') return;
+      if (!ok) { pishiNext(); return; }
+      hop(pishi, b2t(...SEATS[which].seat), () => Object.assign(pishi, { state: 'seat', timer: rnd(45, 75), zz: 4 }), 0.55, 0.5);
+    });
+  }
+  function offSeat(cross) {
+    pishi.state = 'down';
+    if (cross) { pishi.bub.say('mrrp', now); blip(sfx.meow, pishi, lastPlayer); }
+    hop(pishi, floorAt(SEATS[pishi.seat].reach), () => { pishi.onFloor = true; pishiNext(); }, 0.45, 0.3);
+  }
+  // Stalking the mouse droid: a slow creep, a crouch with her back end wiggling, the pounce, and a miss, mostly.
+  function stalk() {
+    stopPishi(); freshPishi();
+    Object.assign(pishi, { state: 'stalk', stalk: { k: 'creep', t: 0 }, speed: 0.35 });
+    mouse.timer = Math.max(mouse.timer, 12);
+    const to = mouse.pos.clone().add(V.copy(pishi.pos).sub(mouse.pos).setY(0).normalize().multiplyScalar(0.8));
+    goTo(pishi, tb(to), ok => {
+      if (pishi.state !== 'stalk') return;
+      pishi.speed = pishi.base;
+      if (ok) pishi.stalk = { k: 'crouch', t: 0 }; else pishiNext();
+    });
+  }
+  function tickStalk(dt) {
+    const s = pishi.stalk;
+    s.t += dt;
+    pishi.want.bow = s.k === 'creep' ? 0.6 : s.k === 'crouch' ? 1 : 0;
+    pishi.wiggle = s.k === 'crouch' && s.t > 0.6 ? Math.sin(now * 20) * 0.1 : 0;
+    if (s.k !== 'crouch') return;
+    faceTo(pishi, mouse.pos, dt);
+    const to = mouse.pos.clone();
+    to.y = groundAt(to.x, to.z, pishi.pos.y + 0.2);
+    const off = () => { pishi.wiggle = 0; pishi.want.bow = 0; pishi.state = 'sit'; pishi.timer = 4; pishi.groomUntil = now + 3; };
+    // The mouse droid got away before she was ready, or it is somewhere she cannot jump straight to.
+    if (pishi.pos.distanceTo(mouse.pos) > 1.6) { off(); return; }
+    if (s.t < 1.9) return;
+    if (Math.abs(to.y - pishi.pos.y) > 0.3 || !clear(tb(pishi.pos), tb(to))) { off(); return; }
+    const hit = Math.random() < STALK_HIT;
+    s.k = 'air';
+    pishi.wiggle = 0;
+    if (!hit) { mouse.flee = 4; blip(sfx.squeak, mouse, lastPlayer); }
+    pishi.bub.say('mrrp!', now);
+    hop(pishi, to, () => {
+      if (hit) { blip(sfx.squeak, mouse, lastPlayer); pishi.bub.say('got it!', now); wait(mouse, 0.7, () => { mouse.flee = 4; }); } else pishi.bub.say('...', now, 2, true);
+      // Then a wash, as if nothing happened.
+      off();
+    }, 0.35, 0.16);
+  }
+  // Zoomies: a few mad dashes round the room, tail up and fluffed, then a sit as if nothing happened.
+  function zoomies() {
+    stopPishi(); freshPishi();
+    Object.assign(pishi, { state: 'zoomies', laps: 4, speed: 3.0, startled: false });
+    pishi.bub.say('!!', now);
+    lap();
+  }
+  function lap() {
+    if (pishi.state !== 'zoomies') return;
+    if (pishi.laps-- <= 0) { pishi.speed = pishi.base; pishi.state = 'sit'; pishi.timer = 4; pishi.bub.say('...', now, 2, true); return; }
+    const near = FLOOR.filter(q => { const d = Math.hypot(q[0] - pishi.pos.x, q[1] + pishi.pos.z); return d > 2 && d < 6; });
+    goTo(pishi, pick(near.length ? near : FLOOR), lap);
+  }
+  // The pen on the desk: up by the keyboard, she looks right at me and paws it off, slowly; it falls to the floor.
+  const PEN_HOME = b2t(...PEN.home).setY(PEN.home[2] + 0.0045);
+  const pen = mesh([
+    piece(cyl(0.0045, 0.0045, 0.12, 8), '#1f2c55'),
+    piece(cyl(0.0045, 0.0012, 0.014, 8), '#c9a227', [0, -0.067, 0]),
+    piece(box(0.002, 0.04, 0.003), '#c9a227', [0.005, 0.035, 0]),
+  ], PAINT);
+  pen.name = 'desk_pen';
+  scene.add(pen);
+  let penSt = { at: 'home' };
+  function penHome() {
+    penSt = { at: 'home' };
+    pen.position.copy(PEN_HOME); pen.rotation.set(0, 0, Math.PI / 2);
+  }
+  penHome();
+  const tickSound = p => blip(() => sound.tone(2600, 1900, 0.03, 0.012, 0, 'triangle'), { pos: p }, lastPlayer);
+  function penFall() {
+    const b = b2t(...PEN.fall).setY(PEN.fall[2] + 0.0045);
+    penSt = { at: 'fall', k: 0, a: pen.position.clone(), b };
+  }
+  function penThrow() {
+    penSt = { at: 'fly', k: 0, a: pen.position.clone(), b: PEN_HOME.clone() };
+  }
+  function tickPen(dt) {
+    const s = penSt;
+    if (s.at === 'carry') { pen.position.set(r2.pos.x, r2.pos.y + 0.33, r2.pos.z); pen.rotation.set(0, r2.facing, Math.PI / 2); return; }
+    if (s.at === 'floor') {
+      // Nobody came for it: it is back on the desk the next time.
+      if (now > s.resetAt && r2.state !== 'pen') penHome();
+      return;
+    }
+    if (s.at !== 'fall' && s.at !== 'fly') return;
+    s.k = Math.min(1, s.k + dt / (s.at === 'fall' ? 0.5 : 0.45));
+    pen.position.lerpVectors(s.a, s.b, s.k);
+    if (s.at === 'fall') { pen.position.y = s.a.y + (s.b.y - s.a.y) * s.k * s.k; pen.rotation.z = Math.PI / 2 + s.k * 2.2; }
+    else pen.position.y += Math.sin(Math.PI * s.k) * 0.25;
+    if (s.k < 1) return;
+    tickSound(pen.position);
+    if (s.at === 'fly') { penHome(); return; }
+    penSt = { at: 'floor', resetAt: now + 25 };
+    pen.rotation.set(0, 0.6, Math.PI / 2);
+  }
+  function knock() {
+    stopPishi(); freshPishi();
+    pishi.state = 'todesk';
+    goTo(pishi, SEATS.chair.reach, ok => {
+      if (pishi.state !== 'todesk') return;
+      const kb = keyboard();
+      if (!ok || !kb || penSt.at !== 'home') { pishiNext(); return; }
+      hop(pishi, kb, () => Object.assign(pishi, { state: 'knock', knockT: 0, pushed: false, said: false }), 0.55, 0.4);
+    });
+  }
+  function tickKnock(dt, ctx) {
+    const t = (pishi.knockT += dt);
+    faceTo(pishi, ctx.player, dt);
+    pishi.want.paw = t > 1.5 && t < 2.8 ? 1 : 0;
+    if (t > 1.8 && t < 2.6 && penSt.at === 'home') pen.position.x -= dt * 0.15;
+    if (t > 2.6 && !pishi.pushed) { pishi.pushed = true; if (penSt.at === 'home') penFall(); }
+    if (t > 3.4 && !pishi.said) { pishi.said = true; pishi.bub.say('mrrp', now); }
+    if (t < 5.4) return;
+    pishi.want.paw = 0;
+    pishi.state = 'down';
+    hop(pishi, floorAt(SEATS.chair.reach), () => { pishi.onFloor = true; pishiNext(); }, 0.5, 0.3);
+  }
   function tickPishi(dt, ctx) {
     const st = pishi.state;
     deskT = ctx.mode === 'desk' ? deskT + dt : 0;
@@ -730,7 +1100,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     const kb = keyboard();
     if (!deskT) deskRoll = null;
     else if (kb && deskT > 4 && deskRoll === null) deskRoll = Math.random() < 0.25 && now - lastKeys > 240;
-    if (kb && deskRoll && ['window', 'sit', 'wander'].includes(st) && !pishi.hop) {
+    if (kb && deskRoll && ['window', 'sit', 'wander'].includes(st) && !pishi.hop && moments.start('keys', now)) {
+      cur = { id: 'keys', a: pishi, states: ['todesk', 'keys'] };
       deskRoll = false; lastKeys = now;
       pishi.state = 'todesk'; pishi.speed = 1.4;
       const go = () => goTo(pishi, deskFloor(), ok => ok && lastMode === 'desk' ? hop(pishi, kb, () => { pishi.state = 'keys'; pishi.timer = 25; pishi.keyAt = 1.5; }, 0.55, 0.35) : pishiNext());
@@ -752,7 +1123,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (pishi.blinkOff && now > pishi.blinkOff) { pishi.want.blink = 0; pishi.blinkOff = 0; }
     if (st === 'perch') {
       if ((pishi.zz = (pishi.zz || 0) - dt) < 0) { pishi.zz = 7; pishi.bub.say('z z z', now, 2.5, true); }
-      if ((pishi.timer -= dt) < 0) pishiDown([...walkUp].reverse().slice(1).concat(treeFoot.clone()), () => { pishi.onFloor = true; pishiNext(); });
+      if ((pishi.timer -= dt) < 0) stretchThen(() => pishiDown([...walkUp].reverse().slice(1).concat(treeFoot.clone()), () => { pishi.onFloor = true; pishiNext(); }));
     }
     if (st === 'petted' && (pishi.timer -= dt) < 0) { pishi.state = 'sit'; pishi.timer = 3; pishi.want.roll = 0; pishi.want.lean = 0; }
     if (pishi.leanOff && now > pishi.leanOff) { pishi.want.lean = 0; pishi.leanOff = 0; }
@@ -762,6 +1133,21 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (st === 'play') tickPishiPlay(dt, ctx);
     if (st === 'treat') tickPishiTreat(dt);
     if (st === 'treesit' && (pishi.timer -= dt) < 0) pishiDown([climbUp[0], treeFoot.clone()], () => { pishi.onFloor = true; pishiNext(); });
+    if (st === 'stretch') tickStretch(dt);
+    if (st === 'sunnap') {
+      if ((pishi.zz -= dt) < 0) { pishi.zz = 7; pishi.bub.say('z z z', now, 2.5, true); }
+      if ((pishi.timer -= dt) < 0) stretchThen(pishiNext);
+    }
+    if (st === 'chatter' && (pishi.timer -= dt) < 0) { pishi.state = 'window'; pishi.timer = pishi.windowLeft; }
+    if (st === 'seat') {
+      if ((pishi.zz -= dt) < 0) { pishi.zz = 7; pishi.bub.say('z z z', now, 2.5, true); }
+      if (sat(ctx, pishi.seat)) offSeat(true);
+      else if ((pishi.timer -= dt) < 0) stretchThen(() => offSeat(false));
+    }
+    if (st === 'stalk') tickStalk(dt);
+    if (st === 'knock') tickKnock(dt, ctx);
+    // Her zoomies race past BH-22 and give it a fright.
+    if (st === 'zoomies' && !pishi.startled && FREE.includes(r2.state) && holoT < 0 && r2.pos.distanceTo(pishi.pos) < 2.2) { pishi.startled = true; r2Startle(); }
     // She runs up the cat tree when Jessi comes too close.
     if (pishi.onFloor && !pishi.hop && jessi.onFloor && !['flee', 'keys', 'todesk', 'play', 'treat', 'totreat'].includes(pishi.state) && pishi.pos.distanceTo(jessi.pos) < 0.9) {
       pishi.state = 'flee'; pishi.speed = 2.2;
@@ -771,9 +1157,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         if (ok) hops(pishi, climbUp.slice(0, 2), () => { pishi.state = 'treesit'; pishi.timer = 15; }); else pishiNext();
       });
     }
-    const sit = ['window', 'sit', 'keys', 'treesit', 'petted', 'treat'].includes(pishi.state) && !pishi.hop && !pishi.moving;
+    const sit = ['window', 'sit', 'keys', 'treesit', 'petted', 'treat', 'chatter', 'knock'].includes(pishi.state) && !pishi.hop && !pishi.moving;
     pishi.sitK += ((sit ? 1 : 0) - pishi.sitK) * Math.min(1, dt * 4);
-    pishi.sleepK += ((pishi.state === 'perch' ? 1 : 0) - pishi.sleepK) * Math.min(1, dt * 2);
+    pishi.sleepK += ((['perch', 'sunnap', 'seat'].includes(pishi.state) ? 1 : 0) - pishi.sleepK) * Math.min(1, dt * 2);
   }
 
   // ---------- Jessi ----------
@@ -786,7 +1172,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   const JESSI_GO = [[11.5, 12.6, 0], [14.6, 9.4, 0], [10.4, 7.0, 0], [3.0, 13.0, 0], [16.5, 12.0, 0], meta.spots.lounge].filter(Boolean);
   function jessiWake(then, as = 'waking') {
     if (jessi.onFloor) { then(); return; }
-    jessi.state = as;
+    jessi.state = as; jessi.back = false; jessi.spinT = 0;
     jessi.bub.say('*yawn*', now);
     hop(jessi, b2t(...bedFloor), () => { jessi.onFloor = true; jessi.pos.y = groundAt(jessi.pos.x, jessi.pos.z, 0.1); then(); }, 0.4, 0.15);
   }
@@ -794,7 +1180,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if ((jessi.stops = (jessi.stops ?? 3) - 1) < 0) {
       jessi.stops = 2 + Math.floor(rnd(0, 3));
       jessi.state = 'tobed';
-      goTo(jessi, bedFloor, ok => ok ? hop(jessi, bed, () => { jessi.state = 'nap'; jessi.onFloor = false; jessi.timer = rnd(40, 80); }, 0.4, 0.15) : (jessi.state = 'sniff', jessi.timer = 2));
+      goTo(jessi, bedFloor, ok => ok ? hop(jessi, bed, lieDown, 0.4, 0.15) : (jessi.state = 'sniff', jessi.timer = 2));
       return;
     }
     // Now and then she decides to follow you around for a while.
@@ -943,15 +1329,123 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     love(jessi.pos.clone().add(new THREE.Vector3(0, 0.5, 0)));
     jessi.bub.say('woof!', now); blip(sfx.bark, jessi);
   }
+  // ---------- Jessi's moments ----------
+  const stopJessi = () => { jessi.route = []; jessi.pending = null; jessi.epoch++; for (const k of POSES) jessi.want[k] = 0; jessi.turnHead = jessi.wiggle = 0; };
+  // Into her bed: round and round first, then down; now and then she sleeps on her back.
+  function lieDown() { Object.assign(jessi, { state: 'nap', onFloor: false, timer: rnd(40, 80), spinT: 1.4, back: Math.random() < BACK_SLEEP, zz: 2 }); }
+  // I stand still a while: she fetches her rope toy from by her bed and drops it at my feet, then a play bow.
+  let toy = null, toySt = 'home', toyAt = 0;
+  const toyHome = () => { toySt = 'home'; toy.position.copy(b2t(...TOY)).setY(TOY[2] + 0.012); toy.rotation.set(0, 0.7, 0); };
+  function bringToy() {
+    stopJessi();
+    if (!toy) {
+      toy = mesh([piece(cyl(0.011, 0.011, 0.13, 8), '#d24b3c', [0, 0, 0], [0, 0, Math.PI / 2]), ...[-1, 1].map(s => piece(sph(0.02, 10, 8), '#efe9dc', [s * 0.07, 0, 0]))], PAINT);
+      toy.name = 'jessi_toy'; scene.add(toy);
+      toyHome();
+    }
+    Object.assign(jessi, { state: 'toy', speed: 1.3 });
+    goTo(jessi, tb(toy.position), ok => {
+      if (jessi.state !== 'toy') return;
+      if (!ok) { jessi.speed = jessi.base; jessiNext(lastCtx); return; }
+      toySt = 'carry';
+      jessi.bub.say('!', now);
+      const toMe = () => tb(lastPlayer.clone().add(V.copy(jessi.pos).sub(lastPlayer).setY(0).normalize().multiplyScalar(0.7)));
+      wait(jessi, 0.4, () => goTo(jessi, toMe(), () => {
+        if (jessi.state !== 'toy') return;
+        jessi.speed = jessi.base;
+        faceTo(jessi, lastPlayer, 1);
+        dropToy();
+        jessi.state = 'happy'; jessi.timer = 4; jessi.want.bow = 1;
+        jessi.bub.say('play?', now); blip(sfx.bark, jessi, lastPlayer);
+      }));
+    });
+  }
+  function dropToy() {
+    toySt = 'down'; toyAt = now;
+    toy.position.copy(jessi.pos).add(V.set(Math.sin(jessi.facing) * 0.22, 0.012, Math.cos(jessi.facing) * 0.22));
+    toy.rotation.set(0, jessi.facing + 1.2, 0);
+  }
+  function tickToy() {
+    if (!toy) return;
+    if (toySt === 'carry') {
+      // Held across her mouth.
+      toy.position.copy(jessi.head.getWorldPosition(V)).add(V.set(Math.sin(jessi.facing) * 0.1, -0.05, Math.cos(jessi.facing) * 0.1));
+      toy.rotation.set(0, jessi.facing, 0);
+      if (jessi.state !== 'toy') dropToy();
+    } else if (toySt === 'down' && (now - toyAt > 60 || toy.position.distanceTo(lastPlayer) > 6)) toyHome();
+  }
+  // The piano plays: she trots over to it, sits and howls along.
+  const PIANO_AT = b2t(18.35, 11.2, 0.3);
+  function howl() {
+    stopJessi();
+    Object.assign(jessi, { state: 'howl', howls: 0, howlAt: 0, atPiano: false });
+    goTo(jessi, HOWL, () => { if (jessi.state === 'howl') Object.assign(jessi, { atPiano: true, howlAt: now + 0.4 }); });
+  }
+  function tickHowl(dt) {
+    if (!jessi.atPiano) return;
+    faceTo(jessi, PIANO_AT, dt);
+    if (now >= jessi.howlAt && jessi.howls < 3 && (jessi.howls === 0 || house.music?.())) {
+      jessi.howls++; jessi.howlAt = now + 1.9;
+      jessi.want.up = 1; jessi.upOff = now + 1.3;
+      jessi.bub.say('awoo', now, 1.6);
+      blip(p => (fx?.howl ? fx.howl(p) : sound.tone(520, 680, 0.9, 0.015, 0, 'triangle')), jessi, lastPlayer);
+    }
+    if (jessi.upOff && now > jessi.upOff) { jessi.want.up = 0; jessi.upOff = 0; }
+    if (now > jessi.howlAt && (jessi.howls >= 3 || !house.music?.())) { jessi.want.up = 0; jessi.state = 'happy'; jessi.timer = 2; }
+  }
+  // I am at the tea bar: she comes and sits up beside me, begging.
+  function beg(ctx) {
+    stopJessi();
+    Object.assign(jessi, { state: 'beg', begT: 0, atMe: false });
+    const to = ctx.player.clone().add(V.copy(jessi.pos).sub(ctx.player).setY(0).normalize().multiplyScalar(0.65));
+    goTo(jessi, tb(to), () => {
+      if (jessi.state !== 'beg') return;
+      jessi.atMe = true; jessi.want.beg = 1;
+      jessi.bub.say('please?', now);
+      blip(() => sound.tone(900, 1250, 0.35, 0.012, 0, 'sine'), jessi, lastPlayer);
+    });
+  }
+  function tickBeg(dt, ctx) {
+    if (!jessi.atMe) return;
+    faceTo(jessi, ctx.player, dt);
+    if ((jessi.begT += dt) > 6 || !atTea(tb(ctx.player))) { jessi.want.beg = 0; jessi.state = 'happy'; jessi.timer = 2; }
+  }
+  // Chasing her tail: round and round after it, then a dizzy wobble.
+  function tailChase() {
+    stopJessi();
+    Object.assign(jessi, { state: 'tail', timer: 4 });
+    jessi.bub.say('!', now);
+  }
+  function tickTail(dt) {
+    const t = 4 - jessi.timer;
+    if (t < 3) { jessi.facing += dt * 9; jessi.turnHead = 0.9; } else { jessi.turnHead = 0; jessi.wiggle = Math.sin(now * 14) * 0.12 * (4 - t); }
+    if ((jessi.timer -= dt) > 0) return;
+    jessi.wiggle = 0;
+    jessi.state = 'happy'; jessi.timer = 2;
+    jessi.bub.say('woof!', now); blip(sfx.bark, jessi, lastPlayer);
+  }
+  // Typing at the desk: if she is near, a head tilt.
+  function tilt() { jessi.want.lean = 1; jessi.tiltOff = now + 1.5; jessi.bub.say('?', now, 1.3, true); }
+  // Back after a while away: she runs up wagging hard.
+  function welcome() {
+    jessi.wagUntil = now + 7;
+    jessi.bub.say('!', now); blip(sfx.bark, jessi, lastPlayer);
+    if (['sniff', 'wander', 'happy'].includes(jessi.state)) { stopJessi(); Object.assign(jessi, { state: 'follow', timer: rnd(10, 16), repath: 0 }); }
+  }
   function tickJessi(dt, ctx) {
     if (jessi.carry) ball.position.copy(jessi.head.getWorldPosition(V)).add(new THREE.Vector3(Math.sin(jessi.facing) * 0.11, -0.05, Math.cos(jessi.facing) * 0.11));
     else stepBall(dt);
     if (ballGone && now > ballGone && jessi.state !== 'fetch') { ball.visible = false; ballGone = 0; roll = null; }
     const st = jessi.state;
     if (st === 'nap') {
-      if ((jessi.zz = (jessi.zz || 0) - dt) < 0) { jessi.zz = 6; jessi.bub.say('z z z', now, 2.5, true); }
+      if (jessi.spinT > 0) { jessi.spinT -= dt; jessi.facing += dt * 9; } else if ((jessi.zz = (jessi.zz || 0) - dt) < 0) { jessi.zz = 6; jessi.bub.say('z z z', now, 2.5, true); }
       if ((jessi.timer -= dt) < 0) jessiWake(() => jessiNext(ctx));
     }
+    jessi.want.back = st === 'nap' && jessi.back && !(jessi.spinT > 0) ? 1 : 0;
+    tickToy();
+    if (st === 'howl') tickHowl(dt);
+    if (st === 'beg') tickBeg(dt, ctx);
+    if (st === 'tail') tickTail(dt);
     if (st === 'sniff' && (jessi.timer -= dt) < 0) jessiNext(ctx);
     if (st === 'happy' && (jessi.timer -= dt) < 0) { jessi.state = 'follow'; jessi.timer = rnd(10, 18); jessi.repath = 0; jessi.want.bow = 0; }
     if (st === 'petted' && (jessi.timer -= dt) < 0) { jessi.state = 'follow'; jessi.timer = rnd(8, 14); jessi.repath = 0; Object.assign(jessi.want, { lean: 0, roll: 0, blink: 0 }); }
@@ -968,11 +1462,105 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         goTo(jessi, tb(behind), null);
       } else if (d < 1.4 && !jessi.moving) faceTo(jessi, ctx.player, dt);
     }
-    const sit = (st === 'happy' || st === 'petted' || st === 'treat' || (st === 'trick' && jessi.trick !== 'spin') || (st === 'follow' && !jessi.moving)) && !jessi.hop;
+    const sit = (st === 'happy' || st === 'petted' || st === 'treat' || (st === 'trick' && jessi.trick !== 'spin') || ((st === 'follow' || st === 'howl' || st === 'beg') && !jessi.moving)) && !jessi.hop;
     jessi.sitK += ((sit ? 1 : 0) - jessi.sitK) * Math.min(1, dt * 4);
-    jessi.sleepK += ((st === 'nap' ? 1 : 0) - jessi.sleepK) * Math.min(1, dt * 2);
-    jessi.wag = st === 'happy' || st === 'fetch' || st === 'petted' || st === 'trick' || st === 'totreat' || st === 'treat' || (st === 'follow' && jessi.pos.distanceTo(ctx.player) < 2) ? 1 : 0.25;
+    jessi.sleepK += ((st === 'nap' && !(jessi.spinT > 0) ? 1 : 0) - jessi.sleepK) * Math.min(1, dt * 2);
+    jessi.wag = now < (jessi.wagUntil || 0) ? 2 : st === 'happy' || st === 'fetch' || st === 'petted' || st === 'trick' || st === 'totreat' || st === 'treat' || st === 'toy' || st === 'beg' || (st === 'follow' && jessi.pos.distanceTo(ctx.player) < 2) ? 1 : 0.25;
   }
+
+  // ---------- moments: one at a time, rare, calm by default ----------
+  const pishiFree = () => pishi.onFloor && !pishi.hop && (pishi.state === 'sit' || pishi.state === 'wander');
+  const jessiFree = () => jessi.onFloor && !jessi.hop && !jessi.carry && ['sniff', 'follow', 'wander', 'happy'].includes(jessi.state);
+  const r2Free = () => FREE.includes(r2.state) && holoT < 0;
+  const within = (a, p, d) => a.pos.distanceTo(p) < d;
+  const flatTo = (p, b) => Math.hypot(p.x - b[0], -p.z - b[1]);
+  // Each moment: its resident, the states that belong to it, when it can happen and how it starts (and tidies up
+  // when cut short).
+  const SHOW = {
+    keywalk: { a: pishi, states: ['topiano', 'keywalk'], go: keyWalk, can: ctx => pishiFree() && !house.music?.() && within(pishi, ctx.player, 14) && flatTo(ctx.player, SEATS.bench.seat) > 1.5 },
+    chatter: { a: pishi, states: ['chatter'], go: chatter, can: ctx => pishi.state === 'window' && !pishi.hop && within(pishi, ctx.player, 12) },
+    steal: { a: pishi, states: ['toseat', 'seat'], go: stealSeat, can: ctx => pishiFree() && !!freeSeat(ctx) },
+    stalk: { a: pishi, states: ['stalk'], go: stalk, stop: () => { pishi.wiggle = 0; pishi.speed = pishi.base; }, can: ctx => pishiFree() && mouse.state === 'wait' && within(pishi, mouse.pos, 5) && Math.abs(pishi.pos.y - mouse.pos.y) < 0.3 && r2.state !== 'chase' && within(pishi, ctx.player, 12) },
+    zoomies: { a: pishi, states: ['zoomies'], go: zoomies, stop: () => { pishi.speed = pishi.base; }, can: ctx => pishiFree() && within(pishi, ctx.player, 10) },
+    knock: { a: pishi, states: ['todesk', 'knock'], go: knock, can: ctx => pishiFree() && penSt.at === 'home' && !!keyboard() && (ctx.mode === 'desk' || flatTo(ctx.player, PEN.home) < 4.5) },
+    toy: { a: jessi, states: ['toy'], go: bringToy, stop: () => { jessi.speed = jessi.base; }, can: ctx => jessiFree() && within(jessi, ctx.player, 12) },
+    howl: { a: jessi, states: ['howl'], go: howl, stop: () => { jessi.want.up = 0; jessi.upOff = 0; }, can: () => jessiFree() && within(jessi, PIANO_AT, 14) },
+    beg: { a: jessi, states: ['beg'], go: beg, stop: () => { jessi.want.beg = 0; }, can: ctx => jessiFree() && within(jessi, ctx.player, 14) },
+    tail: { a: jessi, states: ['tail'], go: tailChase, stop: () => { jessi.turnHead = jessi.wiggle = 0; }, can: ctx => jessiFree() && !jessi.moving && within(jessi, ctx.player, 9) },
+    dance: { a: r2, states: ['dance'], go: dance, can: ctx => r2Free() && within(r2, ctx.player, 14) },
+    vacuum: { a: r2, states: ['vacuum'], go: vacuum, stop: stopVacuum, can: ctx => r2Free() && r2.state !== 'dock' && !lowPower(hourNow()) && within(r2, ctx.player, 12) },
+    water: { a: r2, states: ['water'], go: water, stop: stopWater, can: () => r2Free() && !house.dark?.() },
+    scope: { a: r2, states: ['scope'], go: stargaze, stop: () => { r2.atScope = false; }, can: () => r2Free() && !!house.dark?.() && !!house.clear?.() },
+  };
+  // The pen's errand belongs to the knock: when BH-22 drops it halfway, it lands where it is and goes back later.
+  const penStop = () => { r2.tip.scale.setScalar(1); if (penSt.at === 'carry') { pen.position.set(r2.pos.x, r2.pos.y + 0.0045, r2.pos.z); penSt = { at: 'floor', resetAt: now + 20 }; } };
+  const SPONT = Object.keys(MOMENTS).filter(id => MOMENTS[id].weight && SHOW[id]);
+  function startMoment(id, ctx, how = 'start') {
+    const s = SHOW[id];
+    if (!s || !ctx) return false;
+    if (how === 'force') { if (cur) endMoment(); moments.force(id, now); }
+    else if (!s.can(ctx) || !(how === 'roll' ? moments.roll(id, now, Math.random()) : moments.start(id, now))) return false;
+    cur = { id, a: s.a, states: s.states, stop: s.stop };
+    s.go(ctx);
+    return true;
+  }
+  function endMoment() {
+    const c = cur;
+    cur = null;
+    c.stop?.();
+    if (c.states.includes('pen')) penStop();
+    moments.end(c.id, now);
+  }
+  let musicWas = null, stillT = 0, teaT = 0, awayT = 0, typedAt = -9, hiddenAt = 0;
+  // Caught on the way down, before the terminal's own handler can keep it to itself.
+  addEventListener('keydown', e => { if (lastMode === 'desk' && e.key?.length === 1) typedAt = now; }, true);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hiddenAt = performance.now();
+    else if (hiddenAt) { awayT += (performance.now() - hiddenAt) / 1000; hiddenAt = 0; }
+  });
+  function tickMoments(dt, ctx) {
+    if (cur && !cur.states.includes(cur.a.state)) endMoment();
+    for (let i = noteOffs.length - 1; i >= 0; i--) if (now >= noteOffs[i].at) { house.piano?.noteOff(noteOffs[i].m); noteOffs.splice(i, 1); }
+    // The pen on the floor: BH-22 comes for it when it is free.
+    if (penSt.at === 'floor' && r2Free() && (!cur || cur.id === 'knock')) r2Pen();
+    // Music starts: Jessi may howl along with the piano, or BH-22 dance.
+    const music = house.music?.() || null;
+    if (music && !musicWas) startMoment(music === 'piano' && SHOW.howl.can(ctx) && (!SHOW.dance.can(ctx) || Math.random() < 0.5) ? 'howl' : 'dance', ctx, 'roll');
+    musicWas = music;
+    // Standing still a while, Jessi may bring her toy; at the tea bar, she may beg.
+    const still = playerSpeed < 0.15 && ctx.mode === 'walk' && inLoft(ctx.player), was = stillT;
+    stillT = still ? stillT + dt : 0;
+    if (was < STILL && stillT >= STILL) startMoment('toy', ctx, 'roll');
+    const tea = (ctx.mode === 'walk' || ctx.mode === 'sit') && atTea(tb(ctx.player)), teaWas = teaT;
+    teaT = tea ? teaT + dt : 0;
+    if (teaWas < 1.5 && teaT >= 1.5) startMoment('beg', ctx, 'roll');
+    // Quiet touches: a head tilt at my typing, a hard wag when I come back.
+    if (now - typedAt < 0.4 && jessi.onFloor && ['sniff', 'follow', 'happy'].includes(jessi.state) && !jessi.moving && within(jessi, ctx.player, 5) && moments.start('tilt', now)) tilt();
+    if (jessi.tiltOff && now > jessi.tiltOff) { jessi.want.lean = 0; jessi.tiltOff = 0; }
+    const by = inLoft(ctx.player) && within(jessi, ctx.player, 4);
+    if (by) { if (awayT >= AWAY && jessi.onFloor && jessi.state !== 'nap' && moments.start('wag', now)) welcome(); awayT = 0; }
+    else if (!inLoft(ctx.player) || !within(jessi, ctx.player, 9)) awayT += dt;
+    // Docked at night, BH-22 runs low on power: dim, half-closed eyes and a soft z z.
+    const sleepy = r2.state === 'dock' && !r2.moving && lowPower(hourNow());
+    if (sleepy) {
+      if (!mood) { r2.eyeMat.color.copy(r2.eyeLit).multiplyScalar(0.28); r2.eye.scale.y = 0.35; }
+      if ((r2.zz = (r2.zz || 0) - dt) < 0) { r2.zz = 9; r2.bub.say('z z', now, 2.2, true); }
+    } else if (r2.sleepy && !mood && r2.eyeWas === undefined) r2.eyeMat.color.copy(r2.eyeLit);
+    r2.sleepy = sleepy;
+    // Now and then the house starts one of its own, from those that can happen here and now.
+    if (moments.due(now, dt, Math.random())) {
+      const id = pickMoment(SPONT.filter(k => moments.ready(k, now) && SHOW[k].can(ctx)), MOMENTS, Math.random(), { zoomies: zoomiesBoost(hourNow()) });
+      if (id) startMoment(id, ctx);
+    }
+  }
+  // The quiet ones, for the tests.
+  const QUIET = {
+    stretch: () => stretchThen(pishiNext),
+    sunnap: () => sunNap(sunSpot(house.sun?.()) || SUN_SPOTS[0]),
+    nap: () => { stopJessi(); jessi.state = 'tobed'; goTo(jessi, bedFloor, ok => ok && hop(jessi, bed, lieDown, 0.4, 0.15)); },
+    tilt: () => tilt(),
+    wag: () => welcome(),
+  };
 
   // ---------- poses ----------
   function animatePet(a, dt, size) {
@@ -981,12 +1569,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     for (const l of a.legs) {
       const fold = l.front ? 0 : a.sitK * 1.2;
       l.hip.rotation.x = Math.sin(a.phase + l.ph) * 0.6 * walkK - fold;
-      l.hip.scale.y = 1 - a.sleepK * 0.85;
+      l.hip.scale.y = 1 - a.sleepK * 0.85 * (1 - a.pose.back);
     }
     a.body.rotation.x = -a.sitK * 0.45;
     a.body.position.set(0, -a.sleepK * size * 0.5 - a.sitK * size * 0.15, -a.sitK * size * 0.2);
     a.head.rotation.x = a.sleepK * 0.55 + Math.sin(now * 0.7) * 0.05 + a.sitK * 0.35;
-    a.head.rotation.y = a.moving ? 0 : Math.sin(now * 0.33 + size * 9) * 0.4 * (1 - a.sleepK);
+    a.head.rotation.y = (a.moving ? 0 : Math.sin(now * 0.33 + size * 9) * 0.4 * (1 - a.sleepK)) + (a.turnHead || 0);
     // The extra poses, each eased in and out: a play bow, a raised paw, over on her side, sitting up to beg, washing a
     // paw, leaning into a hand. Eyes blink now and then, close when asleep, and close slowly when she is happy.
     const q = a.pose, w = a.want;
@@ -998,9 +1586,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       else l.hip.rotation.x += q.beg * 0.4;
     });
     a.body.rotation.x += q.bow * 0.35 - q.beg * 0.9;
-    a.body.rotation.z = q.roll * 1.6;
-    a.body.position.y += -q.bow * size * 0.25 + q.beg * size * 0.3 - q.roll * size * 0.25;
-    a.head.rotation.x += q.groom * (0.55 + Math.sin(now * 8) * 0.12) - q.beg * 0.35;
+    a.body.rotation.z = q.roll * 1.6 + q.back * 2.9 + (a.wiggle || 0);
+    a.body.position.y += -q.bow * size * 0.25 + q.beg * size * 0.3 - q.roll * size * 0.25 + q.back * size * 2;
+    a.head.rotation.x += q.groom * (0.55 + Math.sin(now * 8) * 0.12) - q.beg * 0.35 - q.up * 0.6;
     a.head.rotation.z = q.lean * 0.35;
     if (a.lids) for (const l of a.lids) { l.visible = q.blink > 0.08; l.scale.y = Math.max(0.15, q.blink); }
   }
@@ -1056,7 +1644,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       for (let i = waits.length - 1; i >= 0; i--) { const w = waits[i]; if (w.at > t) continue; waits.splice(i, 1); if (w.a.epoch === w.epoch) w.fn(); }
       if (ctx.mode === 'sit' && lastMode !== 'sit' && ctx.stand) { if (Math.random() < 0.6) bringTea(ctx.stand); else if (byFire(...ctx.stand)) comeTell(ctx.stand); }
       lastMode = ctx.mode;
-      tickR2(dt, ctx); tickMood(); tickHolo(dt); tickMouse(dt, ctx); tickPishi(dt, ctx); tickJessi(dt, ctx);
+      tickR2(dt, ctx); tickMood(); tickHolo(dt); tickMouse(dt, ctx); tickPishi(dt, ctx); tickJessi(dt, ctx); tickMoments(dt, ctx);
       for (const a of agents) {
         move(a, dt);
         a.root.position.copy(a.pos);
@@ -1066,11 +1654,16 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         a.shadow.visible = a.pos.y - gy < 0.6;
         a.shadow.position.set(a.pos.x, gy + 0.012, a.pos.z);
       }
+      tickPen(dt);
       animatePet(pishi, dt, 0.2);
-      pishi.tail.rotation.y = Math.sin(t * (pishi.sleepK > 0.5 ? 0.6 : 2.2)) * 0.35;
-      pishi.tail.rotation.x = pishi.sitK * 0.9 - pishi.sleepK * 0.6;
+      // Her tail twitches as she chatters at the window, and goes up and fluffs out for the zoomies.
+      pishi.puffK += ((pishi.state === 'zoomies' ? 1 : 0) - pishi.puffK) * Math.min(1, dt * 5);
+      pishi.tail.rotation.y = pishi.state === 'chatter' ? Math.sin(t * 17) * 0.3 : Math.sin(t * (pishi.sleepK > 0.5 ? 0.6 : 2.2)) * 0.35;
+      pishi.tail.rotation.x = pishi.sitK * 0.9 - pishi.sleepK * 0.6 - pishi.puffK * 0.7;
+      pishi.tail.scale.setScalar(1 + pishi.puffK * 0.45);
+      if (pishi.state === 'chatter') pishi.head.rotation.x += Math.sin(t * 34) * 0.04 - 0.15;
       animatePet(jessi, dt, 0.22);
-      jessi.tail.rotation.z = Math.sin(t * 14) * 0.5 * jessi.wag;
+      jessi.tail.rotation.z = Math.sin(t * (jessi.wag > 1 ? 24 : 14)) * 0.5 * Math.min(jessi.wag, 1.7);
       for (const h of hearts) {
         const k = (t - h.t0) / 1.6;
         h.s.visible = k >= 0 && k < 1;
@@ -1117,12 +1710,11 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
         if (pishi.onFloor) turnAt.pishi++;
         if (what === 'play') { pishiPlay(ctx); return null; }
         if (what === 'treat') { pishiTreat(ctx); return { crouch: true }; }
-        // A pet: she leans into it with a slow blink, and on the floor now and then rolls over for a belly rub. On the
-        // window sill she stays put and just enjoys it.
+        // A pet: she leans into it with a slow blink, and on the floor now and then rolls over for a belly rub. Up on the
+        // window sill, a seat, the keys or the desk she stays put and just enjoys it.
         const belly = pishi.onFloor && Math.random() < 0.3;
-        freshPishi();
-        if (pishi.state === 'window') pishi.timer = Math.max(pishi.timer, 8);
-        else { stopPishi(); pishi.state = 'petted'; pishi.timer = 4; faceTo(pishi, ctx.player, 1); }
+        if (pishi.onFloor) { freshPishi(); stopPishi(); pishi.state = 'petted'; pishi.timer = 4; faceTo(pishi, ctx.player, 1); }
+        else if (pishi.state === 'window' || pishi.state === 'seat') pishi.timer = Math.max(pishi.timer, 8);
         Object.assign(pishi.want, { lean: belly ? 0 : 1, roll: belly ? 1 : 0, blink: 0.8 });
         pishi.blinkOff = pishi.leanOff = now + 3.5;
         love(pishi.pos.clone().add(new THREE.Vector3(0, 0.4, 0))); sfx.purr(pishi.pos); pishi.bub.say(belly ? 'belly?' : 'prrr', now, 2.5, true);
@@ -1145,5 +1737,13 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       return null;
     },
     shoo: () => pishiShoo(),
+    // For the tests: the scheduler, the moment running, starting one (`force` skips the rules), the hour, the pen.
+    moments,
+    get moment() { return cur?.id ?? null; },
+    force: id => (SHOW[id] ? startMoment(id, lastCtx, 'force') : QUIET[id] ? (QUIET[id](), true) : false),
+    request: id => startMoment(id, lastCtx, MOMENTS[id]?.chance ? 'roll' : 'start'),
+    get hour() { return hourNow(); },
+    set hour(h) { hourPin = h; },
+    get pen() { return penSt.at; },
   };
 }

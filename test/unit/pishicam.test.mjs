@@ -43,6 +43,9 @@ test('her place in the words of the house: the sill, the tree, the perch, the de
   assert.equal(placeOf([5.4, 14.7, 0.53], 'window'), 'window sill');
   assert.equal(placeOf([0.7, 10.6, 3.08], 'perch'), 'perch by the fire');
   assert.equal(placeOf([20.9, 1.3, 0.8], 'keys'), 'desk');
+  assert.equal(placeOf([21.33, 1.32, 1.22], 'knock'), 'desk');
+  assert.equal(placeOf([5.4, 14.7, 0.53], 'chatter'), 'window sill');
+  assert.equal(placeOf([18.3, 10.42, 1.07], 'keywalk'), 'piano');
   assert.equal(placeOf([0.88, 14.2, 1.2], 'treesit'), 'cat tree');
   assert.equal(placeOf([0.8, 14.05, 0.62], 'climb'), 'cat tree');
   assert.equal(placeOf([0.16, 12.85, 2.32], 'climb'), 'wall shelves');
@@ -71,13 +74,16 @@ test('what she is doing, from what she is up to, in plain words', () => {
   // The treat jar on the desk branch walks her to it in a state of its own.
   assert.equal(doingOf('totreat'), 'off for a treat');
   assert.equal(doingOf('something new'), 'around');
-  for (const s of ['window', 'towindow', 'climb', 'perch', 'treesit', 'flee', 'wander', 'down', 'todesk', 'keys', 'play', 'treat', 'petted', 'sit'])
+  assert.equal(doingOf('zoomies'), 'racing around');
+  assert.equal(doingOf('sunnap'), 'asleep in the sun');
+  for (const s of ['window', 'towindow', 'climb', 'perch', 'treesit', 'flee', 'wander', 'down', 'todesk', 'keys', 'play', 'treat', 'petted', 'sit',
+    'stretch', 'tosun', 'sunnap', 'topiano', 'keywalk', 'chatter', 'toseat', 'seat', 'stalk', 'zoomies', 'knock'])
     assert.ok(/^[a-z ]+$/.test(doingOf(s)) && doingOf(s) !== 'around', s);
 });
 
 test('every state Pishi has in the code has words', () => {
   const src = readFileSync(new URL('../../web/src/creatures.js', import.meta.url), 'utf8');
   const states = new Set([...src.matchAll(/pishi\.state = '(\w+)'/g), ...src.matchAll(/pishi, \{ state: '(\w+)'/g)].map(m => m[1]));
-  assert.ok(states.size >= 10, [...states].join(' '));
+  assert.ok(states.size >= 25, [...states].join(' '));
   for (const s of states) assert.notEqual(doingOf(s), 'around', s);
 });
