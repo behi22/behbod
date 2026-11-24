@@ -27,9 +27,9 @@ export function makeCmdFill(box, names) {
   };
   const put = line => { box.value = line; box.setSelectionRange(line.length, line.length); update(); };
   box.addEventListener('keydown', e => {
-    if (e.isComposing) return;
+    if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
     const atEnd = box.selectionStart === box.value.length && box.selectionEnd === box.value.length;
-    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === 'Tab') {
       const line = step(fill, box.value, names(), e.shiftKey ? -1 : 1);
       // While there is a line, Tab stays in the box; an empty box lets it move on as usual.
       if (line !== null) put(line);

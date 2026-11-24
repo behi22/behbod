@@ -460,6 +460,8 @@ export function makeCanvases(meta, opts = {}) {
         if (k) { calcPress(desk.calc, k); changed(); }
         if (k || e.key.length === 1 || e.key === 'Tab') { e.preventDefault(); return; }
       }
+      // Shortcuts are the browser's at the terminal too; AltGr holds Ctrl and Alt but types a letter.
+      if ((e.ctrlKey || e.metaKey || e.altKey) && !e.getModifierState('AltGraph')) return;
       // Typing at the desk goes to the terminal, bringing it to the front first if something else is.
       if (desk.st.focus !== 'terminal') {
         if (e.key.length !== 1 && e.key !== 'Enter' && e.key !== 'Tab') return;

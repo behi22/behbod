@@ -120,6 +120,27 @@ async function popupFrom(p, act) {
       await p.evaluate(() => { __loft.screens.desktop.term.input = 'dep'; __loft.screens.desktop.changed(); });
       s = await press('Tab');
       check('with another window in front, Tab brings the terminal forward and fills', s.input === 'deploy' && s.front === 'terminal' && s.active, JSON.stringify(s));
+      // With Ctrl, Alt or Cmd held a key is the browser's shortcut: it types, fills and takes nothing, and is not held back.
+      const keep = await p.evaluate(() => {
+        const d = __loft.screens.desktop, box = document.getElementById('cmd');
+        const send = (at, o) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...o }); at.dispatchEvent(e); return e.defaultPrevented; };
+        d.term.input = 'lin'; d.changed();
+        const held = [['r', { ctrlKey: true }], ['l', { metaKey: true }], ['ArrowRight', { altKey: true }], ['ArrowLeft', { altKey: true }], ['Tab', { ctrlKey: true }]]
+          .filter(([key, m]) => send(document.body, { key, ...m })).map(([key, m]) => `${Object.keys(m)[0]}+${key}`);
+        const desk = d.term.input;
+        // AltGr (Ctrl and Alt together on Windows) types a letter, so it still reaches the terminal.
+        d.term.input = '';
+        const canAltGr = new KeyboardEvent('keydown', { modifierAltGraph: true }).getModifierState('AltGraph');
+        const altGr = canAltGr ? [send(document.body, { key: '@', ctrlKey: true, altKey: true, modifierAltGraph: true }), d.term.input] : 'untestable here';
+        d.term.input = ''; d.changed();
+        box.value = 'lin'; box.dispatchEvent(new Event('input')); box.setSelectionRange(3, 3);
+        const boxHeld = [{ altKey: true }, { ctrlKey: true }, { metaKey: true }].filter(m => send(box, { key: 'ArrowRight', ...m })).map(m => Object.keys(m)[0]);
+        const boxKept = box.value, plain = [send(box, { key: 'ArrowRight' }), box.value];
+        box.value = ''; box.dispatchEvent(new Event('input'));
+        return { held, desk, altGr, boxHeld, boxKept, plain };
+      });
+      check('with Ctrl, Alt or Cmd held a key is left to the browser, at the desk and in the command box; AltGr still types; a plain Right Arrow still takes the suggestion',
+        !keep.held.length && keep.desk === 'lin' && (typeof keep.altGr === 'string' || (keep.altGr[0] && keep.altGr[1] === '@')) && !keep.boxHeld.length && keep.boxKept === 'lin' && keep.plain[0] && keep.plain[1] === 'linkedin', JSON.stringify(keep));
       await p.evaluate(() => __loft.leaveDesk()); await p.waitForTimeout(400);
       s = await line();
       check('standing up, the faint rest goes', s.model === '' && s.mode !== 'desk', JSON.stringify(s));
