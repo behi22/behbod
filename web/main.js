@@ -39,6 +39,8 @@ import { makeLights } from './src/lightswitch.js';
 import { makePishiCam } from './src/pishicam.js';
 import { lightsCommand } from './src/pure/lamps.js';
 import { makeCollision } from './src/pure/collide.js';
+import { turnTick } from './src/pure/steps.js';
+import { makeLegs } from './src/legs.js';
 import { makeInteract, headingToFacing } from './src/pure/interact.js';
 import { makeNav } from './src/pure/nav.js';
 import { makeProgress, ACHIEVEMENTS } from './src/pure/progress.js';
@@ -142,6 +144,7 @@ const me = makeMe(scene, meGltf, {
   },
 });
 wardrobe = makeWardrobe(me, { unlocked: () => progress.unlocked() });
+const legs = window.__legs = makeLegs(me, col, { onStep: () => sound.burst(250 + Math.random() * 90, 1.2, 0.07, 0.1) });
 // Pishi sits at the north end of the keyboard, the end away from the mouse.
 let kbTop;
 const keyboard = () => {
@@ -760,6 +763,7 @@ function forwardInput() {
 }
 
 // ---------- walking ----------
+let spin = 0;
 function walk(dt, now) {
   // Anything that moved me from outside (the tests, leaving the desk, the respawn) moves the capsule too.
   if (phys && pos.distanceToSquared(physAt) > 1e-6) phys.place(pos);
@@ -769,7 +773,9 @@ function walk(dt, now) {
   // Arriving can sit me down or start the desk (a path's `then`); that mode places me from here on.
   if (mode !== 'walk') return 0;
   const speed = want.lengthSq() ? (crouchHeld ? 1.2 : run ? 5.6 : route ? 2.2 : 1.9) : 0;
-  let target = want.multiplyScalar(speed);
+  // From standing, a big change of way is a turn on the spot first (the feet step round), then the walk.
+  const turn = rollT > 0 ? null : turnTick(facing, spin, want.lengthSq() ? Math.atan2(want.x, want.z) : null, Math.hypot(vel.x, vel.z), dt);
+  let target = want.multiplyScalar(speed * (turn ? turn.gate : 1));
   if (rollT > 0) { rollT -= dt; target = new THREE.Vector3(Math.sin(facing), 0, Math.cos(facing)).multiplyScalar(4.2); }
   const k = grounded ? 10 : 2.5;
   vel.x += (target.x - vel.x) * Math.min(1, k * dt);
@@ -795,7 +801,9 @@ function walk(dt, now) {
   if (!grounded) { airT += dt; if (airT > 0.22 && me.oneShot !== me.acts.Jump_Loop) me.holdPose('Jump_Loop'); }
   else if (me.oneShot === me.acts.Jump_Loop) me.endOneShot();
   const hs = Math.hypot(vel.x, vel.z);
-  if (hs > 0.05 && rollT <= 0) { let d = Math.atan2(vel.x, vel.z) - facing; d = Math.atan2(Math.sin(d), Math.cos(d)); facing += d * Math.min(1, 12 * dt); }
+  spin = turn?.on ? turn.spin : 0;
+  if (turn?.on) facing = turn.facing;
+  else if (hs > 0.05 && rollT <= 0) { let d = Math.atan2(vel.x, vel.z) - facing; d = Math.atan2(Math.sin(d), Math.cos(d)); facing += d * Math.min(1, 12 * dt); }
   // Lean into turns when moving fast.
   const turnRate = Math.atan2(Math.sin(facing - prevFacing), Math.cos(facing - prevFacing)) / Math.max(dt, 1e-3);
   prevFacing = facing;
@@ -880,6 +888,9 @@ function step() {
   // Petting crouches me down for a moment; walking off ends it.
   if (hs > 0.3) petCrouch = 0;
   me.animate(dt, hs, mode === 'walk' && (crouchHeld || petCrouch > performance.now() / 1000));
+  // A turn on the spot cut short by sitting down or the desk does not carry on when I am back on my feet.
+  if (mode !== 'walk') spin = 0;
+  legs.tick(dt, { on: mode === 'walk' && grounded && rollT <= 0 && me.root.visible, stand: !me.oneShot || me.oneShot === me.acts.Interact, vx: vel.x, vz: vel.z, spin });
   me.lookAround(dt, idleT, facing, mode === 'walk', LOOKS);
   if (!desk.tick(dt, camLook, () => mode === 'desk')) {
     if (mode === 'walk' || mode === 'sit' || mode === 'rising') {

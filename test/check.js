@@ -31,7 +31,8 @@ const URL = (process.env.LOFT_URL || 'http://127.0.0.1:8810') + '/?auto&stats';
   // Regression: W moves away from the camera and D to its right (they were inverted in v1).
   const moveBy = async key => {
     const before = await p.evaluate(() => { const L = window.__loft, f = new (L.camera.position.constructor)(); L.camera.getWorldDirection(f); return { x: L.pos.x, z: L.pos.z, fx: f.x, fz: f.z }; });
-    await p.keyboard.down(key); await p.waitForTimeout(700); await p.keyboard.up(key); await p.waitForTimeout(300);
+    // A key asking for a new way first turns me on the spot (a half turn takes about two thirds of a second), then walks.
+    await p.keyboard.down(key); await p.waitForTimeout(1000); await p.keyboard.up(key); await p.waitForTimeout(300);
     const after = await p.evaluate(() => ({ x: window.__loft.pos.x, z: window.__loft.pos.z }));
     const n = Math.hypot(before.fx, before.fz), fx = before.fx / n, fz = before.fz / n, dx = after.x - before.x, dz = after.z - before.z;
     return { forward: dx * fx + dz * fz, right: dx * -fz + dz * fx };

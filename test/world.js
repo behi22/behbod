@@ -328,7 +328,8 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   // Leaving sets me down clear of the bench and the crates: I can walk straight off.
   await p.waitForTimeout(400);
   const rgExitAt = await p.evaluate(() => [__loft.pos.x, -__loft.pos.z]);
-  await p.keyboard.down('KeyS'); await p.waitForTimeout(700); await p.keyboard.up('KeyS');
+  // S asks for the way back: a turn on the spot first, then the walk.
+  await p.keyboard.down('KeyS'); await p.waitForTimeout(1100); await p.keyboard.up('KeyS');
   const rgWalked = await p.evaluate(a => Math.hypot(__loft.pos.x - a[0], -__loft.pos.z - a[1]), rgExitAt);
   console.log('out of the range I stand clear and can walk off:', rgExitAt.map(v => v.toFixed(2)).join(', '), 'then', rgWalked.toFixed(2), 'm', rgWalked > 0.5 ? 'PASS' : 'FAIL');
 
