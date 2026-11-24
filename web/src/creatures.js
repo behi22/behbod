@@ -236,6 +236,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (now - hourAt > 30 || now < hourAt) { hourAt = now; const v = vanTime(new Date()); hourVal = v.h + v.min / 60; }
     return hourVal;
   }
+  // Checked every frame, so no new array or list each time.
+  const me2 = [0, 0], SLEEPS = ['perch', 'sunnap', 'seat'];
+  const teaNow = p => { me2[0] = p.x; me2[1] = -p.z; return atTea(me2); };
   const blip = (fn, a, player) => { if (!player || a.pos.distanceTo(player) < 9) fn(a.pos); };
   let purring = 0;
   const sfx = {
@@ -606,12 +609,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   function water() {
     r2Fresh();
     const plant = PLANTS.reduce((b, p) => (r2.pos.distanceTo(b2t(...p.stand)) < r2.pos.distanceTo(b2t(...b.stand)) ? p : b));
-    Object.assign(r2, { state: 'water', plant, waterT: -1 });
+    Object.assign(r2, { state: 'water', plant, potAt: b2t(...plant.pot), waterT: -1 });
     goTo(r2, plant.stand, ok => {
       if (r2.state !== 'water') return;
       if (!ok) { r2.state = 'pause'; r2.timer = 1; return; }
       // The walk grid keeps clear of the pot, so it rolls the last bit straight up to it.
-      const pot = b2t(...plant.pot), d = r2.pos.clone().sub(pot).setY(0).normalize();
+      const pot = r2.potAt, d = r2.pos.clone().sub(pot).setY(0).normalize();
       r2.route = [pot.clone().addScaledVector(d, 0.4).setY(r2.pos.y)];
       r2.then = () => {
         can ||= mesh([piece(cyl(0.03, 0.034, 0.05, 14), '#3f8f7a', [0, 0.025, 0]), piece(cyl(0.005, 0.007, 0.07, 8), '#3f8f7a', [0, 0.04, 0.045], [1.0, 0, 0]), piece(torus(0.018, 0.004, 6, 14), '#2f6f5e', [0, 0.04, -0.03], [0, Math.PI / 2, 0])], PAINT, r2.dome);
@@ -628,7 +631,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
   function tickWater(dt) {
     if (r2.waterT < 0) return;
-    faceTo(r2, b2t(...r2.plant.pot), dt);
+    faceTo(r2, r2.potAt, dt);
     const t = (r2.waterT += dt), tilt = Math.min(1, t / 0.5) * Math.max(0, Math.min(1, (3 - t) / 0.4));
     can.rotation.x = tilt * 0.75;
     const pour = t > 0.6 && t < 2.7;
@@ -644,6 +647,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
   function stopWater() { if (can) can.visible = false; if (stream) stream.visible = false; r2.waterT = -1; }
   // A clear night: out to the telescope on the balcony, looking up a while.
+  const SCOPE_LOOK = b2t(...SCOPE.look);
   function stargaze() {
     r2Fresh();
     Object.assign(r2, { state: 'scope', atScope: false });
@@ -656,7 +660,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
   function tickScope(dt) {
     if (!r2.atScope) return;
-    faceTo(r2, b2t(...SCOPE.look), dt);
+    faceTo(r2, SCOPE_LOOK, dt);
     if ((r2.timer -= dt) > 0) return;
     r2.atScope = false; r2.state = 'pause'; r2.timer = 2; r2.stops = Math.min(r2.stops, 1);
   }
@@ -664,7 +668,9 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   function r2Pen() {
     r2Fresh();
     Object.assign(r2, { state: 'pen', penT: -1 });
-    if (cur?.id === 'knock') Object.assign(cur, { a: r2, states: ['pen'] });
+    // The errand is the knock's last part, so it holds the slot, taking it back if the knock ended before BH-22 was free.
+    if (!cur) moments.force('knock', now);
+    cur = { id: 'knock', a: r2, states: ['pen'] };
     r2.bub.say('!', now); blip(sfx.chirp, r2, lastPlayer);
     goTo(r2, PEN.reach, ok => {
       if (r2.state !== 'pen') return;
@@ -938,7 +944,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     pishi.state = 'topiano';
     goTo(pishi, PIANO.reach, ok => {
       if (pishi.state !== 'topiano') return;
-      if (!ok) { pishiNext(); return; }
+      if (!ok || sat(lastCtx, 'bench')) { pishiNext(); return; }
       pishi.state = 'keywalk';
       const k = PIANO.keys, xs = [];
       for (let x = k.x1 - 0.08; x > k.x0 + 0.06; x -= 0.14) xs.push(x);
@@ -969,7 +975,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     Object.assign(pishi, { state: 'toseat', seat: which });
     goTo(pishi, SEATS[which].reach, ok => {
       if (pishi.state !== 'toseat') return;
-      if (!ok) { pishiNext(); return; }
+      // I sat down there while she was on her way: she leaves it be rather than hop up into me.
+      if (!ok || sat(lastCtx, which)) { pishiNext(); return; }
       hop(pishi, b2t(...SEATS[which].seat), () => Object.assign(pishi, { state: 'seat', timer: rnd(45, 75), zz: 4 }), 0.55, 0.5);
     });
   }
@@ -990,6 +997,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       if (ok) pishi.stalk = { k: 'crouch', t: 0 }; else pishiNext();
     });
   }
+  function stalkOff() { pishi.wiggle = 0; pishi.want.bow = 0; pishi.state = 'sit'; pishi.timer = 4; pishi.groomUntil = now + 3; }
   function tickStalk(dt) {
     const s = pishi.stalk;
     s.t += dt;
@@ -997,13 +1005,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     pishi.wiggle = s.k === 'crouch' && s.t > 0.6 ? Math.sin(now * 20) * 0.1 : 0;
     if (s.k !== 'crouch') return;
     faceTo(pishi, mouse.pos, dt);
+    // The mouse droid got away before she was ready, or it is somewhere she cannot jump straight to.
+    if (pishi.pos.distanceTo(mouse.pos) > 1.6) { stalkOff(); return; }
+    if (s.t < 1.9) return;
     const to = mouse.pos.clone();
     to.y = groundAt(to.x, to.z, pishi.pos.y + 0.2);
-    const off = () => { pishi.wiggle = 0; pishi.want.bow = 0; pishi.state = 'sit'; pishi.timer = 4; pishi.groomUntil = now + 3; };
-    // The mouse droid got away before she was ready, or it is somewhere she cannot jump straight to.
-    if (pishi.pos.distanceTo(mouse.pos) > 1.6) { off(); return; }
-    if (s.t < 1.9) return;
-    if (Math.abs(to.y - pishi.pos.y) > 0.3 || !clear(tb(pishi.pos), tb(to))) { off(); return; }
+    if (Math.abs(to.y - pishi.pos.y) > 0.3 || !clear(tb(pishi.pos), tb(to))) { stalkOff(); return; }
     const hit = Math.random() < STALK_HIT;
     s.k = 'air';
     pishi.wiggle = 0;
@@ -1012,7 +1019,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     hop(pishi, to, () => {
       if (hit) { blip(sfx.squeak, mouse, lastPlayer); pishi.bub.say('got it!', now); wait(mouse, 0.7, () => { mouse.flee = 4; }); } else pishi.bub.say('...', now, 2, true);
       // Then a wash, as if nothing happened.
-      off();
+      stalkOff();
     }, 0.35, 0.16);
   }
   // Zoomies: a few mad dashes round the room, tail up and fluffed, then a sit as if nothing happened.
@@ -1159,7 +1166,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     }
     const sit = ['window', 'sit', 'keys', 'treesit', 'petted', 'treat', 'chatter', 'knock'].includes(pishi.state) && !pishi.hop && !pishi.moving;
     pishi.sitK += ((sit ? 1 : 0) - pishi.sitK) * Math.min(1, dt * 4);
-    pishi.sleepK += ((['perch', 'sunnap', 'seat'].includes(pishi.state) ? 1 : 0) - pishi.sleepK) * Math.min(1, dt * 2);
+    pishi.sleepK += ((SLEEPS.includes(pishi.state) ? 1 : 0) - pishi.sleepK) * Math.min(1, dt * 2);
   }
 
   // ---------- Jessi ----------
@@ -1408,7 +1415,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   function tickBeg(dt, ctx) {
     if (!jessi.atMe) return;
     faceTo(jessi, ctx.player, dt);
-    if ((jessi.begT += dt) > 6 || !atTea(tb(ctx.player))) { jessi.want.beg = 0; jessi.state = 'happy'; jessi.timer = 2; }
+    if ((jessi.begT += dt) > 6 || !teaNow(ctx.player)) { jessi.want.beg = 0; jessi.state = 'happy'; jessi.timer = 2; }
   }
   // Chasing her tail: round and round after it, then a dizzy wobble.
   function tailChase() {
@@ -1531,7 +1538,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     const still = playerSpeed < 0.15 && ctx.mode === 'walk' && inLoft(ctx.player), was = stillT;
     stillT = still ? stillT + dt : 0;
     if (was < STILL && stillT >= STILL) startMoment('toy', ctx, 'roll');
-    const tea = (ctx.mode === 'walk' || ctx.mode === 'sit') && atTea(tb(ctx.player)), teaWas = teaT;
+    const tea = (ctx.mode === 'walk' || ctx.mode === 'sit') && teaNow(ctx.player), teaWas = teaT;
     teaT = tea ? teaT + dt : 0;
     if (teaWas < 1.5 && teaT >= 1.5) startMoment('beg', ctx, 'roll');
     // Quiet touches: a head tilt at my typing, a hard wag when I come back.

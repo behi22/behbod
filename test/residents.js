@@ -5,6 +5,7 @@
 //   one      one showy moment at a time; then a calm gap
 //   pishi    stretch and yawn, sun nap, the piano keys (real notes), chattering, the stolen seat, stalking the mouse
 //            droid, zoomies (BH-22 startled), the pen knocked off (BH-22 puts it back)
+//   edges    the pen errand after the knock ended holds the slot; she leaves a seat I sat in on her way
 //   jessi    the toy at my feet, howling with the piano, the spin and a nap on her back, the head tilt as I type,
 //            begging at the tea bar, the hard wag, chasing her tail
 //   bh22     dancing, vacuuming, watering, the telescope, low power at night
@@ -16,7 +17,7 @@ const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/residents';
-const ONLY = process.argv[3] || 'tree,one,pishi,jessi,bh22,set,phone';
+const ONLY = process.argv[3] || 'tree,one,pishi,edges,jessi,bh22,set,phone';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -195,6 +196,29 @@ const walksOf = async p => { const w = await p.evaluate(() => __walks.splice(0))
       check('pishi: the knock and the pen are one moment', still === 'knock' && await until(p, () => __loft.creatures.moment === null, null, 5000));
       const bad = clipped(await walksOf(p));
       check('pishi: no furniture walked through', bad.length === 0, bad.slice(0, 3).join(' | '));
+    }
+
+    // ---------- edge cases ----------
+    if (want('edges')) {
+      // BH-22 busy until the knock is over: when it comes for the pen afterwards, the errand still holds the one slot
+      // (failed before: it ran outside the rule, so another moment could start over it).
+      await C(() => { __calm(); __openGap('knock'); __put('pishi', [19.6, 3.2, 0.45], 'sit'); __put('bh22', [18.6, 3.6, 0.45], 'talk'); __me([19.3, 1.6, 0.45], Math.PI / 2); __loft.creatures.force('knock'); });
+      const over = await until(p, () => __loft.creatures.moment === null && __loft.creatures.pen === 'floor', null, 15000);
+      await C(() => __put('bh22', [18.6, 3.6, 0.45], 'pause', { timer: 120 }));
+      const going = await until(p, () => __loft.creatures.bh22.state === 'pen', null, 3000);
+      const held = await C(() => ({ moment: __loft.creatures.moment, active: __loft.creatures.moments.active }));
+      const home = await until(p, () => __loft.creatures.pen === 'home', null, 25000);
+      const freed = await until(p, () => __loft.creatures.moment === null, null, 5000);
+      check('edges: BH-22 fetching the pen after the knock ended holds the slot, then frees it', over && going && held.moment === 'knock' && held.active === 'knock' && home && freed, JSON.stringify({ over, going, held, home, freed }));
+      // Sitting down at the desk while she is on her way to steal the chair: she leaves it be (failed before: she hopped
+      // up into me, then straight off).
+      await C(() => { __calm(); __openGap('steal'); __put('pishi', [19.4, 3.0, 0.45], 'sit'); __me([16.5, 4.5, 0.45]); const r = Math.random; Math.random = () => 0; __loft.creatures.force('steal'); Math.random = r; __loft.useDesk(); window.__seen = new Set(); window.__seenT = setInterval(() => __seen.add(__loft.creatures.pishi.state), 30); });
+      const left = await until(p, () => __loft.creatures.pishi.state !== 'toseat', null, 12000);
+      await p.waitForTimeout(800);
+      const seen = await C(() => { clearInterval(__seenT); return [...__seen]; });
+      check('edges: she never hops onto the chair I am sitting in', left && !seen.includes('seat'), seen.join(','));
+      await C(() => __loft.leaveDesk());
+      await p.waitForTimeout(1500);
     }
 
     // ---------- Jessi ----------
