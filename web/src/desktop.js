@@ -33,6 +33,8 @@ const CSS = `
 .dt-term div { height: ${STYLE.termLine}px; overflow: hidden; }
 .dt-term .in { color: ${STYLE.accent}; }
 .dt-term .caret { display: inline-block; width: .6em; height: 1em; vertical-align: -.15em; background: ${STYLE.accent}; animation: dt-blink 1s steps(1) infinite; }
+.dt-term a { color: inherit; text-decoration: underline rgba(216,224,238,.4); text-underline-offset: 4px; cursor: pointer; }
+.dt-term a:hover { text-decoration-color: currentColor; }
 @keyframes dt-blink { 50% { opacity: 0; } }
 .dt-pill { position: absolute; box-sizing: border-box; padding: 0 0 0 11px; text-align: left; border-radius: 999px; font: inherit; font-size: ${STYLE.small}px;
   color: ${STYLE.ink}; background: rgba(255,255,255,.04); border: 1px solid rgba(127,138,160,.4); cursor: pointer; white-space: pre; }
@@ -262,7 +264,11 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
       // The first line's baseline sits `top` below the window's edge, as on the monitor.
       box2.style.top = px(top - STYLE.termLine / 2 - STYLE.term * 0.36);
       if (narrow) box2.style.bottom = px(PAD);
-      for (const l of lines) { const d = el('div', '', l); d.style.color = l.startsWith('$') ? STYLE.accent : STYLE.ink; box2.append(d); }
+      for (const l of lines) {
+        const url = t.links.get(l), d = el('div', '', url ? null : l);
+        if (url) { const a = el('a', '', l); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; d.append(a); }
+        d.style.color = l.startsWith('$') ? STYLE.accent : STYLE.ink; box2.append(d);
+      }
       const inp = el('div', 'in', '$ ' + t.input);
       if (t.focus) inp.append(el('span', 'caret'));
       box2.append(inp);

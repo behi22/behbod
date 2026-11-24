@@ -12,6 +12,8 @@ import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
 import { paintStory, paintWallpaper } from './src/shah/scenes.js';
 import { helloWorld } from './src/pure/hello.js';
 import { newHistory, remember, browse } from './src/pure/history.js';
+import { LINKS, opening, blocked } from './src/pure/links.js';
+import { openTab } from './src/opentab.js';
 import { makeContrib } from './src/contrib.js';
 import { livePicture } from './src/canvastex.js';
 
@@ -62,7 +64,8 @@ export function makeCanvases(meta, opts = {}) {
   // Main ultrawide: the computer's desktop, with a terminal you can type into. The seated view (src/desktop.js) lays
   // the same desktop out in HTML over this screen, from the same model.
   S.main = surface(DW, DH);
-  const term = { lines: [], input: '', focus: false, blink: 0 };
+  // `links`: lines that open a page when clicked in the seated view, by their text.
+  const term = { lines: [], input: '', focus: false, blink: 0, links: new Map() };
   const hist = newHistory();
   const desk = { st: newDesktop(), ctx: { wallpaper: loadWallpaper() }, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), reader: newReader(), sfx: null, dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
@@ -86,17 +89,18 @@ export function makeCanvases(meta, opts = {}) {
   desk.games = makeDeskGames({ store: local, sfx: gameSfx, onEvent: name => { if (name === 'over') changed(); } });
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
+  const SHOWN = ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'github', 'linkedin', 'clear', 'exit'];
   const CMDS = {
     // The names in rows that fit the terminal's window, the first row headed.
     help: () => {
       const rows = [];
-      for (const n of ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'clear', 'exit', ...Object.keys(EXTRA)]) {
+      for (const n of [...SHOWN, ...Object.keys(EXTRA)]) {
         if (rows.length && rows.at(-1).length + 2 + n.length <= 54) rows[rows.length - 1] += '  ' + n; else rows.push(n);
       }
       say(...rows.map((r, i) => (i ? '          ' : 'commands: ') + r), 'picture quality sets itself; to change it, open Settings');
     },
     whoami: () => say('Behbod Babai. Engineer in Vancouver.', 'I make computers talk back.'),
-    projects: () => say('meet-bex      a voice receptionist you can talk to', 'profile-art   my GitHub profile, redrawn every hour', 'aic-voice-microsite'),
+    projects: () => say('meet-bex      a voice receptionist you can talk to', 'profile-art   my GitHub profile, redrawn every hour', 'aic-voice-microsite', 'visitor-classifier', 'type a name to open it in a new tab.'),
     postit: () => say('the note on this monitor is my tattoo:', 'Bengar o beshno, bogzar o beh sho'),
     ls: () => say('notes.txt  projects/  piano/  secrets/'),
     'cat notes.txt': () => say('fix the telescope. water the succulent. ship.'),
@@ -105,10 +109,13 @@ export function makeCanvases(meta, opts = {}) {
     'hello friend': () => say('hello, friend.'),
     'hello, friend': () => say('hello, friend.'),
     sudo: () => say('behbod is not in the sudoers file. This incident will be reported.'),
-    clear: () => { term.lines = []; changed(); },
+    clear: () => { term.lines = []; term.links.clear(); changed(); },
     ferdowsi: () => say(...ferdowsiLines()),
     nowruz: () => say(...nowruzLines(new Date())),
   };
+  for (const [name, { title, url }] of Object.entries(LINKS)) {
+    CMDS[name] = () => { const line = openTab(url) ? opening(title) : blocked(title); term.links.set(line, url); say(line); };
+  }
   const col = k => STYLE[k] || k;
   const icon = {};
   function drawIcon(g, a, x, y, size, on) {
@@ -152,7 +159,11 @@ export function makeCanvases(meta, opts = {}) {
     if (w.app === 'terminal') {
       const { lines, top } = termShown(term.lines, w.h);
       g.font = `400 ${STYLE.term}px ${STYLE.font}`;
-      lines.forEach((l, i) => { g.fillStyle = l.startsWith('$') ? STYLE.accent : STYLE.ink; g.fillText(l, w.x + PAD, w.y + top + i * STYLE.termLine); });
+      lines.forEach((l, i) => {
+        const ly = w.y + top + i * STYLE.termLine;
+        g.fillStyle = l.startsWith('$') ? STYLE.accent : STYLE.ink; g.fillText(l, w.x + PAD, ly);
+        if (term.links.has(l)) { g.fillStyle = 'rgba(216,224,238,.4)'; g.fillRect(w.x + PAD, ly + 4, g.measureText(l).width, 1.5); }
+      });
       g.fillStyle = STYLE.accent;
       g.fillText('$ ' + term.input + (term.focus && term.blink % 2 ? '█' : ''), w.x + PAD, w.y + top + lines.length * STYLE.termLine);
     } else if (w.app === 'notes') {
