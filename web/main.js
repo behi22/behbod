@@ -27,6 +27,7 @@ import { makeRubik } from './src/rubik.js';
 import { makeAria } from './src/aria.js';
 import { makeShahnameh } from './src/shah/index.js';
 import { makeTvMatch } from './src/tvmatch.js';
+import { makeKeeper } from './src/keeper.js';
 import { makePenalties } from './src/penalties.js';
 import { makeDeskBits, FAN_SPOT } from './src/deskbits.js';
 import { makeTreatJar } from './src/treatjar.js';
@@ -330,6 +331,7 @@ let route = null;
 const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
 things.items.push(...hello.spots);
+const keeper = makeKeeper(scene, meta, { sfx: audio.sfx, toast, store, coarse, walkTo }); things.items.push(...keeper.spots); window.__keeper = keeper;
 things.items.push(...lights.spots);
 const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, adopt: o => lights.adopt(o), renderer, coarse }); things.items.push(...spots.items);
 // What the residents need to know about me each frame.
@@ -507,6 +509,7 @@ function act(it) {
     return;
   }
   if (it.id === 'penalties') return enterPens();
+  if (keeper.act(it.id)) return;
   if (GAME_AT[it.id]) return playGame(GAME_AT[it.id]);
   if (it.id === 'records') return playRecord();
   if (it.id === 'deploy') return deskBits.press();
@@ -717,6 +720,7 @@ function tapMove(e) {
   { const it = hello.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   { const it = deskBits.hit(ray, walkable) ? deskBits.spot : jar.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   { const it = lights.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
+  if (keeper.tap(ray, walkable, pos)) return;
   if (ray.intersectObjects(world.deskThings, false).length) { walkTo(SPOTS.desk, useDesk); return; }
   { const it = printer?.hit(ray, walkable); if (it) { walkTo(b2t(...it.at), () => act(it)); return; } }
   // Clicking a resident walks me over to them and says hello on arrival.
@@ -917,6 +921,7 @@ function step() {
   persia.tick(dt, t);
   tvMatch?.tick(dt, camera);
   pens?.tick(dt);
+  keeper.tick(dt, mode === 'walk' ? pos : null, vel);
   me.drawFace(now);
   me.tickMosaic(now, camera, engine.mosaicU);
   const nearDesk = camera.position.distanceTo(deskUse) < 10;
