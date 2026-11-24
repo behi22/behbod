@@ -11,13 +11,15 @@
 //   smooth   the first of each new thing costs no long frame (it measures frames: run it alone, under the timing lock)
 //   view     seated, the whole main monitor fills most of the view with its bottom and the keyboard below, at each shape;
 //            the glides in and out are smooth (the body no longer jumps mid glide in: failed before these changes)
+//   webcam   a small webcam on the main monitor's top bezel: in view from the seat, its body dims with the lamps, its
+//            light glows on its own while I sit there
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view,webcam';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -529,6 +531,68 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
         check(`${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
         await ctx.close();
       }
+    }
+    // ---------- the webcam on the main monitor ----------
+    if (want('webcam')) {
+      const { ctx, p, errs } = await open(b, { viewport: { width: 1440, height: 900 } });
+      const cam = () => p.evaluate(() => {
+        const L = __loft, g = L.scene.getObjectByName('webcam'), s = L.meta.screens.main, V = L.camera.position.constructor;
+        if (!g) return null;
+        const body = g.getObjectByName('webcam_body'), led = g.getObjectByName('webcam_led');
+        g.updateMatrixWorld(true);
+        body.geometry.computeBoundingBox();
+        const box = body.geometry.boundingBox.clone().applyMatrix4(body.matrixWorld);
+        const top = s.center[2] + s.h / 2 + 0.014, right = g.position.z - -s.center[1], a = Math.asin(right / s.r);
+        const onCurve = Math.abs(g.position.x - (s.center[0] - s.r * (1 - Math.cos(a)))) < 1e-4;
+        // The upper monitor's screen leans back over it: points along its bottom edge and a little up its face.
+        const scr = L.scene.getObjectByName('screen_top'), sp = scr.geometry.attributes.position, corners = [];
+        for (let i = 0; i < sp.count; i++) corners.push(new V().fromBufferAttribute(sp, i).applyMatrix4(scr.matrixWorld));
+        corners.sort((a, b) => a.y - b.y);
+        const [b0, b1, t0] = corners, upper = [];
+        for (let i = 0; i <= 20; i++) for (const up of [0, 0.01, 0.02]) upper.push(b0.clone().lerp(b1, i / 20).add(t0.clone().sub(b0).setLength(up)));
+        // The light bar (blender/zones/studio.py), in three's axes.
+        const bar = { min: [s.center[0] - 0.0475, s.center[2] + s.h / 2 + 0.019, -s.center[1] - 0.23], max: [s.center[0] - 0.0125, s.center[2] + s.h / 2 + 0.041, -s.center[1] + 0.23] };
+        const clear = (b, o) => b.max.x < o.min[0] || b.min.x > o.max[0] || b.max.y < o.min[1] || b.min.y > o.max[1] || b.max.z < o.min[2] || b.min.z > o.max[2];
+        const lens = new V(0, 0, 1).applyQuaternion(g.quaternion);
+        const m = body.material;
+        return { seat: Math.abs(g.position.y - top), onCurve, right, size: box.getSize(new V()).toArray().map(v => +v.toFixed(3)), barClear: clear(box, bar),
+          upperClear: upper.every(q => !box.containsPoint(q)), lens: lens.toArray().map(v => +v.toFixed(3)),
+          dims: m.customProgramCacheKey?.() === 'lamp', glowTag: led.material.userData.lamp, led: led.material.color.toArray().map(v => +v.toFixed(2)) };
+      });
+      const r = await cam();
+      check('a webcam sits on the main monitor: on its top bezel and its curve, right of the light bar', !!r && r.seat < 5e-4 && r.onCurve && r.right > 0.25 && r.right < 0.35 && r.barClear && r.upperClear, JSON.stringify(r));
+      check('it is a small one, its lens looking out at me', !!r && r.size[0] < 0.085 && r.size[1] < 0.09 && r.size[2] < 0.11 && r.lens[0] < -0.95, r && `${r.size} m, lens ${r.lens}`);
+      check('its body dims with the lamps; its light is tagged to keep its own glow, off while I stand', !!r && r.dims && r.glowTag === 'glow' && Math.max(...r.led) < 0.1, r && `${r.dims} ${r.glowTag} ${r.led}`);
+      await standAt(p, W.points.desk_use, Math.PI / 2);
+      await p.evaluate(() => __loft.useDesk());
+      await p.waitForTimeout(3200);
+      // Seated, it is in view, nothing in front of it, and its light is on, whether the lamps are on or off.
+      const seen = await p.evaluate(() => {
+        const L = __loft, g = L.scene.getObjectByName('webcam'), V = L.camera.position.constructor;
+        const lens = g.localToWorld(new V(0, 0.0245, 0.0136)), q = lens.clone().project(L.camera);
+        return { x: (q.x + 1) / 2, y: (1 - q.y) / 2, lens: lens.toArray() };
+      });
+      const hit = await p.evaluate(async ([lx, ly, lz]) => {
+        const THREE = await import('three'), L = __loft, from = L.camera.position.clone(), to = new THREE.Vector3(lx, ly, lz);
+        const rc = new THREE.Raycaster(from, to.clone().sub(from).normalize(), 0, from.distanceTo(to) + 0.02);
+        rc.camera = L.camera;
+        const shown = o => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+        const first = rc.intersectObjects(L.scene.children, true).find(h => shown(h.object));
+        return first ? first.object.name : 'nothing';
+      }, seen.lens);
+      check('seated, the webcam is in view with nothing in front of it', seen.x > 0.05 && seen.x < 0.95 && seen.y > 0 && seen.y < 0.2 && /^webcam/.test(hit), `at ${seen.x.toFixed(3)}, ${seen.y.toFixed(3)} of the view; first hit ${hit}`);
+      const ledOn = await p.evaluate(() => __loft.scene.getObjectByName('webcam_led').material.color.r);
+      await p.evaluate(() => __lights.set(false));
+      await p.waitForTimeout(4000);
+      const dark = await p.evaluate(() => ({ room: __lights.uniforms.room.value.toArray(), led: __loft.scene.getObjectByName('webcam_led').material.color.r, k: __lights.k }));
+      check('seated, its light is on, and stays lit with the lamps off while the room dims', ledOn > 1.3 && dark.led === ledOn && dark.k < 0.05 && Math.max(...dark.room) < 0.6, `light ${ledOn}, lamps off: room ${dark.room.map(v => v.toFixed(2))}, light ${dark.led}`);
+      await p.screenshot({ path: path.join(OUT, 'webcam-seated-dark.png') });
+      await p.evaluate(() => __lights.set(true));
+      await p.evaluate(() => __loft.leaveDesk());
+      await p.waitForTimeout(2500);
+      check('standing up turns its light off', (await p.evaluate(() => __loft.scene.getObjectByName('webcam_led').material.color.r)) < 0.1);
+      check('webcam: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
     }
   } finally {
     await b.close();
