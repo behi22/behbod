@@ -1,8 +1,8 @@
 // My moves: feet that stand on every stair and step and at every edge (foot IK on the house's floor plan), hips that
 // never squat walking the stairs, a real turn on the spot (the feet step round, nothing slides), and the face blur
-// still on my head while the hips drop. Desktop and a phone. With --timing (run it under the lock's timing mode) it
-// times the legs' own work and the frames instead, desktop and a phone slowed 4x; pointed at main, it times main's
-// frames the same way.
+// still on my head while the hips drop. Desktop (the stairs also with the processor slowed 2x and 4x) and a phone.
+// With --timing (run it under the lock's timing mode) it times the legs' own work and the frames instead, desktop and a
+// phone slowed 4x; pointed at main, it times main's frames the same way.
 //   LOFT_URL=http://127.0.0.1:8864 node test/moves.js [--timing]
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -295,6 +295,10 @@ async function timing(b) {
     else {
       const d = await open(b, { viewport: { width: 1280, height: 720 } });
       await stairs(d.p, 'desktop');
+      // Slow frames: a step up lifts me off the floor for more frames, and my feet must still never sink into a tread.
+      const cdp = await d.ctx.newCDPSession(d.p);
+      for (const rate of [2, 4]) { await cdp.send('Emulation.setCPUThrottlingRate', { rate }); await stairs(d.p, `desktop slowed ${rate}x`); }
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       await treads(d.p, 'desktop');
       await edges(d.p, 'desktop');
       await drops(d.p, 'desktop');

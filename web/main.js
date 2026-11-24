@@ -764,6 +764,7 @@ function forwardInput() {
 
 // ---------- walking ----------
 let spin = 0;
+const turned = {}, legsAsk = { on: false, stand: false, vx: 0, vz: 0, spin: 0 };
 function walk(dt, now) {
   // Anything that moved me from outside (the tests, leaving the desk, the respawn) moves the capsule too.
   if (phys && pos.distanceToSquared(physAt) > 1e-6) phys.place(pos);
@@ -774,7 +775,7 @@ function walk(dt, now) {
   if (mode !== 'walk') return 0;
   const speed = want.lengthSq() ? (crouchHeld ? 1.2 : run ? 5.6 : route ? 2.2 : 1.9) : 0;
   // From standing, a big change of way is a turn on the spot first (the feet step round), then the walk.
-  const turn = rollT > 0 ? null : turnTick(facing, spin, want.lengthSq() ? Math.atan2(want.x, want.z) : null, Math.hypot(vel.x, vel.z), dt);
+  const turn = rollT > 0 ? null : turnTick(facing, spin, want.lengthSq() ? Math.atan2(want.x, want.z) : null, Math.hypot(vel.x, vel.z), dt, undefined, turned);
   let target = want.multiplyScalar(speed * (turn ? turn.gate : 1));
   if (rollT > 0) { rollT -= dt; target = new THREE.Vector3(Math.sin(facing), 0, Math.cos(facing)).multiplyScalar(4.2); }
   const k = grounded ? 10 : 2.5;
@@ -890,7 +891,12 @@ function step() {
   me.animate(dt, hs, mode === 'walk' && (crouchHeld || petCrouch > performance.now() / 1000));
   // A turn on the spot cut short by sitting down or the desk does not carry on when I am back on my feet.
   if (mode !== 'walk') spin = 0;
-  legs.tick(dt, { on: mode === 'walk' && grounded && rollT <= 0 && me.root.visible, stand: !me.oneShot || me.oneShot === me.acts.Interact, vx: vel.x, vz: vel.z, spin });
+  // A step up the stairs lifts me off the floor for a few frames: the legs stay on through that, but never in a jump or a
+  // fall from higher than a stair.
+  const onFloor = grounded || (vy <= 0 && airT < 0.35 && pos.y - col.groundAt(pos.x, pos.z, pos.y) < 0.25);
+  legsAsk.on = mode === 'walk' && onFloor && rollT <= 0 && me.root.visible; legsAsk.stand = !me.oneShot || me.oneShot === me.acts.Interact;
+  legsAsk.vx = vel.x; legsAsk.vz = vel.z; legsAsk.spin = spin;
+  legs.tick(dt, legsAsk);
   me.lookAround(dt, idleT, facing, mode === 'walk', LOOKS);
   if (!desk.tick(dt, camLook, () => mode === 'desk')) {
     if (mode === 'walk' || mode === 'sit' || mode === 'rising') {

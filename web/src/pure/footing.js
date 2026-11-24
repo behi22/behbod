@@ -10,8 +10,8 @@ export function makeFooting(floors, boxes, o = FOOT) {
   // The highest floor or box top under (x, z) that is not above base by more than a step.
   function under(x, z, base) {
     let g = -Infinity;
-    for (const f of floors) if (f.y > g && f.y <= base + o.up && x >= f.x0 && x <= f.x1 && z >= f.z0 && z <= f.z1) g = f.y;
-    for (const b of boxes) if (!b.off && b.y1 > g && b.y1 <= base + o.upBox && x >= b.x0 - o.margin && x <= b.x1 + o.margin && z >= b.z0 - o.margin && z <= b.z1 + o.margin) g = b.y1;
+    for (let i = 0; i < floors.length; i++) { const f = floors[i]; if (f.y > g && f.y <= base + o.up && x >= f.x0 && x <= f.x1 && z >= f.z0 && z <= f.z1) g = f.y; }
+    for (let i = 0; i < boxes.length; i++) { const b = boxes[i]; if (!b.off && b.y1 > g && b.y1 <= base + o.upBox && x >= b.x0 - o.margin && x <= b.x1 + o.margin && z >= b.z0 - o.margin && z <= b.z1 + o.margin) g = b.y1; }
     return g;
   }
   // The floor a foot at (fx, fz) stands on, for a body standing at (bx, bz) on height base. The way from the body to
@@ -20,7 +20,7 @@ export function makeFooting(floors, boxes, o = FOOT) {
   function foot(fx, fz, bx, bz, base) {
     let g = under(bx, bz, base + 0.1);
     if (g === -Infinity || base - g > o.ledge) g = base;
-    for (const k of [0.5, 1]) {
+    for (let k = 0.5; k <= 1; k += 0.5) {
       const h = under(bx + (fx - bx) * k, bz + (fz - bz) * k, g);
       if (h === -Infinity || g - h > o.ledge) return g;
       g = h;

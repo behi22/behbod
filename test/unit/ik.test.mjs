@@ -55,3 +55,12 @@ test('an arm the same: the elbow keeps its side as the wrist goes to the keys', 
   close(s.end, [0.05, 1.05, 0.35]);
   assert.ok(s.mid[0] > 0, 'the elbow stays out to its side');
 });
+
+test('nothing new is made per frame: the answer goes into the one handed in, the same as a fresh one', () => {
+  const out = { mid: [0, 0, 0], end: [0, 0, 0], short: 0 };
+  for (const t of [[0.1, 0.3, 0.2], [0, -0.5, 0], [0, 0.25, 0]]) {
+    const fresh = reach(HIP, KNEE, ANKLE, t, [0, 0, 1]), r = reach(HIP, KNEE, ANKLE, t, [0, 0, 1], out);
+    assert.equal(r, out);
+    assert.deepEqual(r, fresh);
+  }
+});

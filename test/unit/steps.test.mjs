@@ -189,3 +189,14 @@ test('turning either way the feet take turns and swing round the body, so they n
     assert.equal(same, 0, 'the same foot stepped twice running');
   }
 });
+
+test('nothing new is made per frame: the turn and the standing feet answer in the same objects every frame', () => {
+  const out = {}, a = turnTick(0, 0, 1, 0, DT, TURN, out), b = turnTick(a.facing, a.spin, 1, 0, DT, TURN, out);
+  assert.equal(a, out);
+  assert.equal(b, out);
+  assert.deepEqual({ ...turnTick(0, 0, 1, 0, DT) }, { ...turnTick(0, 0, 1, 0, DT, TURN, {}) });
+  const s = makeStance(), first = s.tick(DT, body(0), REST, 1);
+  let same = true;
+  for (let i = 0; i < 90; i++) { const r = s.tick(DT, body(i * 0.04, 0, 0, 2.4), REST, 1); same = same && r === first && r.feet === first.feet && r.landed === first.landed; }
+  assert.ok(same);
+});
