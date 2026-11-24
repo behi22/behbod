@@ -11,8 +11,10 @@ export function piece(geo, color, at = [0, 0, 0], rot = [0, 0, 0], scale = [1, 1
   geo.deleteAttribute('uv');
   geo.applyMatrix4(M4.compose(V.set(...at), Q.setFromEuler(E.set(...rot)), S.set(...scale)));
   const p = geo.attributes.position, n = geo.attributes.normal, c = new Float32Array(p.count * 3);
+  // One colour is read once, not again for every corner.
+  const one = typeof color === 'function' ? null : new THREE.Color(color);
   for (let i = 0; i < p.count; i++) {
-    C.set(typeof color === 'function' ? color(p.getX(i), p.getY(i), p.getZ(i)) : color);
+    if (one) C.copy(one); else C.set(color(p.getX(i), p.getY(i), p.getZ(i)));
     const k = 1 - light * (1 - (0.5 + 0.35 * (0.5 + 0.5 * n.getY(i))));
     c[i * 3] = C.r * k; c[i * 3 + 1] = C.g * k * 0.98; c[i * 3 + 2] = C.b * k * 0.95;
   }

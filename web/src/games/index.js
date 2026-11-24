@@ -5,10 +5,11 @@ import { kitRow } from './kit.js';
 const GAMES = {
   // The arcade cabinet's own menu: its two games side by side.
   arcade: { title: 'ARCADE', menu: [['skills', 'Skills Shooter', 'The Claude game. Shoot the skills, dodge the bugs, catch Claude.'], ['striker', 'Striker 22', 'Five penalties to take, five to save, then sudden death.', 'kit']] },
-  // The TV's menu: join the live match in either role, or put my videos or my film on instead.
-  tv: { title: 'MATCH NIGHT', menu: [['match-striker', 'Join as striker', 'Ninety seconds up front for BEHI FC. Score what you can.', 'kit'], ['match-keeper', 'Join as keeper', 'Ninety seconds in goal. The bots are coming.', 'kit'], ['@videos', 'Watch my videos', 'Switch the TV over to my channel.'], ['@film', 'Watch my film', 'Two minutes: how I got here, from day one.']] },
+  // The TV's menu: join the live match in either role, watch the save of the week, or put my videos or my film on instead.
+  tv: { title: 'MATCH NIGHT', menu: [['match-striker', 'Join as striker', 'Ninety seconds up front for BEHI FC. Score what you can.', 'kit'], ['match-keeper', 'Join as keeper', 'Ninety seconds in goal. The bots are coming.', 'kit'], ['replay', 'Save of the week', "This week's best save, again in slow motion."], ['@videos', 'Watch my videos', 'Switch the TV over to my channel.'], ['@film', 'Watch my film', 'Two minutes: how I got here, from day one.']] },
   'match-striker': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'striker') })) },
   'match-keeper': { title: 'MATCH NIGHT', load: () => import('./match.js').then(m => ({ mount: (b, api) => m.mount(b, api, 'keeper') })) },
+  replay: { title: 'SAVE OF THE WEEK', load: () => import('./replay.js') },
   skills: { title: 'SKILLS SHOOTER', load: () => import('./skills.js') },
   striker: { title: 'STRIKER 22', load: () => import('./striker.js') },
   holochess: { title: 'HOLOCHESS', load: () => import('./holochess.js') },
