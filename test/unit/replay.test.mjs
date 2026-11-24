@@ -171,3 +171,23 @@ test('played back eased between pictures, a third as fast round the save', () =>
   assert.deepEqual([m.ball.x, m.ball.y], c.frames.at(-1).slice(0, 2));
   assert.deepEqual([frameAt(c, -1).ball.x], [c.frames[0][0]]);
 });
+
+test('a shot struck and saved in the same step is scored as one the keeper did not move for, not from an older shot', () => {
+  const m = newMatch(), rec = makeRecorder(), k = m.players.find(p => p.team === 0 && p.role === 'keeper'), f = m.players.find(p => p.team === 1 && p.num === 9);
+  // An earlier shot, with the keeper out at the far post, that goes wide: no save.
+  Object.assign(k, { x: -18.8, y: -2.4 });
+  Object.assign(m.ball, { owner: null, shot: 1, x: -10, y: 0, vx: -17, vy: 0 });
+  rec.step(m, ['shot'], 1 / 60);
+  Object.assign(m.ball, { shot: null, vx: 0 });
+  rec.step(m, [], 1 / 60);
+  // Later the keeper rushes out to a forward with the ball close in, who shoots straight into it: the real match.
+  Object.assign(k, { x: -17.6, y: 0 });
+  Object.assign(f, { x: -16.6, y: 0, cool: 0 });
+  Object.assign(m.ball, { owner: f, heldBy: f, held: 0, x: -17.05, y: 0, vx: 0, vy: 0, shot: null });
+  const ev = stepMatch(m, 1 / 60, seeded(1), { player: k, dx: 0, dy: 0 });
+  assert.ok(ev.includes('shot') && ev.includes('save') && m.ball.owner === k, JSON.stringify(ev));
+  let c = rec.step(m, ev, 1 / 60);
+  for (let i = 0; i < 120 && !c; i++) c = rec.step(m, [], 1 / 60);
+  assert.ok(c, 'the save is filmed');
+  assert.equal(c.points, savePoints({ travel: 0, line: 0, from: 20 - 17.05 }));
+});

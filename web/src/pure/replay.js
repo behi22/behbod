@@ -75,21 +75,25 @@ export function makeRecorder() {
       }
       wasShot = b.shot;
       acc += dt;
+      let out = null;
       if (acc >= 1 / HZ - 1e-9) {
         acc -= 1 / HZ;
         const f = snap(m);
         ring.push(f); if (ring.length > cap) ring.shift();
-        if (open) { open.frames.push(f); if (open.frames.length - 1 - open.save >= Math.round(AFTER * HZ)) return finish(); }
+        if (open) { open.frames.push(f); if (open.frames.length - 1 - open.save >= Math.round(AFTER * HZ)) out = finish(); }
       }
       const saved = ev.some(e => e === 'save' || e === 'bot-save') && b.owner?.role === 'keeper' && b.owner.team === 0;
-      if (saved && !open && shot) {
-        const k = b.owner, travel = Math.hypot(k.x - shot.kx, k.y - shot.ky), f = snap(m);
+      if (saved && !open) {
+        // Struck and saved in one step: the keeper had no time to move, and the ball was stopped where it was struck.
+        const k = b.owner, s = shot || { kx: k.x, ky: k.y, line: b.y, from: Math.abs(b.x + LEN) };
+        const travel = Math.hypot(k.x - s.kx, k.y - s.ky), f = snap(m);
         const frames = ring.slice();
         if (!frames.length || frames.at(-1).some((v, i) => v !== f[i])) frames.push(f);
-        open = { v: 1, points: savePoints({ travel, line: shot.line, from: shot.from }), save: frames.length - 1, minute: Math.max(0, Math.min(90, Math.floor(minute()))), goals: m.score.slice(), frames };
-        shot = null;
+        open = { v: 1, points: savePoints({ travel, line: s.line, from: s.from }), save: frames.length - 1, minute: Math.max(0, Math.min(90, Math.floor(minute()))), goals: m.score.slice(), frames };
       }
-      return null;
+      // A shot that is over (saved, scored, wide or slowed) leaves nothing behind for a later save to be scored by.
+      if (b.shot !== 1) shot = null;
+      return out;
     },
     // A save still being filmed when the match ends is kept with what there is of its last second.
     flush: () => (open ? finish() : null),
