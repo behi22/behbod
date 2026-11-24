@@ -282,6 +282,29 @@ export function makeSfx(env) {
       S.play(S.t, end + 0.1);
     },
     purr: loop('purr', 0.5),
+    // Pishi at the window: a soft, quick ek ek ek.
+    chatter(pos) {
+      const S = go(pos);
+      if (!S) return;
+      let end = S.t;
+      for (let k = 0; k < 4; k++) end = chirp(S, S.t + k * 0.13, [[0, 1700], [0.03, 2300], [0.06, 1900]], { type: 'triangle', level: 0.05 });
+      S.play(S.t, end + 0.05);
+    },
+    // Jessi howling along with the piano: a soft, rising awoo.
+    howl(pos) {
+      const S = go(pos);
+      if (!S) return;
+      const end = speak(S, S.t, [{ c: 'w', d: 1.1, f0: [[0, 430], [0.35, 640], [0.8, 600], [1, 470]], v: [[0, 350, 800], [0.4, 450, 900], [1, 380, 750]] }], { vib: 5, vibCents: 20, level: 0.14, breath: 0.1 });
+      S.play(S.t, end + 0.1);
+    },
+    // BH-22 vacuuming: one soft breath of its hum, sounded again and again while it works.
+    hum(pos) {
+      const S = go(pos);
+      if (!S) return;
+      noisy(S, 'bandpass', 950, 0.8, 0.04, 0.2, 0.45, S.t);
+      noisy(S, 'lowpass', 300, 0.7, 0.05, 0.2, 0.45, S.t);
+      S.play(S.t, S.t + 0.75);
+    },
     woof(pos) {
       const S = go(pos);
       if (!S) return;

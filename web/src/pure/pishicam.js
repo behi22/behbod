@@ -28,8 +28,9 @@ export function fovFor(at, cat) {
 
 // Where she is, in the words of the house.
 export function placeOf([x, y, z], state) {
-  if (state === 'keys') return 'desk';
-  if (state === 'window') return 'window sill';
+  if (state === 'keys' || state === 'knock') return 'desk';
+  if (state === 'window' || state === 'chatter') return 'window sill';
+  if (state === 'keywalk') return 'piano';
   if (state === 'perch') return 'perch by the fire';
   if (z > 0.6 && x < 2.2) return y < 13.6 ? 'wall shelves' : 'cat tree';
   if ((x > 11.3 && y < 6) || (x > 15 && y < 7)) return 'studio';
@@ -46,5 +47,8 @@ const DOING = {
   window: 'watching outside', towindow: 'off to the window', climb: 'climbing', perch: 'asleep', treesit: 'hiding up high',
   flee: 'running off', wander: 'walking', down: 'jumping down', todesk: 'off to the desk', keys: 'walking on the keyboard',
   play: 'playing', treat: 'eating a treat', petted: 'being petted', totreat: 'off for a treat',
+  stretch: 'stretching', tosun: 'off to a sunny spot', sunnap: 'asleep in the sun', topiano: 'off to the piano',
+  keywalk: 'walking on the piano keys', chatter: 'chattering at the birds', toseat: 'off to steal a seat',
+  seat: 'asleep on your seat', stalk: 'stalking the mouse droid', zoomies: 'racing around', knock: 'knocking a pen off the desk',
 };
 export const doingOf = (state, grooming = false) => (state === 'sit' ? (grooming ? 'grooming' : 'sitting') : DOING[state] || 'around');
