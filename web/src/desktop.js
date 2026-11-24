@@ -33,6 +33,8 @@ const CSS = `
 .dt-term div { height: ${STYLE.termLine}px; overflow: hidden; }
 .dt-term .in { color: ${STYLE.accent}; }
 .dt-term .caret { display: inline-block; width: .6em; height: 1em; vertical-align: -.15em; background: ${STYLE.accent}; animation: dt-blink 1s steps(1) infinite; }
+.dt-term .caret.over { position: relative; margin-right: -.6em; line-height: 1em; vertical-align: baseline; color: ${STYLE.window}; }
+.dt-term .ghost { color: ${STYLE.dim}; }
 .dt-term a { color: inherit; text-decoration: underline rgba(216,224,238,.4); text-underline-offset: 4px; cursor: pointer; }
 .dt-term a:hover { text-decoration-color: currentColor; }
 @keyframes dt-blink { 50% { opacity: 0; } }
@@ -269,8 +271,10 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
         if (url) { const a = el('a', '', l); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; d.append(a); }
         d.style.color = l.startsWith('$') ? STYLE.accent : STYLE.ink; box2.append(d);
       }
-      const inp = el('div', 'in', '$ ' + t.input);
-      if (t.focus) inp.append(el('span', 'caret'));
+      const inp = el('div', 'in', '$ ' + t.input), rest = D.ghost;
+      // The rest of the command starts at the cursor, as on the monitor: the cursor's block lies over its first letter.
+      if (t.focus) inp.append(rest ? el('span', 'caret over', rest[0]) : el('span', 'caret'));
+      if (rest) inp.append(el('span', 'ghost', rest));
       box2.append(inp);
       e.append(box2);
       e.addEventListener('click', () => tapTerminal?.());
