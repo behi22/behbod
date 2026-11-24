@@ -163,7 +163,12 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
       const { p, errs } = await open(b, 'ultra');
       await p.evaluate(() => {
         window.__workers = { made: 0, ended: 0 };
-        window.Worker = class { constructor() { __workers.made++; } postMessage() {} terminate() { __workers.ended++; } };
+        // Only the land's workers are counted: others made meanwhile (the game-day read) have their own time limits.
+        window.Worker = class {
+          constructor(url) { this.land = /terrainworker/.test(String(url)); if (this.land) __workers.made++; }
+          postMessage() {}
+          terminate() { if (this.land) __workers.ended++; }
+        };
       });
       const reach = (to, quality) => p.evaluate(([to, quality]) => new Promise(done => {
         const t = performance.now();
