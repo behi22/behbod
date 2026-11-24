@@ -331,7 +331,7 @@ let route = null;
 const things = makeInteract(meta.interact || []);
 things.items.push(...shah.spots);
 things.items.push(...hello.spots);
-const keeper = makeKeeper(scene, meta, { sfx: audio.sfx, toast, store, coarse, walkTo }); things.items.push(...keeper.spots); window.__keeper = keeper;
+const keeper = makeKeeper(scene, meta, { sfx: audio.sfx, toast, store, coarse, walkTo, creatures }); things.items.push(...keeper.spots); window.__keeper = keeper;
 things.items.push(...lights.spots);
 const spots = makeSpots({ scene, meta, panels, desktop: screens.desktop, adopt: o => lights.adopt(o), renderer, coarse }); things.items.push(...spots.items);
 // What the residents need to know about me each frame.
