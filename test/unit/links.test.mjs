@@ -7,21 +7,20 @@ import { PROJECTS, GITHUB } from '../../web/src/pure/desktop.js';
 const OWN = {
   'github.com': p => p.split('/')[1] === 'behi22',
   'behi22.github.io': () => true,
-  'www.linkedin.com': p => p === '/in/behbod-babai/',
   'aic-voice-microsite.vercel.app': () => true,
   'www.loom.com': p => p.startsWith('/share/'),
 };
-// The work GitHub in any spelling, and the work's names. His LinkedIn handle is spelled like the work account, so only that exact path may carry it.
+// The work GitHub in any spelling, and the work's names.
 const WORK = /behbod[-_.]?babai|alebex|alexic|bexai/i;
 
 test('the link commands go to his own accounts and projects only, over https, never the work GitHub', () => {
-  assert.deepEqual(Object.keys(LINKS), ['github', 'linkedin', 'meet-bex', 'profile-art', 'aic-voice-microsite', 'visitor-classifier']);
+  assert.deepEqual(Object.keys(LINKS), ['github', 'meet-bex', 'profile-art', 'aic-voice-microsite', 'visitor-classifier']);
   for (const [name, { title, url }] of Object.entries(LINKS)) {
     const u = new URL(url);
     assert.equal(u.protocol, 'https:', name);
     assert.ok(OWN[u.hostname]?.(u.pathname), `${name}: ${url}`);
     assert.equal(u.username + u.password + u.port + u.search + u.hash, '', `${name}: ${url}`);
-    if (u.hostname !== 'www.linkedin.com') assert.doesNotMatch(decodeURIComponent(u.href), WORK, `${name}: ${url}`);
+    assert.doesNotMatch(decodeURIComponent(u.href), WORK, `${name}: ${url}`);
     assert.ok(title && !/[\u2014\u2013]/.test(title) && !WORK.test(title), name);
   }
   assert.equal(LINKS.github.url, GITHUB);

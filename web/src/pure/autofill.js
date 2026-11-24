@@ -1,7 +1,7 @@
 // The terminal's autofill: the commands a half-typed line can still become, best first, and Tab's turn through them.
 
 // The commands visitors reach for most, in that order; the rest follow from a to z.
-export const OFTEN = ['help', 'whoami', 'ls', 'projects', 'github', 'linkedin', 'contact', 'clear', 'music', 'scene', 'lights', 'print', 'film', 'deploy', 'exit'];
+export const OFTEN = ['help', 'whoami', 'ls', 'projects', 'github', 'contact', 'clear', 'music', 'scene', 'lights', 'print', 'film', 'deploy', 'exit'];
 
 // Every command in `names` that the typed line is the start of (not the line itself), best first. Leading spaces are
 // ignored; a line with a space in it is past the command's name, so it gets none.

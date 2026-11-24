@@ -91,7 +91,7 @@ export function makeCanvases(meta, opts = {}) {
   desk.games = makeDeskGames({ store: local, sfx: gameSfx, onEvent: name => { if (name === 'over') changed(); } });
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
-  const SHOWN = ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'github', 'linkedin', 'clear', 'exit'];
+  const SHOWN = ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'github', 'clear', 'exit'];
   // What autofill offers: help's list, help itself and the projects; the hidden ones stay hidden.
   const offered = () => ['help', ...SHOWN, ...Object.keys(EXTRA), ...Object.keys(LINKS)];
   const CMDS = {

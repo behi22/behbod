@@ -15,9 +15,9 @@ const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch:
 const OUTSIDE = /youtube|google|gstatic|ytimg|ggpht|doubleclick|open-meteo/;
 const GRAPH = /^https:\/\/behi22\.github\.io\/profile-art\/data\/contrib\.json/;
 const CHROME = { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] };
-const LINES = { GitHub: 'https://github.com/behi22', LinkedIn: 'https://www.linkedin.com/in/behbod-babai/', 'Meet Bex': 'https://behi22.github.io/meet-bex/',
+const LINES = { GitHub: 'https://github.com/behi22', 'Meet Bex': 'https://behi22.github.io/meet-bex/',
   'Profile art': 'https://behi22.github.io/profile-art/', 'Voice microsite': 'https://aic-voice-microsite.vercel.app/', 'Visitor classifier': 'https://www.loom.com/share/84359f4e50ee41fc97b21f921d9aa4a0' };
-const LINKS = { github: 'GitHub', linkedin: 'LinkedIn', 'meet-bex': 'Meet Bex', 'profile-art': 'Profile art', 'aic-voice-microsite': 'Voice microsite', 'visitor-classifier': 'Visitor classifier' };
+const LINKS = { github: 'GitHub', 'meet-bex': 'Meet Bex', 'profile-art': 'Profile art', 'aic-voice-microsite': 'Voice microsite', 'visitor-classifier': 'Visitor classifier' };
 const TARGETS = new Set(Object.values(LINES));
 
 function watch(p, errs) {
@@ -93,10 +93,10 @@ async function popupFrom(p, act) {
       check('Tab again goes round the other matches, most used first, and back to the first; Shift+Tab goes back', turn.join('|') === 'projects|print|postit|profile-art|postit|print|projects', turn.join(' | '));
       s = await press('Shift+Tab');
       check('Shift+Tab from the first goes round to the last', s.input === 'profile-art' && s.active, JSON.stringify(s));
-      s = await typeIn('lin');
+      s = await typeIn('fer');
       const before = s.shown;
       s = await press('ArrowRight');
-      check('Right Arrow at the end of the line takes the suggestion', before === 'kedin' && s.input === 'linkedin' && s.shown === '', `${before} -> ${JSON.stringify(s)}`);
+      check('Right Arrow at the end of the line takes the suggestion', before === 'dowsi' && s.input === 'ferdowsi' && s.shown === '', `${before} -> ${JSON.stringify(s)}`);
       s = await typeIn('zzz');
       const none = s.shown === '' && s.model === '' && !s.caretOver;
       s = await press('Tab');
@@ -124,7 +124,7 @@ async function popupFrom(p, act) {
       const keep = await p.evaluate(() => {
         const d = __loft.screens.desktop, box = document.getElementById('cmd');
         const send = (at, o) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...o }); at.dispatchEvent(e); return e.defaultPrevented; };
-        d.term.input = 'lin'; d.changed();
+        d.term.input = 'fer'; d.changed();
         const held = [['r', { ctrlKey: true }], ['l', { metaKey: true }], ['ArrowRight', { altKey: true }], ['ArrowLeft', { altKey: true }], ['Tab', { ctrlKey: true }]]
           .filter(([key, m]) => send(document.body, { key, ...m })).map(([key, m]) => `${Object.keys(m)[0]}+${key}`);
         const desk = d.term.input;
@@ -133,14 +133,14 @@ async function popupFrom(p, act) {
         const canAltGr = new KeyboardEvent('keydown', { modifierAltGraph: true }).getModifierState('AltGraph');
         const altGr = canAltGr ? [send(document.body, { key: '@', ctrlKey: true, altKey: true, modifierAltGraph: true }), d.term.input] : 'untestable here';
         d.term.input = ''; d.changed();
-        box.value = 'lin'; box.dispatchEvent(new Event('input')); box.setSelectionRange(3, 3);
+        box.value = 'fer'; box.dispatchEvent(new Event('input')); box.setSelectionRange(3, 3);
         const boxHeld = [{ altKey: true }, { ctrlKey: true }, { metaKey: true }].filter(m => send(box, { key: 'ArrowRight', ...m })).map(m => Object.keys(m)[0]);
         const boxKept = box.value, plain = [send(box, { key: 'ArrowRight' }), box.value];
         box.value = ''; box.dispatchEvent(new Event('input'));
         return { held, desk, altGr, boxHeld, boxKept, plain };
       });
       check('with Ctrl, Alt or Cmd held a key is left to the browser, at the desk and in the command box; AltGr still types; a plain Right Arrow still takes the suggestion',
-        !keep.held.length && keep.desk === 'lin' && (typeof keep.altGr === 'string' || (keep.altGr[0] && keep.altGr[1] === '@')) && !keep.boxHeld.length && keep.boxKept === 'lin' && keep.plain[0] && keep.plain[1] === 'linkedin', JSON.stringify(keep));
+        !keep.held.length && keep.desk === 'fer' && (typeof keep.altGr === 'string' || (keep.altGr[0] && keep.altGr[1] === '@')) && !keep.boxHeld.length && keep.boxKept === 'fer' && keep.plain[0] && keep.plain[1] === 'ferdowsi', JSON.stringify(keep));
       await p.evaluate(() => __loft.leaveDesk()); await p.waitForTimeout(400);
       s = await line();
       check('standing up, the faint rest goes', s.model === '' && s.mode !== 'desk', JSON.stringify(s));
@@ -169,19 +169,20 @@ async function popupFrom(p, act) {
       // Run with no key press behind it (the press long gone), the browser would block the tab: none is tried, and the
       // line is the link to click.
       const n0 = pops;
-      await p.evaluate(() => new Promise(r => setTimeout(() => { __loft.screens.run('linkedin', () => {}); r(); }, 6500)));
+      await p.evaluate(() => new Promise(r => setTimeout(() => { __loft.screens.run('github', () => {}); r(); }, 6500)));
       await p.waitForTimeout(1200);
       const said = await lastLine(p), link = await lastLink(p);
-      check('with no key press to open it, no tab is tried and the line shows the link to click', pops === n0 && said === 'The new tab was blocked. Click here to open LinkedIn.' && link?.href === LINES.LinkedIn && link.rel === 'noopener noreferrer',
+      check('with no key press to open it, no tab is tried and the line shows the link to click', pops === n0 && said === 'The new tab was blocked. Click here to open GitHub.' && link?.href === LINES.GitHub && link.rel === 'noopener noreferrer',
         JSON.stringify({ tried: pops - n0, said, link }));
       await p.screenshot({ path: path.join(OUT, 'links-desk.png') });
       const clicked = await popupFrom(p, () => p.click('.dt-term a >> nth=-1')).catch(e => ({ error: e.message.slice(0, 80) }));
-      check('clicking that line opens the page in a new tab', clicked.url === LINES.LinkedIn && clicked.opener === true, JSON.stringify(clicked));
+      check('clicking that line opens the page in a new tab', clicked.url === LINES.GitHub && clicked.opener === true, JSON.stringify(clicked));
       await p.keyboard.type('clear', { delay: 20 }); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
       const cleared = await p.evaluate(() => ({ lines: __loft.screens.desktop.term.lines.length, links: __loft.screens.desktop.term.links.size, a: document.querySelectorAll('.dt-term a').length }));
       check('clear takes the link lines with it', cleared.lines === 0 && cleared.links === 0 && cleared.a === 0, JSON.stringify(cleared));
       const help = await p.evaluate(() => { __loft.screens.run('help', () => {}); return __loft.screens.desktop.term.lines.slice(-4); });
-      check('help lists github and linkedin, every line fitting', help.join(' ').includes('github') && help.join(' ').includes('linkedin') && help.every(l => l.length <= 66), help.join(' / '));
+      const linkedin = await p.evaluate(() => __loft.screens.commands().includes('linkedin'));
+      check('help lists github and not linkedin (held for now), every line fitting, and autofill does not offer linkedin', help.join(' ').includes('github') && !help.join(' ').includes('linkedin') && !linkedin && help.every(l => l.length <= 66), help.join(' / '));
       check('links: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }

@@ -4,13 +4,13 @@ import { suggest, ghost, newFill, step, OFTEN } from '../../web/src/pure/autofil
 import { LINKS } from '../../web/src/pure/links.js';
 
 // The terminal's offer as it stands in the house: help, help's list, the desk toys main.js adds, the link commands.
-const NAMES = ['help', 'whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'github', 'linkedin', 'clear', 'exit',
+const NAMES = ['help', 'whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'github', 'clear', 'exit',
   'achievements', 'hood', 'shoo', 'deploy', 'scene', 'lights', 'coolant', 'fan', 'print', 'music', 'film', ...Object.keys(LINKS)];
 
 test('only commands the line is the start of, the most used first and then a to z', () => {
   assert.deepEqual(suggest('p', NAMES), ['projects', 'print', 'postit', 'profile-art']);
   assert.deepEqual(suggest('c', NAMES), ['contact', 'clear', 'coolant']);
-  assert.deepEqual(suggest('l', NAMES), ['ls', 'linkedin', 'lights']);
+  assert.deepEqual(suggest('l', NAMES), ['ls', 'lights']);
   assert.deepEqual(suggest('f', NAMES), ['film', 'fan', 'ferdowsi']);
   assert.deepEqual(suggest('pr', NAMES), ['projects', 'print', 'profile-art']);
   assert.deepEqual(suggest('git', NAMES), ['github']);

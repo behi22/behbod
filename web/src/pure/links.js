@@ -6,7 +6,6 @@ const TITLES = { 'meet-bex': 'Meet Bex', 'profile-art': 'Profile art', 'aic-voic
 
 export const LINKS = {
   github: { title: 'GitHub', url: GITHUB },
-  linkedin: { title: 'LinkedIn', url: 'https://www.linkedin.com/in/behbod-babai/' },
   ...Object.fromEntries(Object.keys(TITLES).map(id => [id, { title: TITLES[id], url: PROJECTS[id].site }])),
 };
 
