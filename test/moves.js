@@ -103,14 +103,20 @@ async function treads(p, label, every = 1, ways = [Math.PI, 0]) {
   const flat = await p.evaluate(() => __loft.me.bones.pelvis.getWorldPosition(__loft.camera.position.clone()).y - __loft.pos.y);
   for (const toward of ways) {
     let sole = 0, hips = 0, n = 0, at = '';
+    const restless = [];
     for (let k = 0; k < list.length; k += every) {
       await standAt(p, [0.75, list[k][0], list[k][1]], toward, 1300);
+      // Once the feet have stepped in under me (put back on the spot, they may still be on their way), they and I stay put.
+      await p.waitForFunction(() => window.__legs.state.feet.every(f => !f.stepping), null, { timeout: 3000 }).catch(() => {});
+      await record(p, true); await p.waitForTimeout(600);
+      const still = await record(p, false), moved = Math.hypot(still[still.length - 1].x - still[0].x, still[still.length - 1].z - still[0].z);
+      if (moved > 0.002 || still.some(row => row.legs.feet.some(f => f.stepping))) restless.push(k + 1);
       const r = await p.evaluate(() => ({ feet: __feet(), pelvis: __loft.me.bones.pelvis.getWorldPosition(__loft.camera.position.clone()).y }));
       const c = Math.max(...r.feet.map(f => Math.abs(clearance(f)))), h = Math.abs(r.pelvis - Math.min(...r.feet.map(f => f.floor)) - flat);
       if (c > sole || h > hips) at = `stair ${k + 1}: soles ${r.feet.map(f => (clearance(f) * 100).toFixed(1)).join(' and ')} cm off, pelvis ${((r.pelvis - Math.min(...r.feet.map(f => f.floor)) - flat) * 100).toFixed(1)} cm`;
       sole = Math.max(sole, c); hips = Math.max(hips, h); n++;
     }
-    check(`${label}: standing on each of ${n} stairs facing ${toward ? 'up' : 'down'}, every sole on its tread and the hips over the lower foot`, sole < 0.03 && hips < 0.04, `worst sole ${(sole * 100).toFixed(1)} cm off, worst pelvis ${(hips * 100).toFixed(1)} cm (${at})`);
+    check(`${label}: standing on each of ${n} stairs facing ${toward ? 'up' : 'down'}, every sole on its tread and the hips over the lower foot, the feet still`, sole < 0.03 && hips < 0.04 && !restless.length, `worst sole ${(sole * 100).toFixed(1)} cm off, worst pelvis ${(hips * 100).toFixed(1)} cm (${at})${restless.length ? `, me or my feet still moving on stairs ${restless.join(' ')}` : ''}`);
   }
 }
 
