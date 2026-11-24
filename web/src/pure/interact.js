@@ -1,5 +1,6 @@
 // Things you walk up to and press E on. Positions come in Blender axes; `nearest` takes my position in three's axes
-// (x, height, -north) and returns the closest thing in reach on my own floor, or null.
+// (x, height, -north) and returns the closest thing in reach on my own floor, or null. A fixed spot in reach wins over
+// a `moving` one (the keepy-up ball can come to rest beside one), however near that is.
 export function makeInteract(list) {
   const items = list.map(i => ({ ...i, x: i.at[0], y: i.at[2], z: -i.at[1] }));
   return {
@@ -9,7 +10,8 @@ export function makeInteract(list) {
       for (const it of items) {
         if (Math.abs(p.y - it.y) > 1.0) continue;
         const d = Math.hypot(p.x - it.x, p.z - it.z);
-        if (d <= it.r && d < bd) { bd = d; best = it; }
+        if (d > it.r) continue;
+        if (!best || (!!it.moving === !!best.moving ? d < bd : !it.moving)) { bd = d; best = it; }
       }
       return best;
     },

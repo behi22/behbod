@@ -12,6 +12,14 @@ test('the nearest thing in reach wins', () => {
   assert.equal(it.nearest({ x: 1.0, y: 0, z: 0 }).id, 'b');
 });
 
+test('a fixed spot in reach wins over a moving one, even a nearer one: the keepy-up ball resting by the penalties spot', () => {
+  const it = makeInteract([{ id: 'penalties', at: [8.9, 2.25, 0], r: 0.6 }]);
+  it.items.push({ id: 'keepy', at: [9.2, 2.25, 0], x: 9.2, y: 0, z: -2.25, r: 1.1, moving: true });
+  assert.equal(it.nearest({ x: 9.4, y: 0, z: -2.25 }).id, 'penalties');
+  // Out of the spot's reach, the ball is there to kick.
+  assert.equal(it.nearest({ x: 10, y: 0, z: -2.25 }).id, 'keepy');
+});
+
 test('nothing out of reach, and nothing on another floor', () => {
   const it = makeInteract([{ id: 'desk', at: [5, 2, 0.45], r: 1.2 }, { id: 'book', at: [5, 2, 2.9], r: 1.2 }]);
   assert.equal(it.nearest({ x: 0, y: 0, z: 0 }), null);

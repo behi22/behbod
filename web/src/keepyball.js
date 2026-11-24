@@ -43,7 +43,7 @@ export function makeKeepyBall(scene, meta, { sfx = null, toast = () => {}, store
   shadow.rotation.x = -Math.PI / 2; shadow.renderOrder = 1;
   scene.add(root, shadow);
 
-  const spot = { id: 'keepy', label: 'Keep the ball up', at: [0, 0, 0], x: 0, y: 0, z: 0, r: NEAR };
+  const spot = { id: 'keepy', label: 'Keep the ball up', at: [0, 0, 0], x: 0, y: 0, z: 0, r: NEAR, moving: true };
   const where = new THREE.Vector3(), spin = new THREE.Vector3(), dq = new THREE.Quaternion(), pick = new THREE.Sphere(new THREE.Vector3(), R * (coarse ? 2.4 : 1.6));
   let still = false, waitT = 0;
   function show() {
