@@ -1186,12 +1186,15 @@ for po, _, parts_ in PANTS_VARIANTS:
         rig_to(o, po)
 for o in shoe_parts:
     rig_to(o, None)
-for hu in (hood_up, hood_up_tv):
+# The hood follows the head above the collar. The TV case is a rigid box on the head, so its hood is all the head's from
+# the collar's top edge up: with its lower part on the neck, the case's lower corners came through it whenever the head
+# turned or nodded, crouched most of all (a light patch at the hood's lower edge).
+for hu, lo, hi in ((hood_up, COLLAR_TOP + 0.01, COLLAR_TOP + 0.11), (hood_up_tv, COLLAR_TOP - 0.01, COLLAR_TOP + 0.01)):
     rig_to(hu, None)
     hu.vertex_groups.new(name='neck_01')
     hu.vertex_groups.new(name='Head')
     for v in hu.data.vertices:
-        wh = max(0.0, min(1.0, (v.co.z - COLLAR_TOP - 0.01) / 0.1))
+        wh = max(0.0, min(1.0, (v.co.z - lo) / (hi - lo)))
         hu.vertex_groups['Head'].add([v.index], wh, 'REPLACE')
         hu.vertex_groups['neck_01'].add([v.index], 1 - wh, 'REPLACE')
 

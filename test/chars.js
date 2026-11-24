@@ -117,6 +117,58 @@ async function desktop(b) {
   }
   check('every head draws, and the TV sits on its own neck with no ring', necksOk, rows.join(' '));
 
+  // The TV head under its hood: no corner of the case comes through the hood, standing, walking, running or crouched,
+  // with the head turned and nodded as far as it looks round (seen as a light patch at the hood's lower edge from low
+  // angles).
+  await p.evaluate(() => __loft.me.setLook({ head: 'tv', hood: true }));
+  await p.waitForTimeout(100);
+  const tvHood = await p.evaluate(async () => {
+    const THREE = await import('three');
+    const me = __loft.me, head = me.bones.Head, up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), ray = new THREE.Raycaster();
+    const meshes = name => { const out = []; __loft.scene.getObjectByName(name).traverse(o => { if (o.isSkinnedMesh) out.push(o); }); return out; };
+    const tv = meshes('V3_head_tv'), hood = meshes('V3_hood_up_tv')[0];
+    const saved = new Map();
+    me.root.traverse(o => { if (o.isBone) saved.set(o, [o.position.clone(), o.quaternion.clone(), o.scale.clone()]); });
+    let worst = 0, poses = 0, at = '';
+    for (const [speed, steps, low] of [[0, 1], [1.9, 9], [5.6, 7], [0, 6, true], [1.2, 5, true]]) for (let k = 0; k < steps; k++) {
+      me.animate(k ? 0.07 : 0, speed, !!low);
+      const base = head.quaternion.clone();
+      for (const [yaw, pitch] of [[0, 0], [0.75, 0], [-0.75, 0], [0, 0.28], [0, -0.28], [0.6, 0.25], [-0.6, 0.25], [0.6, -0.25], [-0.6, -0.25]]) {
+        head.quaternion.copy(base);
+        me.root.updateMatrixWorld(true);
+        const facing = me.root.rotation.y, right = new THREE.Vector3(Math.cos(facing), 0, -Math.sin(facing));
+        const qp = head.parent.getWorldQuaternion(new THREE.Quaternion()), qw = head.getWorldQuaternion(new THREE.Quaternion());
+        const look = new THREE.Quaternion().setFromAxisAngle(up, yaw).multiply(new THREE.Quaternion().setFromAxisAngle(right, -pitch));
+        head.quaternion.copy(qp.invert().multiply(look.multiply(qw)));
+        me.root.updateMatrixWorld(true);
+        // The hood as it is skinned now, as a plain surface to cast rays at.
+        const P = hood.geometry.attributes.position, pts = new Float32Array(P.count * 3);
+        for (let i = 0; i < P.count; i++) { hood.getVertexPosition(i, v).applyMatrix4(hood.matrixWorld); pts.set([v.x, v.y, v.z], i * 3); }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pts, 3)); g.setIndex(hood.geometry.index);
+        const H = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+        const centre = me.headNow();
+        for (const part of tv) {
+          const Q = part.geometry.attributes.position;
+          for (let i = 0; i < Q.count; i++) {
+            part.getVertexPosition(i, v).applyMatrix4(part.matrixWorld);
+            const d = v.clone().sub(centre), L = d.length();
+            ray.set(centre, d.normalize());
+            const hits = ray.intersectObject(H);
+            // Seen through the face opening (no fabric on the way) is the TV's face, as it should be.
+            if (hits.length && L - hits[hits.length - 1].distance > worst) { worst = L - hits[hits.length - 1].distance; at = `${speed} m/s${low ? ' crouched' : ''}, look ${yaw} ${pitch}`; }
+          }
+        }
+        g.dispose(); poses++;
+      }
+      // Each look is laid on the animated pose afresh, never on the last look.
+      head.quaternion.copy(base);
+    }
+    me.animate(1, 0, false);
+    for (const [o, [p, q, s]] of saved) { o.position.copy(p); o.quaternion.copy(q); o.scale.copy(s); }
+    return { worst, poses, at };
+  });
+  check('the TV head\'s case never comes through its hood, however the head turns', tvHood.worst < 0.002, `${tvHood.poses} poses, deepest ${(tvHood.worst * 1000).toFixed(1)} mm${tvHood.worst >= 0.002 ? ' (' + tvHood.at + ')' : ''}`);
+
   // The model's own shapes, measured in the page.
   const shape = await p.evaluate(async () => {
     const THREE = await import('three');
