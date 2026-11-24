@@ -76,8 +76,9 @@ const onGun = p => p.evaluate(() => {
     const opened = await p.evaluate(() => ({ open: __loft.range.bench?.open, state: __loft.range.state, mask: __loft.camera.layers.mask, card: !!document.querySelector('.rg-card'), gs: !!document.querySelector('.gs') }));
     check('the bench opens on the gun in the hand, the stage card gone', opened.open && opened.state === 'smith' && !opened.card && opened.gs, JSON.stringify(opened));
     check('the house is not drawn behind the bench', opened.mask === 0);
-    await p.waitForFunction(() => performance.getEntriesByType('resource').some(r => /kit\.glb/.test(r.name)), null, { timeout: 30000 });
-    check('the attachment kit is fetched when the bench opens', true);
+    // Watched on the wire: the page's own list of what it fetched stops at 250 entries, and the house can pass that.
+    for (const by = Date.now() + 30000; !files.includes('kit') && Date.now() < by;) await p.waitForTimeout(200);
+    check('the attachment kit is fetched when the bench opens', files.includes('kit'), JSON.stringify(files));
     await p.screenshot({ path: `${OUT}/bench-pistol.png` });
     const slots = await p.evaluate(() => [...document.querySelectorAll('.gs-slot small')].map(x => x.textContent));
     check('six slots: muzzle, optic, rail, magazine, camo, charm', slots.join() === 'Muzzle,Optic,Rail,Magazine,Camo,Charm', slots.join());
