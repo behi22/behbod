@@ -4,6 +4,8 @@ import { newMatch, stepMatch } from '../pure/match.js';
 import { drawMatch, makeCamera, follow } from './matchdraw.js';
 import { matchKits } from './pure/kits.js';
 import { kitId } from './kit.js';
+import { makeRecorder } from '../pure/replay.js';
+import { weekSave } from '../weeksave.js';
 import { h, button, fit, endCard, injectStyles, DIM } from './ui.js';
 
 const STYLE = { id: 'match', css: `
@@ -35,7 +37,9 @@ export function mount(body, api, mode = 'striker') {
     h('div', { class: 'g-row' }, keeper ? [hold('Throw', 'pass'), hold('Dive', 'dive')] : [hold('Pass', 'pass'), hold('Shoot', 'shoot')]));
   body.append(h('div', { class: 'g-mt-hud' }, tip, tally), stage, pad);
 
-  let m, you, cam, left, goals, saves, conceded, over, raf = 0, last = performance.now(), acc = 0, card = null, view = null, banner = '', bannerT = 0;
+  let m, you, cam, left, goals, saves, conceded, over, raf = 0, last = performance.now(), acc = 0, card = null, view = null, banner = '', bannerT = 0, rec = null;
+  // A save as keeper is filmed, and kept as my save of the week if it is my best this week.
+  const keep = clip => { if (clip) weekSave.offer(clip); };
   const keys = new Set();
   // Switching away mid-press never sends the key up, so let go of everything when the page loses focus.
   const release = () => { keys.clear(); for (const k of Object.keys(held)) held[k] = false; };
@@ -47,7 +51,7 @@ export function mount(body, api, mode = 'striker') {
     m.aggro = keeper ? [0.6, 1.5] : [1.15, 0.9];
     you = m.players.find(p => p.team === 0 && (keeper ? p.role === 'keeper' : p.num === 22));
     cam = makeCamera(); cam.x = keeper ? -10 : 0;
-    left = TIME; goals = 0; saves = 0; conceded = 0; over = false;
+    left = TIME; goals = 0; saves = 0; conceded = 0; over = false; rec = keeper ? makeRecorder() : null;
     show();
   }
   function show() {
@@ -55,6 +59,7 @@ export function mount(body, api, mode = 'striker') {
   }
   function finish() {
     over = true;
+    keep(rec?.flush());
     const good = keeper ? saves >= 3 && conceded <= 1 : goals >= 2;
     if (good) api.emit('win', { mode });
     const text = keeper ? `You saved ${saves} and let in ${conceded}.` : `You scored ${goals} in ninety seconds.`;
@@ -78,7 +83,9 @@ export function mount(body, api, mode = 'striker') {
         const dy = (pressed('ArrowUp', 'KeyW') || held.up ? 1 : 0) - (pressed('ArrowDown', 'KeyS') || held.down ? 1 : 0);
         const act = pressed('Space') || held.shoot || held.dive;
         const control = { player: you, dx, dy, shoot: !keeper && act, pass: pressed('ShiftLeft', 'ShiftRight', 'KeyE') || held.pass, dive: keeper && act };
-        for (const e of stepMatch(m, STEP, Math.random, control)) {
+        const ev = stepMatch(m, STEP, Math.random, control);
+        keep(rec?.step(m, ev, STEP, () => ((TIME - left) / TIME) * 90));
+        for (const e of ev) {
           if (e === 'save') { saves++; banner = 'SAVED!'; bannerT = 1.2; }
           if (e.goal === 0 && e.by === you) { goals++; api.emit('goal', { by: 'you' }); banner = 'GOAL!'; bannerT = 1.6; }
           if (e.goal === 1) { conceded += keeper ? 1 : 0; banner = 'GOAL FOR BOTS'; bannerT = 1.4; }
@@ -106,6 +113,6 @@ export function mount(body, api, mode = 'striker') {
       else if (!['Space', 'ShiftLeft', 'ShiftRight', 'KeyE'].includes(e.code)) keys.add(e.code);
     },
     keyup(e) { keys.delete(e.code); },
-    destroy() { cancelAnimationFrame(raf); ro.disconnect(); removeEventListener('blur', release); },
+    destroy() { cancelAnimationFrame(raf); ro.disconnect(); removeEventListener('blur', release); if (!over) keep(rec?.flush()); },
   };
 }

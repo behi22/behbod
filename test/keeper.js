@@ -1,7 +1,8 @@
 // The keeper's corner and the desk shelf in a real Chrome, at a computer and on phones: the keepy-up ball by keyboard,
-// click and tap, the ball staying in its corner, the three figures in place of the baked pegs, lamps on and off.
+// click and tap, the ball staying in its corner, the three figures in place of the baked pegs, lamps on and off, and the
+// save of the week on the TV menu (the house's, the visitor's own when better, an old week's ignored, storage blocked).
 //   LOFT_URL=http://127.0.0.1:8852 node test/keeper.js [outdir] [parts]
-// Parts: shelf, shelfphone, ball, tap, phone, bounds, lamps, nostore, and
+// Parts: shelf, shelfphone, ball, tap, phone, bounds, lamps, nostore, replay, replayown, replayphone, keepersave, and
 // cost (it times frames: run it alone, under `timing`; SMOOTH_CPU=4 slows the processor; against a version without the
 // corner it prints the house's own frames).
 const fs = require('fs'), path = require('path');
@@ -9,7 +10,7 @@ const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/keeper';
-const ONLY = process.argv[3] || 'shelf,shelfphone,ball,tap,phone,bounds,lamps,nostore';
+const ONLY = process.argv[3] || 'shelf,shelfphone,ball,tap,phone,bounds,lamps,nostore,replay,replayown,replayphone,keepersave';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY.split(',').includes(part);
 const b2t = (x, y, z) => ({ x, y: z, z: -y });
@@ -386,10 +387,180 @@ const CORNER_EYE = [[9.4, 3.9, 0.55], [10.25, 3.62, 0.1]];
       await ctx.close();
     }
 
+    // ---------- the save of the week ----------
+    // The house's save for this week, worked out in the page from the same pure code, its points made `points`, kept as
+    // the visitor's own for week `week` (default this one). Returns the house's own points.
+    const keepOwn = (p, points, week = null) => p.evaluate(async ([points, week]) => {
+      const R = await import('./src/pure/replay.js'), s = R.makeSearch(R.weekKey());
+      while (!s.run(500));
+      localStorage.setItem(R.KEY, R.pack({ ...s.best, points, week: week || R.weekKey() }));
+      return s.best.points;
+    }, [points, week]);
+    const openReplay = async p => {
+      await p.evaluate(() => __loft.act('tv'));
+      await p.waitForSelector('.g-menu');
+      await p.locator('.g-card', { hasText: 'Save of the week' }).locator('button').click();
+      await p.waitForFunction(() => document.querySelector('.g-title')?.textContent === 'SAVE OF THE WEEK', null, { timeout: 10000 });
+    };
+    const replayLine = p => p.evaluate(() => document.querySelector('.g-rp-hud')?.textContent || '');
+    const playing = (p, timeout = 30000) => p.waitForFunction(() => (document.querySelector('.g-rp-hud')?.textContent || '').length > 30, null, { timeout });
+    const ended = p => p.waitForSelector('.g-card-wrap button.g-main', { timeout: 30000 });
+    // The pitch's green on the canvas: the replay is drawing.
+    const drawing = p => p.evaluate(() => {
+      const c = document.querySelector('.g-stage canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 16) if (Math.abs(d[i] - 43) < 14 && Math.abs(d[i + 1] - 122) < 18 && Math.abs(d[i + 2] - 57) < 16) n++;
+      return n;
+    });
+    const HOUSE = "BEHI FC's best save this week", MINE = 'Your save is the best this week';
+
+    if (want('replay')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      const early = await p.evaluate(() => __keeper.weekSave.stats);
+      check("the house's match for the week does not start while the house opens", !early.started && !early.done, JSON.stringify(early));
+      await p.waitForFunction(() => __keeper.weekSave.stats.done, null, { timeout: 90000, polling: 500 });
+      const st = await p.evaluate(() => __keeper.weekSave.stats);
+      check('later it is played out in spare moments, never more than a few ms at a time', st.done && st.slowest < 6 && st.clock > 0 && /^\d{4}-W\d{2}$/.test(st.week), JSON.stringify(st));
+      await p.evaluate(() => __loft.act('tv'));
+      await p.waitForSelector('.g-menu');
+      const cards = await p.evaluate(() => [...document.querySelectorAll('.g-card h2')].map(e => e.textContent));
+      check('the TV menu offers the save of the week, after the two ways to join the match', JSON.stringify(cards) === JSON.stringify(['Join as striker', 'Join as keeper', 'Save of the week', 'Watch my videos', 'Watch my film']), JSON.stringify(cards));
+      await p.screenshot({ path: path.join(OUT, 'replay-menu.png') });
+      await p.locator('.g-card', { hasText: 'Save of the week' }).locator('button').click();
+      await p.waitForFunction(() => document.querySelector('.g-title')?.textContent === 'SAVE OF THE WEEK', null, { timeout: 10000 });
+      await playing(p);
+      await p.waitForTimeout(1200);
+      const line = await replayLine(p), green = await drawing(p);
+      check("picked, it plays BEHI FC's best save this week on the broadcast pitch", line.startsWith(HOUSE) && green > 200, `${line} | ${green}`);
+      await p.screenshot({ path: path.join(OUT, 'replay-playing.png') });
+      const t0 = Date.now();
+      await ended(p);
+      const took = (Date.now() - t0) / 1000;
+      check('slowed down round the save, it ends on a card to watch it again', took > 1.5 && took < 8, `${took.toFixed(1)} s more`);
+      await p.screenshot({ path: path.join(OUT, 'replay-end.png') });
+      await p.keyboard.press('Space');
+      await p.waitForTimeout(300);
+      check('Space watches it again', await p.evaluate(() => !document.querySelector('.g-card-wrap')));
+      await p.keyboard.press('Escape');
+      await p.waitForTimeout(300);
+      check('Esc closes it, back in the room', await p.evaluate(() => !document.querySelector('.g-overlay') && __loft.mode === 'walk'));
+      check('the replay: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+
+    if (want('replayown')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      // A save of my own this week, better than the house's: it takes the spot, marked as mine.
+      const house = await keepOwn(p, 99);
+      await openReplay(p);
+      await playing(p);
+      check('my own better save this week takes the spot, marked as mine', (await replayLine(p)).startsWith(MINE), await replayLine(p));
+      await p.waitForTimeout(1000);
+      await p.screenshot({ path: path.join(OUT, 'replay-own.png') });
+      await p.keyboard.press('Escape');
+      // Not better than the house's: the house's stays.
+      await keepOwn(p, Math.max(0, house - 0.5));
+      await openReplay(p);
+      await playing(p);
+      check("my save that is not better leaves the house's", (await replayLine(p)).startsWith(HOUSE), await replayLine(p));
+      await p.keyboard.press('Escape');
+      // Last week's save, however good, is not this week's.
+      await keepOwn(p, 99, '2020-W01');
+      await openReplay(p);
+      await playing(p);
+      check("an older week's save is ignored", (await replayLine(p)).startsWith(HOUSE), await replayLine(p));
+      await p.keyboard.press('Escape');
+      // A broken entry in storage is ignored too, and nothing breaks.
+      await p.evaluate(() => localStorage.setItem('loft.save', '{"v":1,"frames":[[1,2]]'));
+      await openReplay(p);
+      await playing(p);
+      check('a broken entry in storage is ignored', (await replayLine(p)).startsWith(HOUSE), await replayLine(p));
+      await p.keyboard.press('Escape');
+      // Saves made as keeper, filmed by the same recorder the match uses, offered in turn: only a better one is kept.
+      const r = await p.evaluate(async () => {
+        const R = await import('./src/pure/replay.js'), M = await import('./src/pure/match.js');
+        let s = 2;
+        const rand = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+        const m = M.newMatch({ kickoff: 1 }), rec = R.makeRecorder(), you = m.players.find(q => q.team === 0 && q.role === 'keeper'), clips = [];
+        m.aggro = [0.6, 1.5];
+        for (let t = 0; t < 90; t += 1 / 60) {
+          const b = m.ball, dy = Math.sign(Math.max(-M.GOAL, Math.min(M.GOAL, b.y)) - you.y);
+          const ev = M.stepMatch(m, 1 / 60, rand, { player: you, dx: 0, dy: Math.abs(b.y - you.y) > 0.2 ? dy : 0, dive: b.shot === 1 && Math.hypot(b.x - you.x, b.y - you.y) < 2.5 });
+          const c = rec.step(m, ev, 1 / 60, () => t);
+          if (c) clips.push(c);
+        }
+        localStorage.removeItem(R.KEY);
+        const best = clips.reduce((a, c) => (!a || c.points > a.points ? c : a), null);
+        const kept = clips.map(c => __keeper.weekSave.offer(c));
+        const chosen = await __keeper.weekSave.get(), stored = R.unpack(localStorage.getItem(R.KEY), R.weekKey());
+        const h = R.makeSearch(R.weekKey());
+        while (!h.run(500));
+        return { n: clips.length, kept: kept.filter(Boolean).length, best: best?.points, stored: stored?.points, who: chosen?.who, house: h.best.points };
+      });
+      check('saves made as keeper are kept only when better, the best of them stored for this week', r.n >= 2 && r.stored === r.best && r.kept >= 1 && r.kept <= r.n, JSON.stringify(r));
+      check("and the save of the week is mine only if it beats the house's", r.who === (r.best > r.house ? 'you' : 'house'), JSON.stringify(r));
+      check('my save: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+      // Storage blocked: the house's save plays, and a save of mine counts for this visit.
+      const init = () => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('blocked', 'SecurityError'); } }); };
+      const q = await open(b, DESK, { init });
+      await openReplay(q.p);
+      await playing(q.p, 60000);
+      check("storage blocked: the house's save plays", (await replayLine(q.p)).startsWith(HOUSE), await replayLine(q.p));
+      await q.p.keyboard.press('Escape');
+      const mine = await q.p.evaluate(async () => {
+        const R = await import('./src/pure/replay.js'), s = R.makeSearch(R.weekKey());
+        while (!s.run(500));
+        const ok = __keeper.weekSave.offer({ ...s.best, points: 99 });
+        return { ok, who: (await __keeper.weekSave.get())?.who };
+      });
+      check('storage blocked: a better save of mine still takes the spot for this visit', mine.ok && mine.who === 'you', JSON.stringify(mine));
+      check('storage blocked: no error', q.errs.length === 0, q.errs.slice(0, 3).join(' | '));
+      await q.ctx.close();
+    }
+
+    if (want('replayphone')) {
+      const { ctx, p, errs } = await open(b, UPRIGHT);
+      await openReplay(p);
+      await playing(p, 90000);
+      await p.waitForTimeout(1000);
+      const fit = await p.evaluate(() => { const c = document.querySelector('.g-stage canvas').getBoundingClientRect(); return { over: document.documentElement.scrollWidth - innerWidth, w: c.width, h: c.height }; });
+      check('phone: the replay fits the screen and draws', fit.over <= 0 && fit.w > 300 && fit.h > 200 && (await drawing(p)) > 100, JSON.stringify(fit));
+      await p.screenshot({ path: path.join(OUT, 'phone-replay.png') });
+      await ended(p);
+      await p.screenshot({ path: path.join(OUT, 'phone-replay-end.png') });
+      await p.locator('.g-card-wrap button.g-main').tap();
+      await p.waitForTimeout(300);
+      check('phone: a tap watches it again', await p.evaluate(() => !document.querySelector('.g-card-wrap')));
+      check('phone replay: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+
+    if (want('keepersave')) {
+      // Joining the match as keeper with the recorder running: it plays as before and nothing breaks.
+      const { ctx, p, errs } = await open(b, DESK);
+      await p.evaluate(() => __loft.act('tv'));
+      await p.waitForSelector('.g-menu');
+      await p.locator('.g-card', { hasText: 'Join as keeper' }).locator('.g-main').click();
+      await p.waitForSelector('.g-stage canvas');
+      for (let i = 0; i < 40; i++) {
+        const k = i % 2 ? 'ArrowUp' : 'ArrowDown';
+        await p.keyboard.down(k); await p.waitForTimeout(120); await p.keyboard.up(k);
+        if (i % 5 === 0) await p.keyboard.press('Space');
+      }
+      const tally = await p.evaluate(() => document.querySelector('.g-mt-tally')?.textContent || '');
+      check('joining as keeper still plays, with its tally running', /saved, \d+ let in/.test(tally), tally);
+      await p.keyboard.press('Escape');
+      await p.waitForTimeout(300);
+      check('keeper with the recorder: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+
     if (want('cost')) {
       // Frame times and this corner's own share of each frame (its tick timed from inside, and the figures' slowest
       // piece of building in spare moments): the figures built, the first touch and a juggle, the first bob, then lying
-      // still. Against a version without it, the house's own frames.
+      // still, then the replay opened (a slice a frame of the week's match while it waits, if it is not played out yet)
+      // and played. Against a version without it, the house's own frames.
       const cpu = Number(process.env.SMOOTH_CPU || 1), slow = cpu > 1 ? ` (processor ${cpu}x slower)` : '';
       for (const [dev, opts] of [['desktop', DESK], ['phone', UPRIGHT]]) {
         if (dev === 'phone' && cpu === 1) continue;
@@ -427,12 +598,22 @@ const CORNER_EYE = [[9.4, 3.9, 0.55], [10.25, 3.62, 0.1]];
           await take();
           await p.waitForTimeout(3000);
           rows.still = await take();
+          await p.waitForFunction(() => __keeper.weekSave.stats.started, null, { timeout: 60000, polling: 500 });
+          await p.waitForTimeout(2000);
+          await take();
+          await openReplay(p);
+          await playing(p, 120000);
+          rows.search = { ...(await take()), slice: await p.evaluate(() => __keeper.weekSave.stats.slowest) };
+          await p.waitForTimeout(6000);
+          rows.replay = await take();
+          await p.keyboard.press('Escape');
         }
         console.log(`${dev}${slow}, ${has ? 'with the corner' : 'without it'} (ms): ${JSON.stringify(rows)}`);
         if (has) {
           const bar = cpu > 1 ? 16.7 : 4;
           for (const k of ['build', 'firstTouch', 'juggle', 'firstBob']) check(`${dev}${slow}: ${k}, its own share of any frame under ${bar} ms`, rows[k].own < bar, `${rows[k].own} ms`);
           check(`${dev}${slow}: lying still, its share stays near zero`, rows.still.own < 0.3 * cpu, `${rows.still.own} ms`);
+          check(`${dev}${slow}: the house's match for the week never takes more than ${cpu > 1 ? bar : 6} ms at a time`, rows.search.slice < (cpu > 1 ? bar : 6), `${rows.search.slice} ms`);
         }
         check(`${dev}${slow}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
         await ctx.close();
