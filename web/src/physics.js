@@ -29,9 +29,9 @@ export async function makePhysics(col) {
       move(p, d) {
         ctl.computeColliderMovement(capsule, d);
         const m = ctl.computedMovement(), t = body.translation();
-        // With no way asked I only go up or down: the capsule's round bottom on a stair's edge would slide me slowly
-        // down the stairs while I stand still.
-        if (Math.hypot(d.x, d.z) < 1e-4) { m.x = 0; m.z = 0; }
+        // With no way asked and a floor right under me (a stair's rise at most) I only go up or down: the capsule's round
+        // bottom on a stair's edge would slide me down the stairs. Out over a drop it slides me off, never into its side.
+        if (Math.hypot(d.x, d.z) < 1e-4 && t.y - col.groundAt(t.x, t.z, t.y) < 0.22) { m.x = 0; m.z = 0; }
         const n = { x: t.x + m.x, y: t.y + m.y, z: t.z + m.z };
         body.setNextKinematicTranslation(n);
         world.step();

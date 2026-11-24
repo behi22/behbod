@@ -157,6 +157,21 @@ async function edges(p, label) {
   }
 }
 
+// ---------- put down out over a drop ----------
+// My middle out past the lounge pit's rim and no key pressed: I come off the rim down into the pit, clear of its side,
+// never sinking straight down into the side (as I would if standing still held me to up and down out there).
+const DROPS = [['the lounge pit\'s south rim', [5, 7.2, 0], a => a[1] - 7], ['the lounge pit\'s north rim', [5, 13.4, 0], a => 13.6 - a[1]]];
+async function drops(p, label) {
+  for (const [name, at, gap] of DROPS) {
+    await p.evaluate(q => { __loft.pos.set(q.x, q.y, q.z); }, b2t(...at));
+    await p.waitForTimeout(2500);
+    const r = await p.evaluate(() => [__loft.pos.x, -__loft.pos.z, __loft.pos.y]);
+    // 0.27: the capsule's radius (R in collide.js).
+    const clear = gap(r) - 0.27;
+    check(`${label}, ${name}: put down out over the drop with no key, I come down into the pit clear of its side`, Math.abs(r[2] + 0.45) < 0.02 && clear > -0.005, `at ${r[2].toFixed(3)} m, ${(clear * 100).toFixed(1)} cm clear of the side`);
+  }
+}
+
 // ---------- a held pose: the legs never add up ----------
 // The animation and the legs' own clock held still (the mixer then writes no bone), standing with one foot a step
 // lower: the hips keep exactly where they are on me and the feet where they stand, frame after frame (the body itself
@@ -282,6 +297,7 @@ async function timing(b) {
       await stairs(d.p, 'desktop');
       await treads(d.p, 'desktop');
       await edges(d.p, 'desktop');
+      await drops(d.p, 'desktop');
       await held(d.p, 'desktop');
       await turn(d.p, 'desktop');
       await blur(d.p, 'desktop', 1280 / 720);
