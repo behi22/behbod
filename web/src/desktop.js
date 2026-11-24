@@ -34,6 +34,7 @@ const CSS = `
 .dt-term .in { color: ${STYLE.accent}; }
 .dt-term .caret { display: inline-block; width: .6em; height: 1em; vertical-align: -.15em; background: ${STYLE.accent}; animation: dt-blink 1s steps(1) infinite; }
 .dt-term .caret.over { position: relative; margin-right: -.6em; line-height: 1em; vertical-align: baseline; color: ${STYLE.window}; }
+.dt-term .caret.over::before { content: attr(data-c); }
 .dt-term .ghost { color: ${STYLE.dim}; }
 .dt-term a { color: inherit; text-decoration: underline rgba(216,224,238,.4); text-underline-offset: 4px; cursor: pointer; }
 .dt-term a:hover { text-decoration-color: currentColor; }
@@ -273,7 +274,7 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
       }
       const inp = el('div', 'in', '$ ' + t.input), rest = D.ghost;
       // The rest of the command starts at the cursor, as on the monitor: the cursor's block lies over its first letter.
-      if (t.focus) inp.append(rest ? el('span', 'caret over', rest[0]) : el('span', 'caret'));
+      if (t.focus) { const c = el('span', rest ? 'caret over' : 'caret'); if (rest) c.dataset.c = rest[0]; inp.append(c); }
       if (rest) inp.append(el('span', 'ghost', rest));
       box2.append(inp);
       e.append(box2);

@@ -47,5 +47,4 @@ export function makeCmdFill(box, names) {
     put(best);
     if (document.activeElement !== box) box.focus();
   });
-  return { update };
 }

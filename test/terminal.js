@@ -64,7 +64,7 @@ async function popupFrom(p, act) {
       const { ctx, p, errs } = await seated(b, DESK);
       const line = () => p.evaluate(() => {
         const g = document.querySelector('.dt-term .in .ghost'), c = document.querySelector('.dt-term .in .caret');
-        return { input: __loft.screens.desktop.term.input, model: __loft.screens.desktop.ghost, shown: g ? g.textContent : '', caretOver: !!c?.classList.contains('over'),
+        return { input: __loft.screens.desktop.term.input, model: __loft.screens.desktop.ghost, shown: g ? g.textContent : '', caretOver: !!c?.classList.contains('over'), row: document.querySelector('.dt-term .in')?.textContent ?? '',
           active: document.activeElement === document.body, mode: __loft.mode, front: __loft.screens.desktop.st.focus };
       });
       const press = async k => { await p.keyboard.press(k); await p.waitForTimeout(90); return line(); };
@@ -83,7 +83,7 @@ async function popupFrom(p, act) {
       const faint1 = await faintOnMonitor();
       check('the monitor draws the faint rest too', s.model === 'itor-classifier' && faint1 > faint0 + 100, `faint pixels ${faint0} -> ${faint1}`);
       s = await typeIn('who');
-      check('typing part of a command shows the rest faintly after the cursor, in the seated view and the model', s.input === 'who' && s.shown === 'ami' && s.model === 'ami' && s.caretOver, JSON.stringify(s));
+      check('typing part of a command shows the rest faintly after the cursor, in the seated view and the model', s.input === 'who' && s.shown === 'ami' && s.model === 'ami' && s.caretOver && s.row === '$ whoami', JSON.stringify(s));
       await p.screenshot({ path: path.join(OUT, 'ghost-desk.png') });
       s = await press('Tab');
       check('Tab fills it, the ghost goes, and the keyboard stays with the terminal', s.input === 'whoami' && s.shown === '' && s.active && s.mode === 'desk' && s.front === 'terminal', JSON.stringify(s));

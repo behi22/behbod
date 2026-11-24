@@ -67,7 +67,7 @@ const shades = p => p.evaluate(() => {
       await p.evaluate(() => __loft.useDesk());
       await p.waitForFunction(() => document.querySelector('.dt.on'), null, { timeout: 15000 });
       await p.waitForTimeout(500);
-      const line = () => p.evaluate(() => ({ input: __loft.screens.desktop.term.input, shown: document.querySelector('.dt-term .in')?.textContent, mode: __loft.mode }));
+      const line = () => p.evaluate(() => ({ input: __loft.screens.desktop.term.input, shown: document.querySelector('.dt-term .in')?.firstChild?.textContent, mode: __loft.mode }));
       const key = async k => { await p.keyboard.press(k); await p.waitForTimeout(80); return (await line()).input; };
       check('nothing entered yet: Up and Down leave the line empty', (await key('ArrowUp')) === '' && (await key('ArrowDown')) === '');
       for (const c of ['whoami', 'ls', 'ls', 'scene focus']) { await p.keyboard.type(c); await p.keyboard.press('Enter'); await p.waitForTimeout(150); }
