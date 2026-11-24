@@ -4,6 +4,7 @@ import { piece, mesh, glow, sph, cyl, box, rbox, torus, PAINT } from './shapes.j
 import { b2t } from './engine.js';
 import { firesideAt, byFire } from './pure/shahnameh.js';
 import { MOODS, heart, arch, cross, holoNow, HOLO_TIME, HOLO_TEXT } from './pure/bh22.js';
+import { TREE, inPocket } from './pure/residents.js';
 
 // The loft's residents, built from simple shapes: BH-22 the droid, the mouse droid it chases, Pishi the grey tabby
 // and Jessi the white Shih Tzu. They walk the same path grid I do and run small daily routines.
@@ -242,8 +243,18 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   }
   function place(a, p) { a.pos.copy(p); a.route = []; a.hop = null; a.then = null; a.epoch++; }
   // Paths are planned off the main thread; the answer arrives a frame or two later and is dropped if the resident has
-  // been given something else to do in the meantime.
+  // been given something else to do in the meantime. From the cat tree's pocket, which the walk grid cannot plan from,
+  // Pishi first walks straight out through the gap.
   function goTo(a, target, then) {
+    if (a === pishi && a.onFloor && !a.hop && inPocket(tb(a.pos))) {
+      const epoch = ++a.epoch;
+      a.pending = null; a.route = [b2t(...TREE.gap), b2t(...TREE.reach)];
+      a.then = () => { if (a.epoch === epoch) plan(a, target, then); };
+      return;
+    }
+    plan(a, target, then);
+  }
+  function plan(a, target, then) {
     a.route = []; a.hop = null; a.then = null;
     const epoch = ++a.epoch;
     a.pending = true;
@@ -597,12 +608,19 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
   const catWindow = b2t(...P.cat_window), windowFloor = [5.4, 13.9, 0];
   place(pishi, catWindow); pishi.facing = Math.PI; pishi.state = 'window'; pishi.timer = rnd(40, 70); pishi.onFloor = false;
   // Up the cat tree's three decks, along the wall shelves, to the perch over the fire.
-  const treeFloor = [1.35, 14.1, 0];
+  const treeFoot = b2t(...TREE.foot);
   const climbUp = [[0.8, 14.05, 0.625], [0.88, 14.2, 1.225], [0.72, 14.05, 1.825]].map(p => b2t(...p));
   const walkUp = [...climbUp, ...meta.catwalk.slice(1).map(p => b2t(...p))];
   const WANDER = [meta.spots.lounge, [3.0, 13.0, 0], [11.5, 11.0, 0], [10.6, 11.6, 0], [6.6, 6.4, 0], [14.0, 10.5, 0]].filter(Boolean);
   let deskT = 0, keysTip = false, deskRoll = null, lastKeys = -1e9;
   const deskFloor = () => [P.chair[0] - 0.3, P.chair[1] - 0.8, P.chair[2]];
+  // To the cat tree's foot: the walk grid takes her as far as it can, and she walks the last bit straight.
+  function toTree(then) {
+    goTo(pishi, TREE.reach, ok => {
+      if (!ok) { then(false); return; }
+      pishi.route = [b2t(...TREE.gap), treeFoot.clone()]; pishi.then = () => then(true);
+    });
+  }
   function pishiNext() {
     pishi.speed = pishi.base;
     const r = Math.random();
@@ -611,7 +629,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       goTo(pishi, windowFloor, ok => ok ? hop(pishi, catWindow, () => { pishi.state = 'window'; pishi.timer = rnd(40, 80); pishi.facing = Math.PI; }, 0.5, 0.3) : pishiNext());
     } else if (r < 0.65) {
       pishi.state = 'climb';
-      goTo(pishi, treeFloor, ok => ok ? hops(pishi, walkUp, () => { pishi.state = 'perch'; pishi.timer = rnd(50, 90); }) : pishiNext());
+      toTree(ok => ok ? hops(pishi, walkUp, () => { pishi.state = 'perch'; pishi.timer = rnd(50, 90); }) : pishiNext());
     } else {
       pishi.state = 'wander';
       goTo(pishi, pick(WANDER), () => { pishi.state = 'sit'; pishi.timer = rnd(5, 10); });
@@ -693,8 +711,8 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     // The jump down is part of her way to the treat.
     pishi.state = 'totreat';
     if (from === 'window') hop(pishi, b2t(...windowFloor), land);
-    else if (from === 'perch') hops(pishi, [...walkUp].reverse().slice(1).concat(b2t(...treeFloor)), land);
-    else if (from === 'treesit') hops(pishi, [climbUp[0], b2t(...treeFloor)], land);
+    else if (from === 'perch') hops(pishi, [...walkUp].reverse().slice(1).concat(treeFoot.clone()), land);
+    else if (from === 'treesit') hops(pishi, [climbUp[0], treeFoot.clone()], land);
     else go();
     return true;
   }
@@ -734,7 +752,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     if (pishi.blinkOff && now > pishi.blinkOff) { pishi.want.blink = 0; pishi.blinkOff = 0; }
     if (st === 'perch') {
       if ((pishi.zz = (pishi.zz || 0) - dt) < 0) { pishi.zz = 7; pishi.bub.say('z z z', now, 2.5, true); }
-      if ((pishi.timer -= dt) < 0) pishiDown([...walkUp].reverse().slice(1).concat(b2t(...treeFloor)), () => { pishi.onFloor = true; pishiNext(); });
+      if ((pishi.timer -= dt) < 0) pishiDown([...walkUp].reverse().slice(1).concat(treeFoot.clone()), () => { pishi.onFloor = true; pishiNext(); });
     }
     if (st === 'petted' && (pishi.timer -= dt) < 0) { pishi.state = 'sit'; pishi.timer = 3; pishi.want.roll = 0; pishi.want.lean = 0; }
     if (pishi.leanOff && now > pishi.leanOff) { pishi.want.lean = 0; pishi.leanOff = 0; }
@@ -743,12 +761,12 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     pishi.want.groom = pishi.groomUntil ? 1 : 0;
     if (st === 'play') tickPishiPlay(dt, ctx);
     if (st === 'treat') tickPishiTreat(dt);
-    if (st === 'treesit' && (pishi.timer -= dt) < 0) pishiDown([climbUp[0], b2t(...treeFloor)], () => { pishi.onFloor = true; pishiNext(); });
+    if (st === 'treesit' && (pishi.timer -= dt) < 0) pishiDown([climbUp[0], treeFoot.clone()], () => { pishi.onFloor = true; pishiNext(); });
     // She runs up the cat tree when Jessi comes too close.
     if (pishi.onFloor && !pishi.hop && jessi.onFloor && !['flee', 'keys', 'todesk', 'play', 'treat', 'totreat'].includes(pishi.state) && pishi.pos.distanceTo(jessi.pos) < 0.9) {
       pishi.state = 'flee'; pishi.speed = 2.2;
       pishi.bub.say('hss!', now); blip(sfx.hiss, pishi, ctx.player);
-      goTo(pishi, treeFloor, ok => {
+      toTree(ok => {
         pishi.speed = pishi.base;
         if (ok) hops(pishi, climbUp.slice(0, 2), () => { pishi.state = 'treesit'; pishi.timer = 15; }); else pishiNext();
       });
