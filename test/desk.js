@@ -13,13 +13,14 @@
 //            the glides in and out are smooth (the body no longer jumps mid glide in: failed before these changes)
 //   webcam   a small webcam on the main monitor's top bezel: in view from the seat, its body dims with the lamps, its
 //            light glows on its own while I sit there
+//   keyboard the desk keyboard at a real keyboard's size (keys 19 mm apart, 30 cm across)
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view,webcam';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view,webcam,keyboard';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -592,6 +593,14 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.waitForTimeout(2500);
       check('standing up turns its light off', (await p.evaluate(() => __loft.scene.getObjectByName('webcam_led').material.color.r)) < 0.1);
       check('webcam: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- the keyboard at a real keyboard's size ----------
+    if (want('keyboard')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      const g = await p.evaluate(() => { const o = __loft.world.deskThings.find(m => m.name === 'kb_glow'); o.geometry.computeBoundingBox(); const s = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld).getSize(new __loft.camera.position.constructor()); return [s.x, s.z]; });
+      check('the keyboard is a real one\'s size: 30 cm across, 11.7 cm deep (its glow underneath)', Math.abs(g[1] - 0.302) < 0.003 && Math.abs(g[0] - 0.117) < 0.003, g.map(v => v.toFixed(3)).join(' x '));
+      check('keyboard: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
   } finally {

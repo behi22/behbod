@@ -117,22 +117,24 @@ def build(M, E, G):
 
             # ---------- keyboard, mouse, desk mat, wrist rest, the pomegranate keycap, a coiled cable ----------
             kb = Vector((15.33, MC.y, DZ + 0.018))
-            box('kb_case', (0.15, 0.44, 0.022), kb, M['plastic'], bevel=0.006)
+            # A real keyboard's size: keys 19 mm apart (15 across, 5 deep), so real hands type on it.
+            KP, KS = 0.019, 0.0175
+            box('kb_case', (0.115, 0.3, 0.022), kb, M['plastic'], bevel=0.006)
             bm = bmesh.new()
             for r in range(5):
                 for c in range(15):
                     g = bmesh.ops.create_cube(bm, size=1.0)
-                    bmesh.ops.scale(bm, vec=Vector((0.022, 0.024, 0.012)), verts=g['verts'])
-                    bmesh.ops.translate(bm, vec=P(kb + Vector((-0.055 + r * 0.027, -0.196 + c * 0.028, 0.016))), verts=g['verts'])
+                    bmesh.ops.scale(bm, vec=Vector((KS, KS, 0.01)), verts=g['verts'])
+                    bmesh.ops.translate(bm, vec=P(kb + Vector((-2 * KP + r * KP, -7 * KP + c * KP, 0.016))), verts=g['verts'])
             link('keycaps', bm, M['keycap'])
-            box('kb_glow', (0.152, 0.442, 0.004), kb + Vector((0, 0, -0.012)), E['rgb_teal'], kind='emit')
-            sphere('pom_key', 0.012, kb + Vector((-0.055, -0.196 + 14 * 0.028, 0.03)), M['pom'], sub=2, scale=(1, 1, 0.8))
-            box('wrist_rest', (0.07, 0.44, 0.016), (kb.x - 0.115, kb.y, DZ + 0.012), M['leather'], bevel=0.008, seg=3)
+            box('kb_glow', (0.117, 0.302, 0.004), kb + Vector((0, 0, -0.012)), E['rgb_teal'], kind='emit')
+            sphere('pom_key', 0.009, kb + Vector((-2 * KP, 7 * KP, 0.025)), M['pom'], sub=2, scale=(1, 1, 0.8))
+            box('wrist_rest', (0.07, 0.3, 0.016), (kb.x - 0.095, kb.y, DZ + 0.012), M['leather'], bevel=0.008, seg=3)
             box('mouse', (0.11, 0.065, 0.035), (15.35, 2.68, DZ + 0.018), M['plastic'], bevel=0.016, seg=4)
             coil = []
             for i in range(160):
                 t = i / 159
-                p = Vector((kb.x + 0.08 + t * 0.32, kb.y + 0.12 - t * 0.12, DZ + 0.012 + t * 0.03))
+                p = Vector((kb.x + 0.065 + t * 0.32, kb.y + 0.12 - t * 0.12, DZ + 0.012 + t * 0.03))
                 if 0.15 < t < 0.6:
                     p += Vector((0, math.cos(t * 70) * 0.008, math.sin(t * 70) * 0.008))
                 coil.append(tuple(p))
