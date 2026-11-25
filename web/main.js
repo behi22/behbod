@@ -7,6 +7,7 @@ import { makePhysics } from './src/physics.js';
 import { makeMe, HEAD_NAMES } from './src/me.js';
 import { makeFollowCam } from './src/camera.js';
 import { makeDesk } from './src/desk.js';
+import { makeDeskHands } from './src/deskhands.js';
 import { makeDesktopView } from './src/desktop.js';
 import { makeWardrobe } from './src/wardrobe.js';
 import { makeCreatures } from './src/creatures.js';
@@ -348,6 +349,7 @@ things.items.push(deskBits.spot, jar.spot); window.__desk = deskBits; window.__j
 const followPose = makeFollowCam(col, meta.regions);
 const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
 const desk = makeDesk({ camera, me, meta, coarse, follow });
+const deskHands = makeDeskHands({ scene, world, me, lamp: () => lights.k, playing: () => { const g = screens.desktop.games.playing; return !!(g && !g.paused && !g.done); } }); window.__deskHands = deskHands;
 // The computer's desktop, laid over the monitor while I sit at it.
 const deskView = makeDesktopView({ camera, meta, screens, act: deskAct, coarse, sfx: audio.sfx, tapTerminal: () => { if (coarse) $('cmd').focus(); } });
 const deskCtx = () => ({ records: audio.music.records, playing: audio.music.current, sound: sound.on, quality: autoTier ? 'auto' : tierName, hood: me.hoodUp,
@@ -930,6 +932,7 @@ function step() {
   if (nearDesk && now - deskCtxAt > 1000) { deskCtxAt = now; refreshDeskCtx(); }
   screens.tick(now, dt, mode === 'desk', nearDesk);
   deskView.tick(mode === 'desk' && !desk.gliding);
+  deskHands.tick(dt, mode === 'desk' || mode === 'leaving', me.root.visible);
   world.tick(dt, t, mode === 'desk', camera.position, pos, creatures.positions);
   deskBits.tick(dt, t, cctx); jar.tick(t);
   cctx.mode = mode; cctx.facing = facing; cctx.stand = seat ? seat.at : null;

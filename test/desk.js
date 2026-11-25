@@ -14,13 +14,15 @@
 //   webcam   a small webcam on the main monitor's top bezel: in view from the seat, its body dims with the lamps, its
 //            light glows on its own while I sit there
 //   keyboard the desk keyboard at a real keyboard's size (keys 19 mm apart, 30 cm across)
+//   typing   seated, my hands load only now, rise onto the keys, type each key pressed with the right finger, then
+//            rest (left hand on the mouse) and go when I stand
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view,webcam,keyboard';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view,webcam,keyboard,typing';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -601,6 +603,39 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       const g = await p.evaluate(() => { const o = __loft.world.deskThings.find(m => m.name === 'kb_glow'); o.geometry.computeBoundingBox(); const s = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld).getSize(new __loft.camera.position.constructor()); return [s.x, s.z]; });
       check('the keyboard is a real one\'s size: 30 cm across, 11.7 cm deep (its glow underneath)', Math.abs(g[1] - 0.302) < 0.003 && Math.abs(g[0] - 0.117) < 0.003, g.map(v => v.toFixed(3)).join(' x '));
       check('keyboard: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- my hands at the desk ----------
+    if (want('typing')) {
+      const { ctx, p, errs } = await open(b, { viewport: { width: 1440, height: 900 } });
+      const asked = [];
+      p.on('request', r => { if (/assets\/hand\/|realhand|realposes/.test(r.url())) asked.push(r.url()); });
+      await p.waitForTimeout(1500);
+      check('nothing of the hands is fetched before I sit', asked.length === 0, asked.slice(0, 2).join(' '));
+      await standAt(p, W.points.desk_use, Math.PI / 2);
+      await p.evaluate(() => __loft.useDesk());
+      await p.waitForFunction(() => window.__deskHands.loaded && __deskHands.group.visible, null, { timeout: 30000 });
+      await p.waitForTimeout(2000);
+      const fetched = asked.filter(u => /hand\.glb/.test(u)).length;
+      check('seated, the hands load once and rise onto the desk; the skin picture is not fetched', fetched === 1 && !asked.some(u => /skin\.webp/.test(u)), `${fetched} hand file, ${asked.length} requests`);
+      // Typing j: the right first finger strokes J (row 2, column 7) and the key goes down under it.
+      const stroke = await p.evaluate(async () => {
+        const out = { most: 0, at: -1, typing: 0 }, step = () => new Promise(r => requestAnimationFrame(r));
+        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ', key: 'j' }));
+        const t0 = performance.now();
+        while (performance.now() - t0 < 500) { await step(); const P = __deskHands.press; for (let i = 0; i < P.length; i++) if (P[i] > out.most) { out.most = P[i]; out.at = i; } out.typing = Math.max(out.typing, __deskHands.typing); }
+        return out;
+      });
+      check('a key typed: its key goes all the way down under the finger that touch-types it, then up', stroke.at === 2 * 15 + 7 && stroke.most > 0.003 && stroke.typing > 0.5 && (await p.evaluate(() => Math.max(...__deskHands.press))) === 0, JSON.stringify(stroke));
+      await p.keyboard.type('the quick brown fox', { delay: 70 });
+      const busy = await p.evaluate(() => __deskHands.typing);
+      await p.waitForTimeout(3500);
+      const idle = await p.evaluate(() => __deskHands.typing);
+      check('typing keeps both hands on the keys; a pause sends the left hand back to the mouse', busy > 0.99 && idle === 0, `${busy} then ${idle}`);
+      await p.evaluate(() => __loft.leaveDesk());
+      await p.waitForTimeout(2500);
+      check('standing up, the hands go', !(await p.evaluate(() => __deskHands.group.visible)));
+      check('typing: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
   } finally {

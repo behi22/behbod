@@ -43,8 +43,8 @@ add(desk, new THREE.BoxGeometry(0.45, 0.003, 1.12), std(0x1d2024, 0.9), [0.1, 0.
 add(desk, new RoundedBoxGeometry(...DESK.case.size, 2, 0.006), std(0x3a3d43, 0.5), DESK.case.at);
 add(desk, new RoundedBoxGeometry(...DESK.rest.size, 3, 0.008), std(0x2b2523, 0.8), DESK.rest.at);
 add(desk, new RoundedBoxGeometry(...DESK.mouse.size, 4, DESK.mouse.r), std(0x3a3d43, 0.45), DESK.mouse.at);
-const keys = {}, capG = new RoundedBoxGeometry(DESK.key.w, 0.012, DESK.key.d, 2, 0.002), capM = std(0xc9ccd2, 0.55);
-for (let r = 0; r < DESK.key.rows; r++) for (let c = 0; c < DESK.key.cols; c++) { const t = keyTop(r, c); keys[`${r},${c}`] = add(desk, capG, capM, [t[0], t[1] - 0.006, t[2]]); }
+const keys = {}, capG = new RoundedBoxGeometry(DESK.key.w, DESK.key.h, DESK.key.d, 2, 0.002), capM = std(0xc9ccd2, 0.55);
+for (let r = 0; r < DESK.key.rows; r++) for (let c = 0; c < DESK.key.cols; c++) { const t = keyTop(r, c); keys[`${r},${c}`] = add(desk, capG, capM, [t[0], t[1] - DESK.key.h / 2, t[2]]); }
 const deskHands = {};
 for (const side of ['left', 'right']) {
   const h = makeRealHand(side, geo, looks[look]);
@@ -129,7 +129,7 @@ async function draw() {
   for (const h of [...Object.values(deskHands), soloHand, ...Object.values(guns).flatMap(g => Object.values(g.mine))]) h.setMaterial(looks[look]);
   if (DESK_VIEWS[view]) {
     const v = DESK_VIEWS[view];
-    for (const [k, m] of Object.entries(keys)) { const [r, c] = k.split(',').map(Number); m.position.y = keyTop(r, c)[1] - 0.006 - ((v.down || {})[k] || 0); }
+    for (const [k, m] of Object.entries(keys)) { const [r, c] = k.split(',').map(Number); m.position.y = keyTop(r, c)[1] - DESK.key.h / 2 - ((v.down || {})[k] || 0); }
     for (const side of ['left', 'right']) {
       const p = v.poses[side];
       deskHands[side].root.visible = !!p;

@@ -5,6 +5,7 @@ import { HOLDS } from '../range/holds.js';
 import { digit as toyDigit, qFrame, qRot, sub, add, scale, roundBox } from './hands.js';
 import { JOINTS } from './handrig.js';
 import { FINGERS, wrap, reach, seat, fingersShape, relaxed, deepest, deepestBody, LIMITS } from './realhand.js';
+import { HOME as TYPE_HOME } from './typing.js';
 
 const mz = p => [p[0], p[1], -p[2]];
 const knuckle = side => (side === 'left' ? mz(JOINTS['finger-3-1']) : JOINTS['finger-3-1']);
@@ -76,10 +77,10 @@ export function solveGrip(gunId) {
 
 // ---------- the desk (blender/zones/studio.py), from the keyboard's middle on the desk: x toward the monitor, y up, z right ----------
 export const DESK = {
-  // 15 keys across and 5 deep, 28 mm and 27 mm apart, 22 by 24 mm, their tops 4 cm over the desk.
-  key: { cols: 15, rows: 5, dx: 0.027, dz: 0.028, x0: -0.055, z0: 0.196, w: 0.022, d: 0.024, top: 0.04 },
-  case: { at: [0, 0.018, 0], size: [0.15, 0.022, 0.44] },
-  rest: { at: [-0.115, 0.012, 0], size: [0.07, 0.016, 0.44] },
+  // 15 keys across and 5 deep, 19 mm apart like a real keyboard's, 17.5 mm square, their tops 3.9 cm over the desk.
+  key: { cols: 15, rows: 5, dx: 0.019, dz: 0.019, x0: -0.038, z0: 0.133, w: 0.0175, d: 0.0175, top: 0.039, h: 0.01 },
+  case: { at: [0, 0.018, 0], size: [0.115, 0.022, 0.3] },
+  rest: { at: [-0.095, 0.012, 0], size: [0.07, 0.016, 0.3] },
   // The mouse sits left of the keyboard.
   mouse: { at: [0.02, 0.018, -0.48], size: [0.11, 0.035, 0.065], r: 0.016 },
 };
@@ -87,41 +88,50 @@ export const DESK = {
 export const keyTop = (row, col, press = 0) => [DESK.key.x0 + row * DESK.key.dx, DESK.key.top - press, DESK.key.z0 - col * DESK.key.dz];
 // Where a typing finger's pad is aimed from the middle of its key's top: its tip is what lands on the key.
 export const PAD_ON_KEY = [-0.004, 0.002, 0];
-// Home row keys: the left hand's little finger on A to its first on F, the right's first on J to its little on ;.
-export const HOME = { left: { pinky: 13, ring: 12, middle: 11, index: 10 }, right: { index: 7, middle: 6, ring: 5, pinky: 4 } };
+// Home keys, by row and column, from pure/typing.js.
+export { TYPE_HOME as HOME };
 // The keyboard as a shape, any pressed keys (by `row,col`) pushed down by their press.
 const keysShape = (p, down = {}) => {
   const K = DESK.key, row = Math.round((p[0] - K.x0) / K.dx), col = Math.round((K.z0 - p[2]) / K.dz);
   let d = Infinity;
   for (let r = Math.max(0, row - 1); r <= Math.min(K.rows - 1, row + 1); r++) for (let c = Math.max(0, col - 1); c <= Math.min(K.cols - 1, col + 1); c++) {
     const t = keyTop(r, c, down[`${r},${c}`] || 0);
-    d = Math.min(d, roundBox(p, [t[0], t[1] - 0.006, t[2]], [K.w / 2, 0.006, K.d / 2], 0.002));
+    d = Math.min(d, roundBox(p, [t[0], t[1] - K.h / 2, t[2]], [K.w / 2, K.h / 2, K.d / 2], 0.002));
   }
   return Math.min(d, roundBox(p, DESK.case.at, DESK.case.size.map(v => v / 2), 0.004), roundBox(p, DESK.rest.at, DESK.rest.size.map(v => v / 2), 0.006), p[1]);
 };
 export const deskShape = p => Math.min(keysShape(p), mouseShape(p));
 export const mouseShape = p => roundBox(p, DESK.mouse.at, DESK.mouse.size.map(v => v / 2), DESK.mouse.r);
 
-// A hand over the keyboard: its wrist floating over the wrist rest, the fingers on their keys (each pressed `press[d]`
-// metres down, or lifted a little with a negative one, or sent to another key), the thumb on the bottom row.
-export function typing(side, { keys = {}, press = {}, thumbKey = null } = {}) {
-  const s = side === 'left' ? -1 : 1, home = HOME[side], cols = { ...home, ...keys };
-  const mid = keyTop(2, (home.index + home.pinky) / 2);
-  // Fingers a little down and in toward the keyboard's middle; the back tipped toward the little finger's side.
-  // The wrist floats high enough over the keys that the fingers arch down onto them, the way a typist's do.
-  const q = qFrame([1, -0.1, -0.16 * s], [0.1, 1, 0.28 * s]);
-  let P = { at: add(mid, [-0.13, 0.05, 0.012 * s]), q, digits: relaxed(), cup: 0.1 };
-  const down = {};
-  for (const d of FINGERS) { const c = cols[d]; if ((press[d] || 0) > 0) down[Array.isArray(c) ? c.join() : `2,${c}`] = press[d]; }
-  const board = p => keysShape(p, down), free = p => board(p) + 0.0015;
-  for (const d of FINGERS) {
-    const c = cols[d], row = Array.isArray(c) ? c[0] : 2, col = Array.isArray(c) ? c[1] : c;
-    // The finger comes down on the key's middle with its tip, so its pad aims just behind and above it.
-    const t = add(keyTop(row, col, press[d] || 0), PAD_ON_KEY);
-    P.digits[d] = reach(side, d, P, t, { from: [P.digits[d][0], 0.6, 1.0, 0.5], follow: 0.6, sdf: board, keep: 0.0003 });
-  }
-  const tc = thumbKey ?? (side === 'left' ? 9 : 7);
-  P.digits.thumb = reach(side, 'thumb', P, add(keyTop(0, tc), [0.002, 0.0015, 0]), { from: [0.3, 0.5, 0.2, 0.2, 0], sdf: free });
+// A typing hand's wrist: floating over the wrist rest, high enough that the fingers arch down onto their home keys, the
+// fingers a little down and in toward the keyboard's middle, the back tipped toward the little finger's side.
+export const TYPING = { back: -0.125, up: 0.05, side: 0.005, turn: 0.1 };
+export function typingHand(side) {
+  const s = side === 'left' ? -1 : 1, H = TYPE_HOME[side], mid = keyTop(2, (H.index[1] + H.pinky[1]) / 2);
+  return { at: add(mid, [TYPING.back, TYPING.up, TYPING.side * s]), q: qFrame([1, -0.1, -TYPING.turn * s], [0.1, 1, 0.28 * s]), cup: 0.1 };
+}
+// How far the wrist goes along with a finger to a key that finger cannot reach from home: part of the way across the
+// rows and columns it has to travel past its neighbours.
+export function wristShift(side, digit, [row, col]) {
+  const [hr, hc] = TYPE_HOME[side][digit], dr = row - hr, dc = col - hc, K = DESK.key;
+  const past = (d, free) => Math.sign(d) * Math.max(0, Math.abs(d) - free);
+  return [past(dr, 1) * K.dx * 0.6, 0, -past(dc, digit === 'thumb' ? 2 : 1) * K.dz * 0.6];
+}
+// The angles that put a digit on a key: resting on its top, pressed `press` metres down, or lifted `lift` metres over it.
+export function keyAngles(side, digit, key, { press = 0, lift = 0, from = null, sweep = true } = {}) {
+  const base = typingHand(side), P = { ...base, at: add(base.at, wristShift(side, digit, key)), digits: relaxed() };
+  // Pressing, the keys either side in its row go down with it as far as the board's shape goes: a fingertip wider than
+  // the gap may brush them, but never sinks into its own key.
+  const down = press > 0 ? { [key.join()]: press, [[key[0], key[1] - 1].join()]: press, [[key[0], key[1] + 1].join()]: press } : {}, board = p => keysShape(p, down);
+  const t = add(keyTop(key[0], key[1], press), digit === 'thumb' ? [0.002, 0.0015 + lift, 0] : [PAD_ON_KEY[0], PAD_ON_KEY[1] + lift, 0]);
+  const start = from || (digit === 'thumb' ? [0.3, 0.5, 0.2, 0.2, 0] : [relaxed()[digit][0], 0.6, 1.0, 0.5]);
+  const sdf = digit === 'thumb' ? p => board(p) + 0.0015 : board;
+  return reach(side, digit, P, t, { from: start, follow: digit === 'thumb' ? 0.8 : 0.6, sdf, keep: 0.0003, sweep });
+}
+// A hand over the keyboard, every finger resting on its home key (or, by `keys`, another, pressed `press` down).
+export function typing(side, { keys = {}, press = {} } = {}) {
+  const P = { ...typingHand(side), digits: relaxed() };
+  for (const d of [...FINGERS, 'thumb']) P.digits[d] = keyAngles(side, d, keys[d] || TYPE_HOME[side][d], { press: press[d] || 0 });
   return P;
 }
 

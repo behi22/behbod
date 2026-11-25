@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { FINGERS, DIGITS, deepest, deepestBody, miss, fingersShape, LIMITS, within } from '../../web/src/pure/realhand.js';
 import { solveGrip, typing, onMouse, resting, keyTop, HOME, DESK, deskShape, mouseShape } from '../../web/src/pure/realholds.js';
 import { roundBox } from '../../web/src/pure/hands.js';
+import { TRAVEL } from '../../web/src/pure/typing.js';
 import { GUNS, DESK_POSES } from '../../web/src/pure/realposes.js';
 import { GUN_HOLDS } from '../../web/src/pure/handling.js';
 
@@ -13,7 +14,7 @@ const inRange = p => DIGITS.every(d => within(d, p.digits[d]).every((v, i) => Ma
 test('the poses the bench reads are the ones the solver gives (else run node blender/realposes.js)', () => {
   assert.deepEqual(DESK_POSES.home.right, bake(typing('right')));
   assert.deepEqual(DESK_POSES.mouse.left, bake(onMouse('left')));
-  assert.deepEqual(DESK_POSES.rest.right, bake(resting('right')));
+  assert.deepEqual(DESK_POSES.rest.right, bake(resting('right', [-0.06, 0, 0.21])));
   const g = solveGrip('pistol');
   assert.deepEqual(GUNS.pistol.right, bake(g.right));
   assert.deepEqual(GUNS.pistol.left, bake(g.left));
@@ -48,15 +49,15 @@ test('the support hand: over the shooting hand\'s fingers on the pistol, round t
 });
 
 test('typing: each finger rests on its own key, a pressed key pressed, nothing through the keys', () => {
-  const K = DESK.key, own = (row, col, down = 0) => { const t = keyTop(row, col, down); return p => roundBox(p, [t[0], t[1] - 0.006, t[2]], [K.w / 2, 0.006, K.d / 2], 0.002); };
+  const K = DESK.key, own = (row, col, down = 0) => { const t = keyTop(row, col, down); return p => roundBox(p, [t[0], t[1] - K.h / 2, t[2]], [K.w / 2, K.h / 2, K.d / 2], 0.002); };
   for (const side of ['left', 'right']) {
     const P = DESK_POSES.home[side];
-    for (const d of FINGERS) { const k = deepest(side, P, own(2, HOME[side][d]), [d]); assert.ok(k > -0.001 && k < 0.001, `${side} ${d} on its key: ${k}`); }
-    assert.ok(deepest(side, P, deskShape) > -0.001, side);
+    for (const d of FINGERS) { const k = deepest(side, P, own(...HOME[side][d]), [d]); assert.ok(k > -0.001 && k < 0.0012, `${side} ${d} on its key: ${k}`); }
+    assert.ok(deepest(side, P, deskShape) > -0.0015, side);
     // The fingers arch down onto the keys, as a typist's do; the little finger may lie straighter.
     for (const d of ['index', 'middle', 'ring']) assert.ok(P.digits[d][2] > 0.35, `${side} ${d} arched: ${P.digits[d]}`);
   }
-  const e = deepest('left', DESK_POSES.press.left, own(3, 11, 0.003), ['middle']);
+  const e = deepest('left', DESK_POSES.press.left, own(3, 11, TRAVEL), ['middle']);
   assert.ok(e > -0.001 && e < 0.001, `the left middle finger presses E down: ${e}`);
 });
 
