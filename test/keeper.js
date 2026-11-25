@@ -34,7 +34,8 @@ async function open(b, opts, { init = null, keeper = true } = {}) {
   if (init) await ctx.addInitScript(init);
   const p = await ctx.newPage(), errs = [];
   watch(p, errs);
-  await p.goto(`${BASE}/?auto&q=${opts.isMobile ? 'medium' : 'high'}`);
+  // The room as it is on any day: on a Real Madrid game day it turns white and gold a few seconds in, under the pictures.
+  await p.goto(`${BASE}/?auto&matchday=off&q=${opts.isMobile ? 'medium' : 'high'}`);
   await p.waitForFunction(k => window.__loft && (!k || window.__keeper) && window.__loft.renderer.info.render.calls > 0, keeper, { timeout: 120000 });
   return { ctx, p, errs };
 }
@@ -95,6 +96,17 @@ const dropTo = (p, h = 0.5) => p.evaluate(h => new Promise(res => { const f = ()
 // ahead of it; the test only reacts, a few ms late), then let go.
 const holdAt = (p, h) => p.evaluate(h => new Promise(res => { const k = __keeper.ball; k.go ||= k.tick; const f = () => { const b = k.ball; if (b.v[1] < 0 && b.p[1] - 0.1 < h) { k.tick = () => {}; res(); } else requestAnimationFrame(f); }; f(); }), h);
 const letGo = p => p.evaluate(() => { const k = __keeper.ball; k.tick = k.go; });
+// The ball held on its way up once the moment after a touch has passed (a press inside it is only waited out), so the
+// next press is an early one, made while it still rises.
+const holdUp = p => p.evaluate(() => new Promise(res => { const k = __keeper.ball; k.go ||= k.tick; let n = 0; const f = () => { const b = k.ball; if (b.count > 0 && b.v[1] > 0 && b.cool <= 0) { k.tick = () => {}; res(); } else if (++n > 180) res(); else requestAnimationFrame(f); }; f(); }));
+// A click on the ball from the page itself, in the frame it is on its way down and lower than `h`: the ray from the
+// camera through the ball's middle, into the house's own click handling for the corner. I keep within a step of it, as
+// anyone keeping it up does (each click sends it on away from me; from past a click's reach it walks me over instead).
+const tapAtLow = (p, h) => p.evaluate(async h => {
+  const THREE = await import('three'), k = __keeper, cam = __loft.camera;
+  let n = 0;
+  return new Promise(res => { const f = () => { const b = k.ball.ball; if (b.v[1] < 0 && b.p[1] - 0.1 < h) { const P = __loft.pos, dx = P.x - b.p[0], dz = P.z - b.p[2], d = Math.hypot(dx, dz); if (d > 1.2) P.set(b.p[0] + dx / d * 1.2, P.y, b.p[2] + dz / d * 1.2); res(k.tap(new THREE.Raycaster(cam.position.clone(), new THREE.Vector3(...b.p).sub(cam.position).normalize()), null, P)); } else if (++n > 300) res(false); else requestAnimationFrame(f); }; f(); });
+}, h);
 const waitRest = p => p.waitForFunction(() => __keeper.ball.ball.rest && __keeper.ball.still, null, { timeout: 20000, polling: 100 });
 const ballOnScreen = async p => onScreen(p, await p.evaluate(() => { const b = __keeper.ball.ball.p; return { x: b[0], y: b[1], z: b[2] }; }));
 // The corner's ball from a little way off.
@@ -214,14 +226,13 @@ const CORNER_EYE = [[9.4, 3.9, 0.55], [10.25, 3.62, 0.1]];
       const near = await p.evaluate(() => [__loft.near, document.getElementById('prompt').textContent, document.getElementById('prompt').classList.contains('on')]);
       check('beside it, E is offered', near[0] === 'keepy' && near[1].includes('Keep the ball up') && near[2], near.join(' | '));
       await p.keyboard.press('KeyE');
-      await p.waitForTimeout(120);
+      await holdUp(p);
       let s = await ball(p);
       check('E knocks it up', s.count === 1 && s.v[1] > 0 && !s.rest && s.label === 'Keep it up: 1', JSON.stringify({ count: s.count, vy: s.v[1], label: s.label }));
-      await p.waitForTimeout(200);
       await p.keyboard.press('KeyE');
-      await p.waitForTimeout(60);
       s = await ball(p);
       check('pressing again while it is still rising does nothing, and says to wait', s.count === 1 && s.v[1] > 0 && s.label === 'Wait for it to drop', `${s.label}, rising ${s.v[1].toFixed(2)}`);
+      await letGo(p);
       await waitRest(p);
       check('a run of one is not made much of', (await ball(p)).best === 1 && !(await toast(p)).includes('in a row'));
       // Keep it up by keyboard: E each time it comes down into reach.
@@ -273,7 +284,7 @@ const CORNER_EYE = [[9.4, 3.9, 0.55], [10.25, 3.62, 0.1]];
       let s = await ball(p);
       const route = await p.evaluate(() => __loft.route);
       check('a click on the ball knocks it up, and I stay put', s.count === 1 && s.v[1] > 0 && route === 0, `count ${s.count}, route ${route}`);
-      for (let n = 2; n <= 4; n++) { await holdAt(p, 0.55); at = await ballOnScreen(p); await p.mouse.click(at.x, at.y); await letGo(p); await p.waitForTimeout(60); }
+      for (let n = 2; n <= 4; n++) await tapAtLow(p, 0.55);
       s = await ball(p);
       check('clicked each time it comes down, it stays up', s.count === 4, `${s.count} touches`);
       await waitRest(p);
