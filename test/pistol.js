@@ -13,6 +13,7 @@ function watch(p, errs, files) {
   p.on('response', async r => {
     if (r.status() >= 400) errs.push(`http ${r.status()} ${r.url().slice(0, 140)}`);
     if (/p22\.glb/.test(r.url())) files.push((await r.body().catch(() => Buffer.alloc(0))).length);
+    if (/hand\.glb/.test(r.url())) files.hand = (files.hand || 0) + 1;
   });
   p.on('requestfailed', r => { if (!/youtube|googlevideo|ytimg/.test(r.url())) errs.push(`failed ${r.url().slice(0, 140)}`); });
   p.on('console', m => { if ((m.type() === 'error' || (m.type() === 'warning' && /\[(loft|range)\]/.test(m.text()))) && !/favicon/.test(m.text()) && !/youtube/.test(m.location()?.url || '')) errs.push(m.text().slice(0, 200)); });
@@ -66,6 +67,7 @@ const since = (a, b) => b.cues.slice(a.cues.length);
     // ---------- desktop ----------
     const { p, errs, files, ready } = await open(b, { viewport: { width: 1280, height: 800 } });
     check('the squeezed gun file comes down, much smaller than the 2.3 MB it was', files.length === 1 && files[0] > 100000 && files[0] < 800000, `${files} bytes, the range ready in ${ready} ms`);
+    check('the realistic hand file comes down with the range, once', files.hand === 1, `${files.hand || 0} times`);
     await toLine(p);
     await p.click('.rg-card .rg-acts button.go');
     await p.waitForFunction(() => __loft.range.state === 'play', null, { timeout: 8000 });
@@ -73,13 +75,13 @@ const since = (a, b) => b.cues.slice(a.cues.length);
 
     const built = await p.evaluate(async () => {
       const { GUN_HOLDS } = await import('/src/pure/handling.js');
-      const { HAND } = await import('/src/pure/hands.js');
+      const { padLocal } = await import('/src/pure/realhand.js');
       const g = __loft.range.gun, V = () => __loft.camera.position.clone().set(0, 0, 0);
       g.scene.updateMatrixWorld(true);
       const H = GUN_HOLDS.pistol, model = g.model;
-      // Where the trigger finger's tip is, against where the trigger's face is, in the gun's own space.
+      // Where the trigger finger's pad is, against where the trigger's face is, in the gun's own space.
       const tipBone = g.hands.right.bones.find(o => o.name === 'right_index3');
-      const tip = model.worldToLocal(tipBone.localToWorld(V().set(HAND.fingers.index.len[2], 0, 0)));
+      const tip = model.worldToLocal(tipBone.localToWorld(V().set(...padLocal('index'))));
       const pad = V().set(...H.trigger.pad), part = model.getObjectByName('P22_trigger');
       // The grip as the hands feel it, against the gun's own surface: points of the frame's grip panels.
       const frame = model.getObjectByName('P22_frame'), off = [], v = V();
@@ -93,14 +95,14 @@ const since = (a, b) => b.cues.slice(a.cues.length);
       });
       off.sort((a, c) => a - c);
       return {
-        hands: ['right', 'left'].map(s => g.hands[s].root.visible && g.hands[s].meshes.every(m => m.isSkinnedMesh)).every(Boolean),
+        hands: ['right', 'left'].map(s => g.hands[s].root.visible && g.hands[s].mesh.isSkinnedMesh && g.hands[s].mesh.name === s + '_realhand').every(Boolean),
         baked: ['P22_hand_r', 'P22_hand_l', 'P22_hand_l_mag'].some(n => model.getObjectByName(n)),
         trigger: tip.distanceTo(pad), pivot: part.position.toArray().map(x => +x.toFixed(4)),
         fit: { n: off.length, median: off[off.length >> 1], p95: off[Math.floor(off.length * 0.95)] },
       };
     });
     check('both hands are built in the page, skinned, and the gun file has none of its own', built.hands && !built.baked, JSON.stringify({ hands: built.hands, baked: built.baked }));
-    check('the trigger finger\'s tip is on the trigger', built.trigger < 0.006, `${(built.trigger * 1000).toFixed(1)} mm`);
+    check('the trigger finger\'s pad is on the trigger', built.trigger < 0.006, `${(built.trigger * 1000).toFixed(1)} mm`);
     check('the trigger still turns about its own pin in the squeezed file', Math.hypot(built.pivot[0] - 0.051, built.pivot[1] + 0.0155, built.pivot[2]) < 1e-4, JSON.stringify(built.pivot));
     check('the grip the hands close on is the gun\'s own grip (its panels: half within 2.5 mm, nearly all within 6)', built.fit.n > 50 && built.fit.median < 0.0025 && built.fit.p95 < 0.006, JSON.stringify(built.fit));
 

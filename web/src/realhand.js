@@ -9,8 +9,8 @@ import { JOINTS } from './pure/handrig.js';
 
 let geometry = null;
 // The right hand's mesh at rest in its own axes. Its positions are packed small with their scale on the node, so they
-// are unpacked here before any bones are bound.
-export function loadHand(url = 'assets/hand/hand.glb') {
+// are unpacked here before any bones are bound. A fetch that failed is tried again on the next call.
+export function loadHand(url = new URL('../assets/hand/hand.glb', import.meta.url).href) {
   geometry ||= new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url).then(gltf => {
     let mesh = null;
     gltf.scene.traverse(o => { if (o.isMesh) mesh = o; });
@@ -20,12 +20,15 @@ export function loadHand(url = 'assets/hand/hand.glb') {
     g.setAttribute('position', new THREE.BufferAttribute(out, 3));
     g.computeBoundingSphere();
     return g;
-  });
+  }).catch(e => { geometry = null; throw e; });
   return geometry;
 }
 
-// The same mesh mirrored across z: positions and normals turned over, and every triangle's winding reversed.
+// The same mesh mirrored across z: positions and normals turned over, and every triangle's winding reversed. Made once
+// and shared by every left hand (the desk's and each gun's).
+const mirrors = new WeakMap();
 function mirrored(g) {
+  if (mirrors.has(g)) return mirrors.get(g);
   const m = g.clone(), p = m.attributes.position, n = m.attributes.normal, nf = new Float32Array(n.count * 3), v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) p.setZ(i, -p.getZ(i));
   for (let i = 0; i < n.count; i++) { v.fromBufferAttribute(n, i).toArray(nf, i * 3); nf[i * 3 + 2] *= -1; }
@@ -34,6 +37,7 @@ function mirrored(g) {
   for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; }
   m.setIndex(new THREE.BufferAttribute(idx, 1));
   m.computeBoundingSphere();
+  mirrors.set(g, m);
   return m;
 }
 

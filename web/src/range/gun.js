@@ -3,11 +3,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lit } from './lit.js';
 import { breathe as breath } from '../pure/slices.js';
-import { makeHand, makeHandMaterials } from './hands.js';
+import { makeSleeveMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
-import { blend, qFrame, relaxed } from '../pure/hands.js';
+import { qFrame } from '../pure/hands.js';
 import { LOW, ELBOWS } from '../pure/handling.js';
-import { HOLDS } from './holds.js';
 import { CLIPS, sample, cues, owed } from '../pure/clips.js';
 import { RIGS } from '../pure/rigs.js';
 import { newSwing, swing } from '../pure/swing.js';
@@ -21,6 +20,16 @@ const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
 WHITE.colorSpace = THREE.SRGBColorSpace; WHITE.needsUpdate = true;
 // How far the eye sits behind a scope's eyepiece when aimed (a holo sight keeps the eye where the iron sights had it).
 const RELIEF = 0.075;
+
+// The range's light on a material that changes its shader already (the hand's glossier nails), keeping both.
+function litToo(m) {
+  const own = m.onBeforeCompile, ownKey = m.customProgramCacheKey();
+  lit(m);
+  const range = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => { own(sh, r); range(sh, r); };
+  m.customProgramCacheKey = () => 'range-lit-' + ownKey;
+  return m;
+}
 
 function flashTexture() {
   const c = document.createElement('canvas');
@@ -47,8 +56,9 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   if (!spec) throw new Error('no such gun: ' + id);
   // The hip in the eye's space (x right, y up, -z ahead), the way the magazine comes out, the grip's middle a clip turns about.
   const HIP = spec.hip, WELL = new THREE.Vector3(...spec.well), PIVOT = new THREE.Vector3(...spec.pivot), LOCK = spec.lock ?? 1;
-  // The gun file is packed with meshopt (blender/squeeze.js).
-  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file || spec.file);
+  // The gun file is packed with meshopt (blender/squeeze.js); the realistic hand and its poses come with it, never sooner.
+  const [gltf, real, { relaxed, blend }, { GUNS }] = await Promise.all([new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file || spec.file),
+    import('../realhand.js').then(m => m.loadHand().then(geometry => ({ ...m, geometry }))), import('../pure/realhand.js'), import('../pure/realposes.js')]);
   const model = gltf.scene;
   const scene = new THREE.Scene();
   scene.environment = env;
@@ -119,17 +129,22 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   spent.visible = false;
   part.mag.parent.add(spent);
 
-  // The hands: built here, posed from the gun's description, in the gun's own space.
-  const hm = makeHandMaterials(m => lit(m));
-  for (const m of Object.values(hm)) (mats[m.name] ||= new Set()).add(m);
-  // A breath between the hands, each a few dozen bones built in code, so a slowed phone never holds a frame for both.
-  const right = makeHand('right', hm);
+  // The hands: the realistic hand in my soft white, under the range's own light (its nails kept), in my hoodie's
+  // sleeves, in the gun's own space. A breath between them, so a slowed phone never holds a frame for both.
+  const hm = makeSleeveMaterials(m => lit(m)), skin = real.handMaterial('toy', { prepare: litToo });
+  for (const m of [skin, ...Object.values(hm)]) (mats[m.name] ||= new Set()).add(m);
+  const makeHand = side => {
+    const h = real.makeRealHand(side, real.geometry, skin);
+    h.root.getObjectByName(`${side}_arm`).add(real.makeSleeve(hm));
+    turn.add(h.root);
+    return h;
+  };
+  const right = makeHand('right');
   await rest();
-  const hands = { right, left: makeHand('left', hm) };
-  turn.add(hands.right.root, hands.left.root);
-  // The hands' poses on this gun, solved ahead of time (blender/holds.js).
-  const holds = HOLDS[id];
-  if (!holds) throw new Error('no hands are fitted to ' + id + ': run node blender/holds.js');
+  const hands = { right, left: makeHand('left') };
+  // The hands' poses on this gun, solved ahead of time (blender/realposes.js).
+  const holds = GUNS[id];
+  if (!holds) throw new Error('no hands are fitted to ' + id + ': run node blender/realposes.js');
   const lowQ = qFrame(LOW.fingers, LOW.back), lowDigits = relaxed();
   let clips = null, clipsFor = null;
   const clipsOf = s => { if (clipsFor !== s) { clipsFor = s; clips = CLIPS[id](s); } return clips; };

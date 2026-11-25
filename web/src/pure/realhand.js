@@ -113,6 +113,8 @@ const MOVED = Object.fromEntries(DIGITS.map(d => {
 // The pad of each digit's end bone, and the points over the palm, each on the bone that carries it.
 const PAD = Object.fromEntries(DIGITS.map(d => [d, toLocal(CHAIN(d)[2], PADS[d])]));
 const PALM_PTS = PALM.map(p => toLocal(bi('hand'), p));
+// A right hand's pad in its digit's end bone's own axes (where a check finds it on the bones in the page).
+export const padLocal = d => PAD[d].slice();
 
 // Where each digit's pad is, and every skin point, for a posed right hand.
 export const padAt = (pose, d, F = world(pose)) => fromLocal(F[CHAIN(d)[2]], PAD[d]);
