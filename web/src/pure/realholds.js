@@ -5,7 +5,7 @@ import { HOLDS } from '../range/holds.js';
 import { digit as toyDigit, qFrame, qRot, sub, add, scale, roundBox } from './hands.js';
 import { JOINTS } from './handrig.js';
 import { FINGERS, wrap, reach, seat, fingersShape, relaxed, deepest, deepestBody, LIMITS } from './realhand.js';
-import { HOME as TYPE_HOME } from './typing.js';
+import { HOME as TYPE_HOME, DESK } from './typing.js';
 
 const mz = p => [p[0], p[1], -p[2]];
 const knuckle = side => (side === 'left' ? mz(JOINTS['finger-3-1']) : JOINTS['finger-3-1']);
@@ -76,14 +76,7 @@ export function solveGrip(gunId) {
 }
 
 // ---------- the desk (blender/zones/studio.py), from the keyboard's middle on the desk: x toward the monitor, y up, z right ----------
-export const DESK = {
-  // 15 keys across and 5 deep, 19 mm apart like a real keyboard's, 17.5 mm square, their tops 3.9 cm over the desk.
-  key: { cols: 15, rows: 5, dx: 0.019, dz: 0.019, x0: -0.038, z0: 0.133, w: 0.0175, d: 0.0175, top: 0.039, h: 0.01 },
-  case: { at: [0, 0.018, 0], size: [0.115, 0.022, 0.3] },
-  rest: { at: [-0.095, 0.012, 0], size: [0.07, 0.016, 0.3] },
-  // The mouse sits left of the keyboard.
-  mouse: { at: [0.02, 0.018, -0.48], size: [0.11, 0.035, 0.065], r: 0.016 },
-};
+export { DESK };
 // The middle of a key's top: row 0 the nearest, column 0 the furthest right.
 export const keyTop = (row, col, press = 0) => [DESK.key.x0 + row * DESK.key.dx, DESK.key.top - press, DESK.key.z0 - col * DESK.key.dz];
 // Where a typing finger's pad is aimed from the middle of its key's top: its tip is what lands on the key.

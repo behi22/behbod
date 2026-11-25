@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { keyFor, fingerFor, HOME, strokeAt, TRAVEL } from './pure/typing.js';
-import { DESK } from './pure/realholds.js';
+import { keyFor, fingerFor, HOME, strokeAt, TRAVEL, DESK } from './pure/typing.js';
 
 // My hands at the desk, seen from my own eyes once the camera has glided in: fetched the first time I sit, they come
 // up onto the keyboard as my body leaves the view. While I type at the terminal or play a desk game both hands are on

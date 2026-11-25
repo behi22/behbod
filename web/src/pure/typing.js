@@ -34,6 +34,16 @@ export function reachable(side, digit) {
   return out;
 }
 
+// The desk's keyboard, wrist rest and mouse (blender/zones/studio.py), from the keyboard's middle on the desk: x toward
+// the monitor, y up, z right.
+export const DESK = {
+  // 15 keys across and 5 deep, 19 mm apart like a real keyboard's, 17.5 mm square, their tops 3.9 cm over the desk.
+  key: { cols: 15, rows: 5, dx: 0.019, dz: 0.019, x0: -0.038, z0: 0.133, w: 0.0175, d: 0.0175, top: 0.039, h: 0.01 },
+  case: { at: [0, 0.018, 0], size: [0.115, 0.022, 0.3] },
+  rest: { at: [-0.095, 0.012, 0], size: [0.07, 0.016, 0.3] },
+  // The mouse sits left of the keyboard.
+  mouse: { at: [0.02, 0.018, -0.48], size: [0.11, 0.035, 0.065], r: 0.016 },
+};
 // How far a key goes down when pressed to the bottom (metres).
 export const TRAVEL = 0.0035;
 // One stroke's timing (seconds): over to the key if it is not the one the finger rests on, down until the key bottoms
