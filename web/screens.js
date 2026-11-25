@@ -12,6 +12,9 @@ import { newReader, readerGo, readerLayout } from './src/pure/reader.js';
 import { paintStory, paintWallpaper } from './src/shah/scenes.js';
 import { helloWorld } from './src/pure/hello.js';
 import { newHistory, remember, browse } from './src/pure/history.js';
+import { suggest, ghost as ghostOf, newFill, step as fillStep } from './src/pure/autofill.js';
+import { LINKS, opening, blocked } from './src/pure/links.js';
+import { openTab } from './src/opentab.js';
 import { makeContrib } from './src/contrib.js';
 import { livePicture } from './src/canvastex.js';
 
@@ -62,8 +65,10 @@ export function makeCanvases(meta, opts = {}) {
   // Main ultrawide: the computer's desktop, with a terminal you can type into. The seated view (src/desktop.js) lays
   // the same desktop out in HTML over this screen, from the same model.
   S.main = surface(DW, DH);
-  const term = { lines: [], input: '', focus: false, blink: 0 };
+  // `links`: lines that open a page when clicked in the seated view, by their text.
+  const term = { lines: [], input: '', focus: false, blink: 0, links: new Map() };
   const hist = newHistory();
+  let fill = newFill();
   const desk = { st: newDesktop(), ctx: { wallpaper: loadWallpaper() }, notes: loadNotes(), calc: newCalc(), browser: newBrowser(), reader: newReader(), sfx: null, dirty: true, drawn: -1, listeners: [] };
   const changed = () => { desk.dirty = true; for (const f of desk.listeners) f(); };
   // Painted once and kept: each is many shapes, and the monitor repaints every second.
@@ -86,17 +91,20 @@ export function makeCanvases(meta, opts = {}) {
   desk.games = makeDeskGames({ store: local, sfx: gameSfx, onEvent: name => { if (name === 'over') changed(); } });
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
   const EXTRA = {};
+  const SHOWN = ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'github', 'clear', 'exit'];
+  // What autofill offers: help's list, help itself and the projects; the hidden ones stay hidden.
+  const offered = () => ['help', ...SHOWN, ...Object.keys(EXTRA), ...Object.keys(LINKS)];
   const CMDS = {
     // The names in rows that fit the terminal's window, the first row headed.
     help: () => {
       const rows = [];
-      for (const n of ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'clear', 'exit', ...Object.keys(EXTRA)]) {
+      for (const n of [...SHOWN, ...Object.keys(EXTRA)]) {
         if (rows.length && rows.at(-1).length + 2 + n.length <= 54) rows[rows.length - 1] += '  ' + n; else rows.push(n);
       }
       say(...rows.map((r, i) => (i ? '          ' : 'commands: ') + r), 'picture quality sets itself; to change it, open Settings');
     },
     whoami: () => say('Behbod Babai. Engineer in Vancouver.', 'I make computers talk back.'),
-    projects: () => say('meet-bex      a voice receptionist you can talk to', 'profile-art   my GitHub profile, redrawn every hour', 'aic-voice-microsite'),
+    projects: () => say('meet-bex      a voice receptionist you can talk to', 'profile-art   my GitHub profile, redrawn every hour', 'aic-voice-microsite', 'visitor-classifier', 'type a name to open it in a new tab.'),
     postit: () => say('the note on this monitor is my tattoo:', 'Bengar o beshno, bogzar o beh sho'),
     ls: () => say('notes.txt  projects/  piano/  secrets/'),
     'cat notes.txt': () => say('fix the telescope. water the succulent. ship.'),
@@ -105,10 +113,14 @@ export function makeCanvases(meta, opts = {}) {
     'hello friend': () => say('hello, friend.'),
     'hello, friend': () => say('hello, friend.'),
     sudo: () => say('behbod is not in the sudoers file. This incident will be reported.'),
-    clear: () => { term.lines = []; changed(); },
+    clear: () => { term.lines = []; term.links.clear(); changed(); },
     ferdowsi: () => say(...ferdowsiLines()),
     nowruz: () => say(...nowruzLines(new Date())),
   };
+  for (const [name, { title, url }] of Object.entries(LINKS)) {
+    CMDS[name] = () => { const line = openTab(url) ? opening(title) : blocked(title); term.links.set(line, url); say(line); };
+  }
+  const ghost = () => (term.focus ? ghostOf(term.input, offered()) : '');
   const col = k => STYLE[k] || k;
   const icon = {};
   function drawIcon(g, a, x, y, size, on) {
@@ -152,9 +164,21 @@ export function makeCanvases(meta, opts = {}) {
     if (w.app === 'terminal') {
       const { lines, top } = termShown(term.lines, w.h);
       g.font = `400 ${STYLE.term}px ${STYLE.font}`;
-      lines.forEach((l, i) => { g.fillStyle = l.startsWith('$') ? STYLE.accent : STYLE.ink; g.fillText(l, w.x + PAD, w.y + top + i * STYLE.termLine); });
+      lines.forEach((l, i) => {
+        const ly = w.y + top + i * STYLE.termLine;
+        g.fillStyle = l.startsWith('$') ? STYLE.accent : STYLE.ink; g.fillText(l, w.x + PAD, ly);
+        if (term.links.has(l)) { g.fillStyle = 'rgba(216,224,238,.4)'; g.fillRect(w.x + PAD, ly + 4, g.measureText(l).width, 1.5); }
+      });
+      const y = w.y + top + lines.length * STYLE.termLine, rest = ghost();
       g.fillStyle = STYLE.accent;
-      g.fillText('$ ' + term.input + (term.focus && term.blink % 2 ? '█' : ''), w.x + PAD, w.y + top + lines.length * STYLE.termLine);
+      if (!rest) g.fillText('$ ' + term.input + (term.focus && term.blink % 2 ? '█' : ''), w.x + PAD, y);
+      else {
+        // The rest of the command, faint, starts at the cursor; the cursor's block sits over its first letter.
+        const x = w.x + PAD + g.measureText('$ ' + term.input).width;
+        g.fillText('$ ' + term.input, w.x + PAD, y);
+        g.fillStyle = STYLE.dim; g.fillText(rest, x, y);
+        if (term.blink % 2) { g.fillStyle = STYLE.accent; g.fillText('█', x, y); g.fillStyle = STYLE.window; g.fillText(rest[0], x, y); }
+      }
     } else if (w.app === 'notes') {
       g.font = `400 ${STYLE.text}px ${STYLE.font}`; g.fillStyle = '#e9dfb8';
       const cols = Math.floor((w.w - 2 * PAD) / (STYLE.text * 0.6));
@@ -382,6 +406,8 @@ export function makeCanvases(meta, opts = {}) {
       setCtx(patch) { Object.assign(desk.ctx, patch); changed(); },
       get ctx() { return desk.ctx; },
       set covered(on) { desk.covered = on; if (!on) desk.dirty = true; },
+      // The faint rest of the command being typed, while the terminal has the keyboard.
+      get ghost() { return ghost(); },
       changed,
       listen(fn) { desk.listeners.push(fn); },
       get wallpaper() { return desk.ctx.wallpaper; },
@@ -403,6 +429,8 @@ export function makeCanvases(meta, opts = {}) {
     command(name, fn) { EXTRA[name] = fn; },
     // Up (-1) or Down (+1) through the commands entered, from the line now typed: the line to show, or null.
     recall: (dir, current) => browse(hist, dir, current),
+    // The commands autofill may offer, for the phone's command box.
+    commands: offered,
     contrib,
     run(text, exit) {
       const cmd = text.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -432,18 +460,24 @@ export function makeCanvases(meta, opts = {}) {
         if (k) { calcPress(desk.calc, k); changed(); }
         if (k || e.key.length === 1 || e.key === 'Tab') { e.preventDefault(); return; }
       }
+      // Shortcuts are the browser's at the terminal too; AltGr holds Ctrl and Alt but types a letter.
+      if ((e.ctrlKey || e.metaKey || e.altKey) && !e.getModifierState('AltGraph')) return;
       // Typing at the desk goes to the terminal, bringing it to the front first if something else is.
       if (desk.st.focus !== 'terminal') {
         if (e.key.length !== 1 && e.key !== 'Enter' && e.key !== 'Tab') return;
         openApp(desk.st, 'terminal'); changed();
       }
-      if (e.key === 'Tab') {
-        const names = [...Object.keys(CMDS), ...Object.keys(EXTRA), 'exit'].filter(n => term.input && n.startsWith(term.input.toLowerCase()));
-        if (names.length === 1) { term.input = names[0]; changed(); } else if (names.length > 1) say(names.join('  '));
-      } else if (e.key === 'Enter') { this.run(term.input, exit); }
-      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const line = browse(hist, e.key === 'ArrowUp' ? -1 : 1, term.input); if (line !== null) { term.input = line; changed(); } }
-      else if (e.key === 'Backspace') { term.input = term.input.slice(0, -1); changed(); }
-      else if (e.key.length === 1 && term.input.length < 60) { term.input += e.key; changed(); }
+      // Tab fills the best command and goes round the others, Shift+Tab the other way; Right Arrow takes the best.
+      if (e.key === 'Tab') { const line = fillStep(fill, term.input, offered(), e.shiftKey ? -1 : 1); if (line !== null) { term.input = line; changed(); } }
+      else {
+        // Any other key but Shift (held for Shift+Tab) ends the turn, so the next Tab starts from the line as it is.
+        if (e.key !== 'Shift') fill = newFill();
+        if (e.key === 'Enter') { this.run(term.input, exit); }
+        else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const line = browse(hist, e.key === 'ArrowUp' ? -1 : 1, term.input); if (line !== null) { term.input = line; changed(); } }
+        else if (e.key === 'ArrowRight') { const best = suggest(term.input, offered())[0]; if (best) { term.input = best; changed(); } }
+        else if (e.key === 'Backspace') { term.input = term.input.slice(0, -1); changed(); }
+        else if (e.key.length === 1 && term.input.length < 60) { term.input += e.key; changed(); }
+      }
       e.preventDefault();
     },
   };
