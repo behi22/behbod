@@ -1,6 +1,6 @@
-// Solves the realistic hand's poses ahead of time into web/src/pure/realposes.js (a few seconds a gun, too slow for a
-// page): each range gun's hold, and at the desk typing, pressing keys, on the mouse and resting.
-//   node blender/realposes.js
+// Solves the realistic hand's poses ahead of time into web/src/pure/realposes.js (several seconds a gun, too slow for a
+// page): every hold each range gun's clips ask of the hands, and at the desk typing, pressing keys, on the mouse and
+// resting.   node blender/realposes.js [gun,gun]   (only those guns solved again, the rest kept)
 const path = require('path'), fs = require('fs');
 const OUT = path.join(__dirname, '..', 'web/src/pure/realposes.js');
 (async () => {
@@ -11,7 +11,10 @@ const OUT = path.join(__dirname, '..', 'web/src/pure/realposes.js');
   const old = only && fs.existsSync(OUT) ? await import(require('url').pathToFileURL(OUT).href + '?' + Date.now()) : null;
   for (const id of ['pistol', 'smg', 'rifle', 'sniper', 'lmg']) {
     if (only && !only.includes(id)) { guns[id] = old.GUNS[id]; continue; }
-    const g = G.solveGrip(id); guns[id] = { right: pose(g.right), left: pose(g.left) }; console.log('solved', id); }
+    const h = G.solveHolds(id);
+    guns[id] = Object.fromEntries(['right', 'left'].map(side => [side, Object.fromEntries(Object.entries(h[side]).map(([name, p]) => [name, pose(p)]))]));
+    console.log('solved', id);
+  }
   const r3 = a => a.map(r);
   const desk = {
     home: { left: pose(G.typing('left')), right: pose(G.typing('right')) },

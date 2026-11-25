@@ -1,10 +1,10 @@
-// The realistic hand's poses on things: each range gun's grip (from the same descriptions as the range's own hands,
-// pure/handling.js), and at the desk, typing on its keyboard, on its mouse, and resting.
-import { GUN_HOLDS } from './handling.js';
+// The realistic hand's poses on things: every hold each range gun's clips ask of the hands (carried over from the range's
+// own, pure/handling.js), and at the desk, typing on its keyboard, on its mouse, and resting.
+import { GUN_HOLDS, rotTrigger } from './handling.js';
 import { HOLDS } from '../range/holds.js';
-import { digit as toyDigit, qFrame, qRot, sub, add, scale, roundBox } from './hands.js';
+import { digit as toyDigit, qFrame, qRot, qMul, qAxis, sub, add, scale, norm, roundBox } from './hands.js';
 import { JOINTS } from './handrig.js';
-import { FINGERS, wrap, reach, seat, fingersShape, relaxed, deepest, deepestBody, LIMITS } from './realhand.js';
+import { FINGERS, wrap, reach, seat, fingersShape, relaxed, deepest, deepestBody, LIMITS, worldFor, bi, miss } from './realhand.js';
 import { HOME as TYPE_HOME, DESK } from './typing.js';
 
 const mz = p => [p[0], p[1], -p[2]];
@@ -45,34 +45,110 @@ const toyTip = (side, toy, d) => add(toy.at, qRot(toy.q, toyDigit(side, d, toy.d
 // `ahead`: how much further along its fingers this hand goes than the toy's knuckles did, its fingers being shorter
 // past them, so they still reach round what the toy's closed round.
 function settle(side, toy, shape, { fingers = FINGERS, thumb = null, ahead = 0 } = {}) {
-  let P = carried(side, toy);
-  P = { ...P, at: add(P.at, scale(qRot(P.q, [1, 0, 0]), ahead)) };
+  const P = carried(side, toy), to = thumb || toyTip(side, toy, 'thumb');
+  return closed(side, seated(side, { ...P, at: add(P.at, scale(qRot(P.q, [1, 0, 0]), ahead)) }, shape), shape, fingers,
+    Q => reach(side, 'thumb', Q, to, { from: OPEN_THUMB, sdf: shape }));
+}
+const OPEN_THUMB = [0.4, 0.5, 0.3, 0.2, -0.3];
+// A palm brought onto a shape along its own normal. Skin gives a couple of millimetres where it presses on something;
+// any part of the palm deeper than that comes out.
+function seated(side, P, shape) {
   P = seat(side, P, shape, scale(qRot(P.q, [0, 1, 0]), -1), { gap: -0.001 });
-  // Skin gives a couple of millimetres where it presses on something; any part of the palm deeper than that comes out.
   const out = scale(qRot(P.q, [0, 1, 0]), 0.0005);
   for (let i = 0; i < 16 && deepestBody(side, P, shape) < -0.0025; i++) P = { ...P, at: add(P.at, out) };
-  for (const d of fingers) P.digits[d] = wrap(side, d, P, shape, { from: OPEN(d) });
-  P.digits.thumb = reach(side, 'thumb', P, thumb || toyTip(side, toy, 'thumb'), { from: [0.4, 0.5, 0.3, 0.2, -0.3], sdf: shape });
+  return P;
+}
+// Fingers closed round the shape, and the thumb by `thumb` if given; a digit whose root still presses in more than a
+// millimetre takes the palm out.
+function closed(side, P, shape, fingers, thumb = null) {
+  const out = scale(qRot(P.q, [0, 1, 0]), 0.0005), digits = thumb ? [...fingers, 'thumb'] : fingers;
+  for (let i = 0; i < 16; i++) {
+    P = { ...P, digits: { ...P.digits } };
+    for (const d of fingers) P.digits[d] = wrap(side, d, P, shape, { from: OPEN(d) });
+    if (thumb) P.digits.thumb = thumb(P);
+    if (digits.every(d => deepest(side, P, shape, [d]) > -0.001)) break;
+    P = { ...P, at: add(P.at, out) };
+  }
   return P;
 }
 
-// A gun's hold, from the range's own (web/src/range/holds.js): this hand laid where the toy hand's knuckles were, its
-// palm settled on the grip, the first finger's pad on the trigger, the others and the thumb closed round. The left on
-// the pistol closes over the right hand's fingers, on the long guns round the handguard.
-export function solveGrip(gunId) {
-  const H = GUN_HOLDS[gunId], T = HOLDS[gunId], shape = H.shape;
-  const R = settle('right', T.right.grip, shape, { fingers: ['middle', 'ring', 'pinky'], thumb: H.thumbs.right });
-  R.digits.index = reach('right', 'index', R, H.trigger.pad, { from: [0.13, 0.5, 1.0, 0.6], sdf: shape });
-  if (H.fore) return { right: R, left: settle('left', T.left.grip, shape, { thumb: H.fore.thumb }), shape };
+// The range's marks were where the toy hand's digit ends went, inside the digit; this hand's pads are its skin, so they
+// are aimed at the spot on the surface under a mark, `gap` off it.
+export function onSurface(sdf, p, gap = 0.0008) {
+  const e = 1e-4;
+  let q = p.slice();
+  for (let i = 0; i < 6; i++) {
+    const n = norm([0, 1, 2].map(k => { const a = q.slice(), b = q.slice(); a[k] += e; b[k] -= e; return sdf(a) - sdf(b); }));
+    q = sub(q, scale(n, sdf(q) - gap));
+  }
+  return q;
+}
+const deg = Math.PI / 180, DOWN = norm([-0.333, -0.943, 0]);
+const turned = (P, pivot, q) => ({ ...P, at: add(pivot, qRot(q, sub(P.at, pivot))), q: qMul(q, P.q) });
+// The shooting hand on the grip all five guns share: the toy's, turned about its first knuckle (fingers up `pitch` degrees, round the grip
+// `roll`), moved by `shift`, its thumb's spot on the grip's left side. The trigger sits further forward than on a real
+// pistol, so with the first finger on it this thumb cannot reach the toy's mark high on the frame: it wraps round the
+// back of the grip instead, its pad resting on the left side.
+export const SHOOT = { pitch: 10, roll: -1, shift: [0.001, 0.001, 0], thumb: [-0.016, -0.03, -0.03] };
+function shooting(gunId) {
+  const H = GUN_HOLDS[gunId], shape = H.shape, P0 = carried('right', HOLDS[gunId].right.grip), pivot = worldFor('right', P0)[bi('index1')].p;
+  let P = turned(P0, pivot, qMul(qAxis(DOWN, SHOOT.roll * deg), qAxis([0, 0, 1], SHOOT.pitch * deg)));
+  P = closed('right', seated('right', { ...P, at: add(P.at, SHOOT.shift), digits: relaxed() }, shape), shape, ['middle', 'ring', 'pinky']);
+  P.digits.index = reach('right', 'index', P, H.trigger.pad, { from: [0.13, 0.5, 1.0, 0.6], sdf: shape });
+  P.digits.thumb = reach('right', 'thumb', P, onSurface(shape, SHOOT.thumb), { from: OPEN_THUMB, sdf: shape });
+  return P;
+}
+// Off the trigger, the first finger laid along the frame above it, as far toward the toy's mark as it reaches.
+function alongFrame(P, H) {
+  let out = null;
+  for (let back = 0; back <= 0.0281; back += 0.004) {
+    const to = onSurface(H.shape, [H.straight[0] - back, H.straight[1], H.straight[2]]);
+    out = { ...P, digits: { ...P.digits, index: reach('right', 'index', P, to, { from: [relaxed().index[0], 0.1, 0.1, 0.05], sdf: H.shape }) } };
+    if (miss('right', out, 'index', to) < 0.002) break;
+  }
+  return out;
+}
+// The thumb toward a button or lever: on these guns they are beyond its reach from the grip (even turning the hand
+// round it), so it goes as far toward them as it can, never into the gun.
+const pressing = (P, H, at) => ({ ...P, digits: { ...P.digits, thumb: reach('right', 'thumb', P, onSurface(H.shape, at, 0), { from: P.digits.thumb, sdf: H.shape, keep: 0, sweep: false }) } });
+// A hand laid as the toy's was in a pose, settled on what it holds, its thumb on the spot under the toy's mark.
+const laid = (side, toy, shape, mark, opts = {}) => settle(side, toy, shape, { ...opts, thumb: onSurface(shape, mark) });
+
+// Every pose a gun's clips ask of the hands (pure/clips.js), both hands, from the range's own (web/src/range/holds.js):
+// this hand laid where the toy hand was in each and settled on what it holds, its digits closed round and on their
+// marks. The pistol's support hand has its own pose, over the shooting hand's fingers.
+export function solveHolds(gunId) {
+  const H = GUN_HOLDS[gunId], T = HOLDS[gunId], shape = H.shape, grip = shooting(gunId);
+  const right = {
+    grip,
+    // Pulled: the pad follows the trigger's face round its pin.
+    pull: { ...grip, digits: { ...grip.digits, index: reach('right', 'index', grip, rotTrigger(H.trigger, 1), { from: grip.digits.index, sdf: shape, sweep: false }) } },
+    straight: alongFrame(grip, H),
+  };
+  if (H.release) right.release = pressing(right.straight, H, H.release);
+  if (H.stop) right.stop = pressing(right.straight, H, H.stop);
+  for (const [name, set] of Object.entries(H.rightExtra || {})) right[name] = laid('right', T.right[name], shape, set.thumb);
+  if (H.fore) {
+    const magged = H.cup.alone ? H.mag : p => Math.min(H.mag(p), shape(p));
+    const left = { grip: settle('left', T.left.grip, shape, { thumb: H.fore.thumb }), mag: laid('left', T.left.mag, magged, H.cup.thumb) };
+    for (const [name, set] of Object.entries(H.extra || {})) left[name] = laid('left', T.left[name], shape, set.thumb);
+    return { right, left };
+  }
   // On the pistol the toy's support hand sat too far out for this one's shorter fingers to reach round, so it has its
   // own: palm on the grip's left side, fingers down and round the front over the right hand's, thumb along the frame.
-  const over = fingersShape('right', R), both = p => Math.min(shape(p), over(p));
+  const over = fingersShape('right', grip), both = p => Math.min(shape(p), over(p));
   const q = qFrame(SUPPORT.fingers, SUPPORT.back);
   let L = { at: sub(SUPPORT.knuckle, qRot(q, knuckle('left'))), q, digits: relaxed(), cup: 0.2 };
   L = seat('left', L, both, scale(qRot(q, [0, 1, 0]), -1), { gap: -0.001 });
   for (const d of FINGERS) L.digits[d] = wrap('left', d, L, both, { from: OPEN(d) });
-  L.digits.thumb = reach('left', 'thumb', L, H.thumbs.left, { from: [0.4, 0.5, 0.3, 0.2, -0.3], sdf: both });
-  return { right: R, left: L, shape };
+  L.digits.thumb = reach('left', 'thumb', L, H.thumbs.left, { from: OPEN_THUMB, sdf: both });
+  // A magazine is cupped as it sits home, so the fingers stop where the grip begins; the longer one by its own foot.
+  const magged = p => Math.min(H.mag(p), shape(p)), longer = p => Math.min(H.long.mag(p), shape(p));
+  const pinch = laid('left', T.left.pinch, shape, H.over.thumb);
+  // Over the slide on the way in and out: the pinch lifted clear, the hand open.
+  let lift = { ...pinch, at: add(pinch.at, [0, 0.014, 0]), digits: relaxed() };
+  while (deepest('left', lift, shape) < -0.001) lift = { ...lift, at: add(lift.at, [0, 0.002, 0]) };
+  return { right, left: { grip: L, mag: laid('left', T.left.mag, magged, H.cup.thumb), magX: laid('left', T.left.magX, longer, H.long.cup.thumb), pinch, over: lift } };
 }
 
 // ---------- the desk (blender/zones/studio.py), from the keyboard's middle on the desk: x toward the monitor, y up, z right ----------

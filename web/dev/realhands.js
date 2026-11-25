@@ -101,7 +101,7 @@ async function gunScene(id) {
     const el = (RIGS[id].elbows || ELBOWS)[side];
     gun.camera.updateMatrixWorld(true);
     const e = turn.worldToLocal(gun.camera.localToWorld(new THREE.Vector3(...el)));
-    h.pose(GUNS[id][side], e.toArray());
+    h.pose(GUNS[id][side].grip, e.toArray());
     mine[side] = h;
   }
   // ?marks: where the trigger finger's pad and each thumb are meant to go.
