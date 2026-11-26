@@ -107,6 +107,17 @@ const tapAtLow = (p, h) => p.evaluate(async h => {
   let n = 0;
   return new Promise(res => { const f = () => { const b = k.ball.ball; if (b.v[1] < 0 && b.p[1] - 0.1 < h) { const P = __loft.pos, dx = P.x - b.p[0], dz = P.z - b.p[2], d = Math.hypot(dx, dz); if (d > 1.2) P.set(b.p[0] + dx / d * 1.2, P.y, b.p[2] + dz / d * 1.2); res(k.tap(new THREE.Raycaster(cam.position.clone(), new THREE.Vector3(...b.p).sub(cam.position).normalize()), null, P)); } else if (++n > 300) res(false); else requestAnimationFrame(f); }; f(); });
 }, h);
+// The same on a phone, by a real touch on the screen: the ball held as it comes down lower than `h` while I keep within a
+// step of it, turned to it, and the camera settles; then a tap where it shows. Gives what was under the finger.
+const touchAtLow = async (p, h) => {
+  const held = await p.evaluate(h => new Promise(res => { const k = __keeper.ball; k.go ||= k.tick; let n = 0; const f = () => { const b = k.ball; if (b.v[1] < 0 && b.p[1] - 0.1 < h) { k.tick = () => {}; const P = __loft.pos; let dx = P.x - b.p[0], dz = P.z - b.p[2]; const d = Math.hypot(dx, dz); if (d > 1.2) { dx *= 1.2 / d; dz *= 1.2 / d; P.set(b.p[0] + dx, P.y, b.p[2] + dz); } __loft.yaw = Math.atan2(dx, dz); res(true); } else if (++n > 300) res(false); else requestAnimationFrame(f); }; f(); }), h);
+  if (!held) return 'nothing: it never came down';
+  await p.waitForTimeout(600);
+  const at = await ballOnScreen(p);
+  await p.touchscreen.tap(at.x, at.y);
+  await letGo(p);
+  return at.top || 'off the screen';
+};
 const waitRest = p => p.waitForFunction(() => __keeper.ball.ball.rest && __keeper.ball.still, null, { timeout: 20000, polling: 100 });
 const ballOnScreen = async p => onScreen(p, await p.evaluate(() => { const b = __keeper.ball.ball.p; return { x: b[0], y: b[1], z: b[2] }; }));
 // The corner's ball from a little way off.
@@ -327,9 +338,10 @@ const CORNER_EYE = [[9.4, 3.9, 0.55], [10.25, 3.62, 0.1]];
       await p.waitForTimeout(120);
       let s = await ball(p);
       check('phone: the Use button knocks it up', s.count === 1, `${s.count}`);
-      for (let n = 2; n <= 3; n++) { await holdAt(p, 0.55); const at = await ballOnScreen(p); await p.touchscreen.tap(at.x, at.y); await letGo(p); await p.waitForTimeout(60); }
+      const under = [];
+      for (let n = 2; n <= 3; n++) under.push(await touchAtLow(p, 0.55));
       s = await ball(p);
-      check('phone: tapping the ball as it comes down keeps it up', s.count === 3, `${s.count} touches`);
+      check('phone: tapping the ball as it comes down keeps it up', s.count === 3, `${s.count} touches; under the finger: ${under.join(', ')}`);
       await p.screenshot({ path: path.join(OUT, 'phone-juggling.png') });
       await waitRest(p);
       const prompt = await p.evaluate(() => { const r = document.getElementById('prompt').getBoundingClientRect(), u = document.getElementById('use').getBoundingClientRect(); return { overlap: !(r.bottom <= u.top || r.top >= u.bottom || r.right <= u.left || r.left >= u.right), inside: r.left >= 0 && r.right <= innerWidth }; });
