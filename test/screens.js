@@ -33,7 +33,8 @@ async function open(b, opts, { q = opts.isMobile ? 'medium' : 'high', graph = 'f
   if (graph !== null) await ctx.route(GRAPH, r => { asked.push(performance.now()); return graph === 'fail' ? r.abort('failed') : r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: typeof graph === 'string' ? graph : JSON.stringify(graph) }); });
   const p = await ctx.newPage(), errs = [];
   watch(p, errs);
-  await p.goto(`${BASE}/?auto&q=${q}`);
+  // The room as it is on any day: on a Real Madrid game day the studio turns white and gold a few seconds in.
+  await p.goto(`${BASE}/?auto&matchday=off&q=${q}`);
   await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
   await p.waitForTimeout(800);
   return { ctx, p, errs, asked };

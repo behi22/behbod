@@ -63,7 +63,8 @@ async function shoot(dir) {
     b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
     const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
     p.on('pageerror', e => errs.push(e.message));
-    await p.goto(`http://127.0.0.1:${PORT}/?auto&q=ultra`);
+    // The room as it is on any day in both versions: on a Real Madrid game day the studio turns white and gold a few seconds in.
+    await p.goto(`http://127.0.0.1:${PORT}/?auto&matchday=off&q=ultra`);
     await p.waitForFunction(() => window.__loft, null, { timeout: 120000 });
     await p.waitForTimeout(3000);
     for (const [name, [e, a]] of Object.entries(CAMERAS)) {
