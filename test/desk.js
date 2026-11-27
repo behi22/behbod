@@ -168,6 +168,8 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
     // ---------- BH-22's eyes keep their glow after a pet (they came back dimmer, read back through a plain colour) ----------
     if (want('glow')) {
       const { ctx, p, errs } = await open(b, DESK);
+      // At noon: from 23:00 to 6:00 a docked BH-22 dims its eyes on purpose, which is not what this check is about.
+      await p.evaluate(() => { __loft.creatures.hour = 12; });
       const s = W.points.spawn;
       await standAt(p, s, Math.PI);
       await r2At(p, [s[0] + 0.55, s[1] + 0.05, s[2]]);
