@@ -24,10 +24,11 @@ const PHRASE = 'a keychain to warm up';
 const WARM = [warmScreen, () => measure('a'), () => measure(PHRASE), () => parsePrint('rocket', DEFAULT), () => parsePrint(PHRASE, DEFAULT), () => readable(PHRASE)];
 let warmed = 0;
 const later = (f, timeout) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout }) : setTimeout(f, 500));
-function warmWords() { WARM[warmed++](); if (warmed < WARM.length) later(warmWords, 1000); }
+// A page with no quiet moment at all (a busy phone) still has them all within about 2 s, rather than 10 s after settling.
+function warmWords() { WARM[warmed++](); if (warmed < WARM.length) later(warmWords, 250); }
 function warmWhenIdle() {
   idleAsked = true;
-  later(warmWords, 5000);
+  later(warmWords, 1000);
 }
 
 export function makePrinter({ scene, meta, parts, store, b2t, renderer, sfx = null, coarse = false }) {

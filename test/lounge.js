@@ -1,7 +1,8 @@
 // The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards, the game shelf and its covers, the
 // Shahnameh on the mezzanine opening the reader, and the project frames up the stairs, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8823 node test/lounge.js [outdir] [parts]
-// Parts: covers, khatam, game, shelf, reader, frames, phone, smooth (smooth measures frames: run it alone, under `timing`).
+// Parts: covers, khatam, game, shelf, reader, frames, phone, and inlay and smooth (they time the page: run them alone,
+// under `timing`).
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -175,6 +176,72 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       await shot(p, 'board-corner', [15.12, 16.44, 0.97], [15.2, 16.72, 0.8], 960, 600, 40);
       check('khatam: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
+    }
+
+    if (want('inlay')) {
+      // The balcony board is inlaid a few steps at a time: in quiet moments on his laptop at ultra, where the graphics
+      // card is busiest, and on a phone 4x slower, and on timers on that phone with no requestIdleCallback and in
+      // WebKit at phone size, as in Safari. Each slice that paints it is timed in the page, and in Chrome a trace times
+      // the page's other tasks from the first slice until 300 ms after the board is on the table, leaving out the
+      // house's frames and its own quiet-moment work. The WebKit
+      // leg runs Safari's engine at all (errors, slices): earlier versions pass it too. WebKit at ultra is left out:
+      // under Playwright it draws the house at about 12 frames a second and its slices wait on those frames, main's
+      // too. Failed before: the strips were filled from tiles on the graphics card and the last step waited for them,
+      // 35 to 66 ms at ultra; then a worker fetched the tiles and its shutting down held the page 12 to 22 ms; then,
+      // with no requestIdleCallback, a slice came only once a second and the board took 13 s against main's 10.
+      const timeInlay = () => {
+        window.__inlay = [];
+        // The slices that paint (not the one that loads the module), whether they come as idle callbacks or as timers.
+        const wrap = cb => (typeof cb !== 'function' || !/steps\.next\(\)\.done/.test(String(cb)) ? cb : function (...a) {
+          const t = performance.now();
+          console.timeStamp?.('inlay step');
+          try { return cb.apply(this, a); } finally { window.__inlay.push({ at: t, ms: +(performance.now() - t).toFixed(1), paint: !/import\(/.test(String(cb)) }); }
+        });
+        const ric = window.requestIdleCallback, st = window.setTimeout;
+        if (ric) window.requestIdleCallback = (cb, o) => ric.call(window, wrap(cb), o);
+        window.setTimeout = (cb, ...a) => st.call(window, wrap(cb), ...a);
+      };
+      // The longest task on the page's main thread while the board is inlaid, other than its own slices (timed in the
+      // page), the house's frames and its other idle callbacks, with what ran in it.
+      const longest = trace => {
+        const ev = JSON.parse(trace.toString()).traceEvents, marks = ev.filter(e => e.name === 'TimeStamp' && e.args?.data?.message === 'inlay step');
+        if (!marks.length) return null;
+        const own = e => e.pid === marks[0].pid && e.tid === marks[0].tid && e.ph === 'X', inside = (t, e) => e.ts >= t.ts && e.ts <= t.ts + t.dur;
+        const tasks = ev.filter(e => own(e) && /RunTask$/.test(e.name)), slices = tasks.filter(t => marks.some(m => inside(t, m)));
+        if (!slices.length) return null;
+        const from = marks[0].ts, to = Math.max(...slices.map(t => t.ts + t.dur)) + 300e3;
+        const near = e => e.ts + (e.dur || 0) >= from && e.ts <= to;
+        const calls = ev.filter(e => own(e) && near(e) && /^(FireAnimationFrame|FireIdleCallback|TimerFire|EventDispatch|FunctionCall|v8\.evaluateModule)$/.test(e.name));
+        const worst = tasks.filter(near).filter(t => !slices.includes(t) && !calls.some(e => /^Fire/.test(e.name) && inside(t, e))).sort((a, b) => b.dur - a.dur)[0];
+        return worst ? { ms: +(worst.dur / 1000).toFixed(1), what: calls.find(e => inside(worst, e))?.name || 'no script' } : { ms: 0, what: 'none' };
+      };
+      const ULTRA = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 }, noIdle = () => { delete window.requestIdleCallback; window.requestIdleCallback = undefined; };
+      let wk = null;
+      // Main paints the board on timers in 9.7 s from its first one; the bound for that path is a little over it. With no
+      // idle callbacks the house's own background work runs on timers too, so the trace is read only where they exist.
+      for (const [name, webkit, opts, q, cpu, limit, bound, init] of [['his laptop at ultra', false, ULTRA, 'ultra', 1, 10, 0, null],
+        ['a phone 4x slower', false, UPRIGHT, 'medium', 4, 16.7, 0, null], ['a phone 4x slower with no requestIdleCallback', false, UPRIGHT, 'medium', 4, 0, 11, noIdle],
+        ['WebKit at phone size', true, UPRIGHT, 'medium', 1, 0, 11, null]]) {
+        const p = await (webkit ? (wk ||= await launch(pw.webkit)) : b).newPage(opts), errs = [];
+        watch(p, errs);
+        await p.addInitScript(timeInlay);
+        if (init) await p.addInitScript(init);
+        if (cpu > 1) await (await p.context().newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: cpu });
+        await p.goto(`${BASE}/?auto&matchday=off&q=${q}`);
+        await p.waitForFunction(() => window.__loft && __loft.renderer.info.render.calls > 0, null, { timeout: 300000 });
+        if (limit) await b.startTracing(p, { categories: ['toplevel', 'devtools.timeline'] });
+        const inlaid = await p.waitForFunction(() => { const d = __loft.screens.textures.backgammon.image.getContext('2d').getImageData(0, 0, 920, 26).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 47) + Math.abs(d[i + 1] - 106) + Math.abs(d[i + 2] - 76) < 40) n++; return n > 200; }, null, { timeout: 90000, polling: 200 }).then(() => true, () => false);
+        await p.waitForTimeout(400);
+        const task = limit ? longest(await b.stopTracing()) : null, slices = await p.evaluate(() => window.__inlay.slice());
+        const paints = slices.filter(s => s.paint).length, most = Math.max(...slices.map(s => s.ms));
+        const took = slices.length ? +((slices.at(-1).at + slices.at(-1).ms - slices[0].at) / 1000).toFixed(1) : 0;
+        check(`${name}: the board is inlaid in a few slices, each under a 60 Hz frame (16.7 ms)`, inlaid && paints >= 2 && most < 16.7, `${paints} slices that paint, the longest ${most} ms; on the table ${took} s after the first`);
+        if (bound) check(`${name}: and on the table within ${bound} s of the first slice`, inlaid && took < bound, `${took} s`);
+        if (limit) check(`${name}: no other task it causes holds the page over ${limit} ms`, !!task && task.ms < limit, task ? `the longest task ${task.ms} ms (${task.what})` : 'no slices in the trace');
+        check(`inlay, ${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+        await p.close();
+      }
+      await wk?.close();
     }
 
     if (want('shelf')) {

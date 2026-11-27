@@ -212,11 +212,12 @@ const walksOf = async p => { const w = await p.evaluate(() => __walks.splice(0))
       check('edges: BH-22 fetching the pen after the knock ended holds the slot, then frees it', over && going && held.moment === 'knock' && held.active === 'knock' && home && freed, JSON.stringify({ over, going, held, home, freed }));
       // Sitting down at the desk while she is on her way to steal the chair: she leaves it be (failed before: she hopped
       // up into me, then straight off).
-      await C(() => { __calm(); __openGap('steal'); __put('pishi', [19.4, 3.0, 0.45], 'sit'); __me([16.5, 4.5, 0.45]); const r = Math.random; Math.random = () => 0; __loft.creatures.force('steal'); Math.random = r; __loft.useDesk(); window.__seen = new Set(); window.__seenT = setInterval(() => __seen.add(__loft.creatures.pishi.state), 30); });
+      await C(() => { __calm(); __openGap('steal'); __put('pishi', [19.4, 3.0, 0.45], 'sit'); __me([16.5, 4.5, 0.45]); const r = Math.random; Math.random = () => 0; __loft.creatures.force('steal'); Math.random = r; __loft.useDesk(); window.__seen = new Set(); window.__seenOn = true; const look = () => { __seen.add(__loft.creatures.pishi.state); if (__seenOn) requestAnimationFrame(look); }; look(); });
       const left = await until(p, () => __loft.creatures.pishi.state !== 'toseat', null, 12000);
       await p.waitForTimeout(800);
-      const seen = await C(() => { clearInterval(__seenT); return [...__seen]; });
-      check('edges: she never hops onto the chair I am sitting in', left && !seen.includes('seat'), seen.join(','));
+      // Every frame, since on the chair she is there for one frame only before hopping down again.
+      const seen = await C(() => { __seenOn = false; return [...__seen]; });
+      check('edges: she never hops onto the chair I am sitting in', left && !seen.includes('seat') && !seen.includes('down'), seen.join(','));
       await C(() => __loft.leaveDesk());
       await p.waitForTimeout(1500);
     }

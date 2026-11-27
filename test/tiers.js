@@ -19,6 +19,12 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
   await p.waitForTimeout(1500);
   return { p, errs };
 }
+// Waits until the page has had no long task for 5 s (40 s at most), and says how long that took, in s.
+const quiet = async p => {
+  const t = Date.now();
+  await p.waitForFunction(() => performance.now() - Math.max(0, ...__lt.map(([s, d]) => s + d)) > 5000, null, { timeout: 40000, polling: 100 }).catch(() => {});
+  return +((Date.now() - t) / 1000).toFixed(1);
+};
 
 (async () => {
   const b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
@@ -42,13 +48,16 @@ async function open(b, q, view = { viewport: { width: 1366, height: 768 } }) {
     // (whose chain is built in the background and swapped in, so the switch lands a moment later).
     for (const [from, steps] of [['ultra', ['high', 'ultra', 'high', 'ultra']], ['high', ['medium', 'high', 'medium', 'high']]]) {
       const { p, errs } = await open(b, from, { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+      // The house's start-up work can have long tasks of its own, with no switch at all (before 3193f20 the khatam board's
+      // drawing held 50 to 60 ms about 3.5 s in), so the switches start after 5 s with none.
+      const settled = await quiet(p);
       const worst = [];
       for (const to of steps) {
         const t = await p.evaluate(next => { const t = performance.now(); __loft.autoTierTo(next); return t; }, to);
         await p.waitForTimeout(3500);
         worst.push(await p.evaluate(t => Math.max(0, ...__lt.filter(([s, d]) => s + d > t && s < t + 3000).map(l => l[1])), t));
       }
-      check(`${from} and ${steps[0]}: a switch between them holds no frame for long (longest task in the 3 s after each, ms)`, worst.every(w => w < 50), worst.map(w => w.toFixed(0)).join(' '));
+      check(`${from} and ${steps[0]}: a switch between them holds no frame for long (longest task in the 3 s after each, ms)`, worst.every(w => w < 50), `${worst.map(w => w.toFixed(0)).join(' ')}, the first once the page was quiet ${settled} s on`);
       check(`${from} and ${steps[0]}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
     }

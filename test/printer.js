@@ -49,18 +49,26 @@ function failOnce() {
     }
   };
 }
-// Times each piece of the printer's quiet-moment warm-up (its callbacks named warmWords), in ms.
+// Times each piece of the printer's quiet-moment warm-up (its callbacks named warmWords), in ms, and keeps when each was
+// asked for and when it was done (the page's clock).
 function timeWarm() {
-  window.__warm = [];
-  const wrap = cb => (typeof cb === 'function' && /warmWords/.test(String(cb)) ? function (...a) { const t = performance.now(); try { return cb.apply(this, a); } finally { window.__warm.push(+(performance.now() - t).toFixed(1)); } } : cb);
+  window.__warm = []; window.__warmAt = [];
+  const wrap = cb => {
+    if (typeof cb !== 'function' || !/warmWords/.test(String(cb))) return cb;
+    const at = [performance.now()];
+    window.__warmAt.push(at);
+    return function (...a) { const t = performance.now(); try { return cb.apply(this, a); } finally { window.__warm.push(+(performance.now() - t).toFixed(1)); at.push(performance.now()); } };
+  };
   const ric = window.requestIdleCallback, st = window.setTimeout;
   if (ric) window.requestIdleCallback = (cb, o) => ric.call(window, wrap(cb), o);
   window.setTimeout = (cb, ...r) => st.call(window, wrap(cb), ...r);
 }
+// A busy page, with no quiet moment: every wait for one runs out first.
+function noQuiet() { window.requestIdleCallback = (cb, o) => setTimeout(() => cb({ didTimeout: true, timeRemaining: () => 0 }), o?.timeout ?? 0); }
 async function open(b, opts, { auto = true, save, ear = false, init = null, route = null, slow = 0 } = {}) {
   const ctx = await b.newContext(opts);
   if (ear) await ctx.addInitScript(tap);
-  if (init) await ctx.addInitScript(init);
+  for (const f of [].concat(init || [])) await ctx.addInitScript(f);
   if (route) await ctx.route(...route);
   if (save !== undefined) await ctx.addInitScript(s => { try { if (s === null) localStorage.removeItem('home.print'); else localStorage.setItem('home.print', s); } catch { /* none */ } }, save);
   const p = await ctx.newPage(), errs = [], asked = [];
@@ -452,6 +460,19 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       check('4x slower phone: readying the keychain\'s font and words when the house is quiet takes less than a 60 Hz frame (16.7 ms) at a time', pieces.length > 0 && Math.max(...pieces) < 16.7, `pieces ${JSON.stringify(pieces)} ms`);
       check('the warm-up: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
+      // A busy phone, with no quiet moment at all (every wait for one runs out): the warm-up still ends soon after the house
+      // settles, so a first keychain asked for then is quick. Failed before: its waits, 5 s and then 1 s a piece, left it
+      // unfinished for 10 s, and a keychain asked for meanwhile did the first-time work itself (15 to 34 ms).
+      // At the printer, as a visitor asks for one, so its first print (and its worker) is made before the keychain is asked for.
+      const busy = await open(b, UPRIGHT, { save: null, init: [noQuiet, timeWarm], slow: 4 });
+      await standAt(busy.p, SPOT);
+      await busy.p.waitForFunction(() => window.__warm.length >= 6 && __loft.printer.built, null, { timeout: 60000, polling: 200 }).catch(() => {});
+      const w = await busy.p.evaluate(() => ({ pieces: window.__warm.slice(), took: Math.round(window.__warmAt.at(-1)?.[1] - window.__warmAt[0]?.[0]) }));
+      const askMs = await busy.p.evaluate(() => { const t = performance.now(); __loft.printer.ask('a keychain to build'); return +(performance.now() - t).toFixed(1); });
+      check('4x slower phone with no quiet moment: the keychain\'s font and words are still ready within 3.5 s of the house settling, a piece at a time', w.pieces.length === 6 && w.took < 3500 && Math.max(...w.pieces) < 16.7, `${w.took} ms, pieces ${JSON.stringify(w.pieces)} ms`);
+      check('and the first keychain asked for then is answered in less than a 60 Hz frame (16.7 ms)', askMs > 0 && askMs < 16.7, `${askMs} ms`);
+      check('the warm-up on a busy phone: no error', busy.errs.length === 0, busy.errs.slice(0, 3).join(' | '));
+      await busy.ctx.close();
     }
     // ---------- smooth on a slow phone: no long frames when the screen opens or a model is built ----------
     if (want('smooth')) {

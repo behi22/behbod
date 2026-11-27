@@ -9,6 +9,7 @@ import { makeFollowCam } from './src/camera.js';
 import { makeDesk } from './src/desk.js';
 import { makeDesktopView } from './src/desktop.js';
 import { makeCmdFill } from './src/cmdfill.js';
+import { forIme } from './src/pure/ime.js';
 import { makeWardrobe } from './src/wardrobe.js';
 import { makeCreatures } from './src/creatures.js';
 import { openGame } from './src/games/index.js';
@@ -706,8 +707,9 @@ function goTo(name) {
 }
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
 $('cmd').addEventListener('keydown', e => {
+  if (forIme(e)) return;
   if (e.key === 'Enter') { screens.run(e.target.value, () => leaveDesk()); e.target.value = ''; sound.key(); }
-  else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.isComposing) { e.preventDefault(); const line = screens.recall(e.key === 'ArrowUp' ? -1 : 1, e.target.value); if (line !== null) e.target.value = line; }
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); const line = screens.recall(e.key === 'ArrowUp' ? -1 : 1, e.target.value); if (line !== null) e.target.value = line; }
 });
 makeCmdFill($('cmd'), screens.commands);
 $('use').addEventListener('click', () => {

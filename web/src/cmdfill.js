@@ -1,4 +1,5 @@
 import { suggest, newFill, step } from './pure/autofill.js';
+import { forIme } from './pure/ime.js';
 
 const CSS = `
 .fill-chip { display: none; position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(116px + env(safe-area-inset-bottom, 0px)); pointer-events: auto; }
@@ -27,7 +28,7 @@ export function makeCmdFill(box, names) {
   };
   const put = line => { box.value = line; box.setSelectionRange(line.length, line.length); update(); };
   box.addEventListener('keydown', e => {
-    if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (forIme(e) || e.ctrlKey || e.metaKey || e.altKey) return;
     const atEnd = box.selectionStart === box.value.length && box.selectionEnd === box.value.length;
     if (e.key === 'Tab') {
       const line = step(fill, box.value, names(), e.shiftKey ? -1 : 1);

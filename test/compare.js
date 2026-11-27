@@ -63,7 +63,8 @@ async function shoot(dir) {
     b = await launch(pw.chromium, { channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
     const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
     p.on('pageerror', e => errs.push(e.message));
-    await p.goto(`http://127.0.0.1:${PORT}/?auto&q=ultra`);
+    // The room as it is on any day in both versions: on a Real Madrid game day the studio turns white and gold a few seconds in.
+    await p.goto(`http://127.0.0.1:${PORT}/?auto&matchday=off&q=ultra`);
     await p.waitForFunction(() => window.__loft, null, { timeout: 120000 });
     await p.waitForTimeout(3000);
     for (const [name, [e, a]] of Object.entries(CAMERAS)) {
@@ -90,7 +91,7 @@ async function shoot(dir) {
     // In game at 2x, like a sharp laptop screen.
     const g = await b.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2 });
     g.on('pageerror', e => errs.push(e.message));
-    await g.goto(`http://127.0.0.1:${PORT}/?auto&q=ultra`);
+    await g.goto(`http://127.0.0.1:${PORT}/?auto&matchday=off&q=ultra`);
     await g.waitForFunction(() => window.__loft, null, { timeout: 120000 });
     await g.waitForTimeout(3000);
     for (const [name, [x, y, z, yaw]] of Object.entries(SPOTS)) {

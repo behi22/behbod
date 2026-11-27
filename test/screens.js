@@ -33,7 +33,8 @@ async function open(b, opts, { q = opts.isMobile ? 'medium' : 'high', graph = 'f
   if (graph !== null) await ctx.route(GRAPH, r => { asked.push(performance.now()); return graph === 'fail' ? r.abort('failed') : r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: typeof graph === 'string' ? graph : JSON.stringify(graph) }); });
   const p = await ctx.newPage(), errs = [];
   watch(p, errs);
-  await p.goto(`${BASE}/?auto&q=${q}`);
+  // The room as it is on any day: on a Real Madrid game day the studio turns white and gold a few seconds in.
+  await p.goto(`${BASE}/?auto&matchday=off&q=${q}`);
   await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 120000 });
   await p.waitForTimeout(800);
   return { ctx, p, errs, asked };
@@ -102,6 +103,21 @@ const shades = p => p.evaluate(() => {
         return { value: el.value, prevented: ev.defaultPrevented };
       });
       check('phone: an arrow while a word is still being composed leaves the line to the input method', ime.value === 'にほ' && !ime.prevented, JSON.stringify(ime));
+      // So does the Enter that picks the word: Chrome's comes while composing, Safari's once the word is done, marked 229.
+      const pick = await ph.p.evaluate(() => {
+        const el = document.getElementById('cmd'), term = __loft.screens.desktop.term, was = term.lines.join('\n'), kept = [];
+        for (const init of [{ isComposing: true, keyCode: 229 }, { isComposing: false, keyCode: 229 }]) {
+          el.value = 'にほん';
+          const ev = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true, ...init });
+          el.dispatchEvent(ev);
+          kept.push([ev.isComposing, ev.keyCode, el.value]);
+        }
+        return { kept, ran: term.lines.join('\n') !== was, mode: __loft.mode };
+      });
+      check('phone: the Enter that picks a word in the input method runs nothing and keeps the line, Safari\'s too', pick.kept.every(([, code, v]) => code === 229 && v === 'にほん') && !pick.ran && pick.mode === 'desk', JSON.stringify(pick));
+      await ph.p.press('#cmd', 'Enter'); await ph.p.waitForTimeout(150);
+      const sent = await ph.p.evaluate(() => [document.getElementById('cmd').value, __loft.screens.desktop.term.lines.includes('$ にほん')]);
+      check('phone: then a plain Enter sends the word', sent[0] === '' && sent[1], JSON.stringify(sent));
       check('history (phone): no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
       await ph.ctx.close();
     }
