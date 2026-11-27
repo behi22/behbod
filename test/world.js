@@ -190,23 +190,15 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   // window drags, the notes take typing, and keys typed elsewhere go back to the terminal.
   const fit = await p.evaluate(() => {
     const el = document.querySelector('.dt.on'); if (!el) return null;
-    const s = __loft.meta.screens.main, half = s.w / 2 / s.r;
-    const chord = s.r * Math.sin(half), sag = s.r * (1 - Math.cos(half)), c = __loft.screenCentre();
-    const pts = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => { const v = c.clone(); v.x -= sag; v.y += y * s.h / 2; v.z += z * chord; v.project(__loft.camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
-    // Each corner of the desktop, through its own transform, on the same side of the screen as its own corner (so a
-    // flipped or mirrored layer fails, not just a wrong size): on the screen's side edge, a little in from that corner,
-    // since the flat layer slides in along the sides to stay inside the curved top and bottom edges (pure/homography.js).
+    const s = __loft.meta.screens.main, c = __loft.screenCentre();
+    const pts = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => { const v = c.clone(); v.y += y * s.h / 2; v.z += z * s.w / 2; v.project(__loft.camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
+    // Each corner of the desktop, through its own transform, against the same corner of the screen (so a flipped or
+    // mirrored layer fails, not just a wrong size).
     const m = new DOMMatrix(getComputedStyle(el).transform), w = el.offsetWidth, h = el.offsetHeight;
     const mine = [[0, 0], [w, 0], [w, h], [0, h]].map(([x, y]) => { const q = m.transformPoint(new DOMPoint(x, y)); return [q.x / q.w, q.y / q.w]; });
-    const side = [[0, 3], [1, 2], [1, 2], [0, 3]], off = [], along = [];
-    mine.forEach((q, i) => {
-      const [a, b] = side[i].map(k => pts[k]), d = [b[0] - a[0], b[1] - a[1]], l = Math.hypot(...d), t = ((q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1]) / l / l;
-      off.push(Math.abs((q[0] - a[0]) * d[1] - (q[1] - a[1]) * d[0]) / l); along.push(i < 2 ? t : 1 - t);
-    });
-    return { off: Math.max(...off), along: Math.max(...along), inside: Math.min(...along) };
+    return Math.max(...mine.map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1])));
   });
-  const sits = fit && fit.off < 3 && fit.inside > -0.005 && fit.along < 0.08;
-  console.log('desktop sits on the screen: off its sides by', fit == null ? 'not shown' : `${fit.off.toFixed(1)} px, in from its corners by up to ${(fit.along * 100).toFixed(1)}% of its height`, sits ? 'PASS' : 'FAIL');
+  console.log('desktop sits on the screen: off by', fit == null ? 'not shown' : fit.toFixed(1) + ' px', fit != null && fit < 3 ? 'PASS' : 'FAIL');
   await p.click('.dt-icon[aria-label="Open Settings"]'); await p.waitForTimeout(250);
   const setOpen = await p.evaluate(() => !!document.querySelector('.dt-win.focus[data-app="settings"]'));
   const wantDown = await p.evaluate(() => __loft.me.hoodUp);

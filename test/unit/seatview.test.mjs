@@ -8,12 +8,12 @@ const W = JSON.parse(readFileSync(new URL('../../web/assets/world.json', import.
 const KEYS = [-0.175, -0.37, 0], FINGERS = [-0.25, -0.33, 0];
 const SHAPES = { '16:9': 16 / 9, '16:10': 1.6, '3:2': 1.5, '4:3': 4 / 3, 'ultrawide 21:9': 21 / 9, 'phone on its side': 844 / 390, 'upright phone': 390 / 844, 'upright tablet': 0.75 };
 
-test('a desktop shape: the monitor fills about 80% of the width, its top 4.5% down, its bottom and the keyboard in view', () => {
+test('a desktop shape: the monitor fills about 80% of the width, its top 5% down, its bottom and the keyboard in view', () => {
   for (const name of ['16:9', '16:10', '3:2', '4:3']) {
     const a = SHAPES[name], v = seatView(S, a), b = frameBox(S, v, a);
     assert.ok(Math.abs(b.x1 - b.x0 - WIDE.width) < 0.002, `${name} width ${b.x1 - b.x0}`);
     assert.ok(Math.abs(b.x0 - (1 - b.x1)) < 0.002, `${name} centred: ${b.x0} ${1 - b.x1}`);
-    assert.ok(Math.abs(b.y0 - TOP) < 0.002 && b.bar > 0.02, `${name} top ${b.y0}, light bar ${b.bar}`);
+    assert.ok(Math.abs(b.y0 - TOP) < 0.002 && b.bar > 0.01, `${name} top ${b.y0}, light bar ${b.bar}`);
     assert.ok(b.y1 < 0.75, `${name} bottom ${b.y1}`);
     const k = onView(KEYS, v, a), f = onView(FINGERS, v, a);
     assert.ok(k.front && k.y > b.y1 && k.y < 0.95 && f.y < 0.95, `${name} keyboard ${k.y}, fingers ${f.y}`);
@@ -32,7 +32,7 @@ test('the eye never sits behind my eyes in the chair or nearer than a lean in; a
   assert.ok(v43.back === BACK.max && v43.fov > WIDE.fov, JSON.stringify(v43));
 });
 
-test('a wide shape (a phone on its side, an ultrawide): the monitor is held to 62.5% of the height so the keyboard still shows', () => {
+test('a wide shape (a phone on its side, an ultrawide): the monitor is held to 61% of the height so the keyboard still shows', () => {
   for (const name of ['ultrawide 21:9', 'phone on its side']) {
     const a = SHAPES[name], v = seatView(S, a), b = frameBox(S, v, a);
     assert.ok(Math.abs(b.y1 - b.y0 - WIDE.maxH) < 0.002, `${name} height ${b.y1 - b.y0}`);

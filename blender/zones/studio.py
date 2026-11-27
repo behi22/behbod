@@ -11,7 +11,8 @@ Z0 = STUDIO_Z
 DZ = Z0 + 0.76                     # desk top
 DX0, DX1, DY0, DY1 = 15.15, 15.95, 1.0, 3.4   # main run along the east wall
 RX0, RY0, RY1 = 13.95, 1.0, 1.6     # the return on the right (south) end
-MW, MH, MR = 1.07, 0.45, 1.6        # 45 inch ultrawide, curved
+# A flat ultrawide as big to my eye in the chair as the 1.07 m curved one was, in the same shape as the desktop laid over it.
+MW, MH = 1.141, 0.48
 MC = Vector((15.58, 2.2, DZ + 0.41))
 CHAIR = Vector((14.45, 2.2, Z0))
 # The battlestation is written against an east wall at x 16 and moved onto the real one with at(): the main run on the
@@ -24,37 +25,12 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'desklayout.j
 ON = {k: Vector(v['at']) for k, v in LAYOUT['things'].items()}
 
 
-def curved_screen(M, E):
-    bm = bmesh.new()
-    uv = bm.loops.layers.uv.new('UVMap')
-    cols, ang = 24, MW / MR
-    grid = []
-    for i in range(cols + 1):
-        a = -ang / 2 + ang * i / cols
-        y, x = MC.y + MR * math.sin(a), MC.x - MR * (1 - math.cos(a))
-        grid.append([bm.verts.new(P((x, y, MC.z - MH / 2))), bm.verts.new(P((x, y, MC.z + MH / 2)))])
-    for i in range(cols):
-        f = bm.faces.new((grid[i + 1][0], grid[i][0], grid[i][1], grid[i + 1][1]))
-        u0, u1 = 1 - (i + 1) / cols, 1 - i / cols
-        for lp, t in zip(f.loops, ((u0, 0), (u1, 0), (u1, 1), (u0, 1))):
-            lp[uv].uv = t
-    link('screen_main', bm, E['screen'], 'emit')
-    # The monitor's body follows the curve: a thin shell with a bezel lip, built column by column.
-    bm = bmesh.new()
-    rows = []
-    for i in range(cols + 1):
-        a = -(ang * 1.025) / 2 + ang * 1.025 * i / cols
-        y, x = MC.y + MR * math.sin(a), MC.x - MR * (1 - math.cos(a))
-        zb, zt = MC.z - MH / 2 - 0.014, MC.z + MH / 2 + 0.014
-        rows.append([bm.verts.new(P((x + 0.002, y, zb))), bm.verts.new(P((x + 0.002, y, zt))), bm.verts.new(P((x + 0.04, y, zt))), bm.verts.new(P((x + 0.04, y, zb)))])
-    for i in range(cols):
-        for k in range(4):
-            bm.faces.new((rows[i][k], rows[i + 1][k], rows[i + 1][(k + 1) % 4], rows[i][(k + 1) % 4]))
-    for side in (rows[0], rows[-1][::-1]):
-        bm.faces.new(side)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-    link('monitor_back', bm, M['black'])
-    screen('main', MC, MW, MH, r=MR)
+def main_screen(M, E):
+    # The 45 inch ultrawide, flat, so the desktop the page lays over it while I sit meets its edges exactly: its screen a
+    # runtime canvas, its body a shell from 2 mm to 4 cm behind it whose frame shows 1.4 cm all round the screen.
+    plane('screen_main', MW, MH, MC, E['screen'], '-X')
+    box('monitor_back', (0.038, MW * 1.025, MH + 0.028), (MC.x + 0.021, MC.y, MC.z), M['black'], bevel=0.004)
+    screen('main', MC, MW, MH)
 
 
 def ring(name, ro, ri, ln, loc, mat, seg=24):
@@ -105,7 +81,7 @@ def build(M, E, G):
             collider('desk_return', (RX0, RY0, Z0 - 1), (DX0, RY1, DZ))
 
             # ---------- screens: the ultrawide, the 27 inch above it, the vertical code screen, three little ones ----------
-            curved_screen(M, E)
+            main_screen(M, E)
             box('monitor_arm', (0.05, 0.05, 0.42), (15.78, MC.y, DZ + 0.21), M['metal'], bevel=0.01)
             box('monitor_arm2', (0.16, 0.04, 0.04), (15.72, MC.y, MC.z - 0.05), M['metal'], bevel=0.01)
             box('monitor_arm3', (0.04, 0.04, 0.5), (15.78, MC.y, MC.z + 0.35), M['metal'], bevel=0.01)
@@ -121,15 +97,16 @@ def build(M, E, G):
                 plane(f'screen_{nm}', 0.16, 0.095, (x - 0.026, y, DZ + 0.078), E['screen'], '-X')
                 screen(nm, (x - 0.026, y, DZ + 0.078), 0.16, 0.095)
             # Light bar on the ultrawide, bias light behind it.
-            box('lightbar', (0.035, 0.46, 0.022), (MC.x - 0.03, MC.y, MC.z + MH / 2 + 0.03), M['metal'], bevel=0.006)
-            box('lightbar_glow', (0.012, 0.42, 0.004), (MC.x - 0.045, MC.y, MC.z + MH / 2 + 0.018), E['warm_soft'], kind='emit')
-            box('bias_glow', (0.008, 1.0, 0.012), (MC.x + 0.07, MC.y, MC.z - 0.05), E['bias'], kind='emit')
+            # Its head just over the top bezel, held by a clamp resting on the monitor's top.
+            box('lightbar', (0.035, 0.46, 0.016), (MC.x - 0.03, MC.y, MC.z + MH / 2 + 0.023), M['metal'], bevel=0.005)
+            box('lightbar_clamp', (0.06, 0.05, 0.008), (MC.x + 0.016, MC.y, MC.z + MH / 2 + 0.018), M['metal'], bevel=0.002)
+            box('lightbar_glow', (0.012, 0.42, 0.004), (MC.x - 0.045, MC.y, MC.z + MH / 2 + 0.0155), E['warm_soft'], kind='emit')
+            box('bias_glow', (0.008, 1.06, 0.012), (MC.x + 0.07, MC.y, MC.z - 0.05), E['bias'], kind='emit')
             # The post-it on the bottom bezel, bottom right: glue strip on the plastic, peeling forward a little.
-            a = math.asin((MC.y - MW / 2 + 0.11 - MC.y) / MR)
-            top = Vector((MC.x - MR * (1 - math.cos(a)), MC.y + MR * math.sin(a), MC.z - MH / 2 - 0.005))
+            top = Vector((MC.x, MC.y - MW / 2 + 0.11, MC.z - MH / 2 - 0.005))
             note = plane('postit', 0.085, 0.085, (0, 0, 0), principled('postit', (0.98, 0.86, 0.32), 0.9), '-X')
-            toward, along = Vector((-math.cos(a), -math.sin(a), 0)), Vector((-math.sin(a), math.cos(a), 0))
-            R = Matrix.Rotation(math.radians(7), 3, along) @ Matrix.Rotation(math.radians(-2.5), 3, toward) @ Matrix.Rotation(a, 3, 'Z')
+            toward, along = Vector((-1, 0, 0)), Vector((0, 1, 0))
+            R = Matrix.Rotation(math.radians(7), 3, along) @ Matrix.Rotation(math.radians(-2.5), 3, toward)
             base = P((0, 0, 0))
             for v in note.data.vertices:
                 v.co = P(top) + toward * 0.0035 + R @ (v.co - base - Vector((0, 0, 0.0425)))

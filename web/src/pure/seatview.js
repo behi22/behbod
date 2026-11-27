@@ -1,14 +1,14 @@
 // The seated view of the main monitor: how far back the eye sits, how far down it looks and how wide the lens is, by
 // the view's shape. Three's axes from the monitor's middle: x toward the monitor, y up, z to my right.
 
-// The monitor round its screen (blender/zones/studio.py): a 1.4 cm bezel above and below, 1.25% more curve at each
-// side, and the light bar on top, 4.1 cm over the screen's top edge and 4.75 cm in front of it.
-export const FRAME = { bezel: 0.014, side: 1.025, bar: { up: 0.041, out: 0.0475, half: 0.23 } };
+// The flat monitor round its screen (blender/zones/studio.py): a 1.4 cm bezel above and below, 1.25% of its width more
+// at each side, and the light bar on top, 3.1 cm over the screen's top edge and 4.75 cm in front of it.
+export const FRAME = { bezel: 0.014, side: 1.025, bar: { up: 0.031, out: 0.0475, half: 0.23 } };
 // The bezel's top sits this far down a wide view, so the light bar and a strip of the screen above stay in sight.
-export const TOP = 0.045;
+export const TOP = 0.05;
 // A wide view: the monitor takes this share of its width, unless that makes it taller than MAX_H of its height, which
 // would leave no room below for the keyboard and the Pishi cam in front of the monitor, its whole case in view.
-export const WIDE = { fov: 42, width: 0.805, maxH: 0.625 };
+export const WIDE = { fov: 42, width: 0.805, maxH: 0.61 };
 // An upright view: the monitor's full height, its bezel's top `top` down the view, panned across its width as before.
 export const TALL = { fov: 58, back: 1.0, top: 0.06 };
 // How far back the eye may sit: no further than my eyes in the chair, no nearer than a lean in.
@@ -20,10 +20,10 @@ const rad = d => d * Math.PI / 180;
 
 // Points round the monitor's frame, from its middle: along its top and bottom edges, and the light bar's top corners.
 export function framePoints(s) {
-  const half = s.w / 2 / s.r * FRAME.side, y = s.h / 2 + FRAME.bezel, out = { top: [], bottom: [], bar: [] };
+  const half = s.w / 2 * FRAME.side, y = s.h / 2 + FRAME.bezel, out = { top: [], bottom: [], bar: [] };
   for (let i = 0; i <= 8; i++) {
-    const a = -half + 2 * half * i / 8, x = -s.r * (1 - Math.cos(a)), z = s.r * Math.sin(a);
-    out.top.push([x, y, z]); out.bottom.push([x, -y, z]);
+    const z = -half + 2 * half * i / 8;
+    out.top.push([0, y, z]); out.bottom.push([0, -y, z]);
   }
   for (const z of [-FRAME.bar.half, FRAME.bar.half]) out.bar.push([-FRAME.bar.out, s.h / 2 + FRAME.bar.up, z]);
   return out;
@@ -60,10 +60,9 @@ export function seatView(s, aspect) {
   if (aspect < 1.2) {
     let v = { fov: TALL.fov, back: TALL.back, up: EYE_UP, pitch: 0 };
     v.pitch = pitchFor(s, v, aspect, TALL.top);
-    // How far the eye pans each way to bring either end of the frame into view, with 2 cm to spare.
-    const half = s.w / 2 / s.r * FRAME.side, chord = s.r * Math.sin(half), sag = s.r * (1 - Math.cos(half));
-    const tx = Math.tan(rad(v.fov) / 2) * aspect;
-    return { ...v, range: Math.max(0, chord - tx * (v.back - sag) * Math.cos(v.pitch) + 0.02) };
+    // How far the eye pans each way to bring either end of the frame into view, with 3 cm to spare.
+    const half = s.w / 2 * FRAME.side, tx = Math.tan(rad(v.fov) / 2) * aspect;
+    return { ...v, range: Math.max(0, half - tx * v.back * Math.cos(v.pitch) + 0.03) };
   }
   // How much the frame overfills what is asked of it: above 1 it is too big.
   const over = v => { const b = frameBox(s, v, aspect); return Math.max((b.x1 - b.x0) / WIDE.width, (b.y1 - b.y0) / WIDE.maxH); };

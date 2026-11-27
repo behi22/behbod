@@ -479,8 +479,8 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       // where the keyboard's back edge is, and how the desktop is laid on the screen.
       const seen = p => p.evaluate(() => {
         const L = __loft, s = L.meta.screens.main, V = L.camera.position.constructor, c = new V(s.center[0], s.center[2], -s.center[1]);
-        const half = s.w / 2 / s.r * 1.025, at = v => { const q = v.clone().project(L.camera); return [(q.x + 1) / 2, (1 - q.y) / 2]; }, pts = [];
-        for (let i = 0; i <= 8; i++) for (const y of [-1, 1]) { const a = -half + 2 * half * i / 8; pts.push(at(new V(c.x - s.r * (1 - Math.cos(a)), c.y + y * (s.h / 2 + 0.014), c.z + s.r * Math.sin(a)))); }
+        const half = s.w / 2 * 1.025, at = v => { const q = v.clone().project(L.camera); return [(q.x + 1) / 2, (1 - q.y) / 2]; }, pts = [];
+        for (let i = 0; i <= 8; i++) for (const y of [-1, 1]) pts.push(at(new V(c.x, c.y + y * (s.h / 2 + 0.014), c.z - half + 2 * half * i / 8)));
         const kb = L.world.deskThings.find(o => o.name === 'kb_glow');
         kb.geometry.computeBoundingBox();
         const box = kb.geometry.boundingBox.clone().applyMatrix4(kb.matrixWorld), key = at(new V(box.max.x, box.max.y + 0.03, (box.min.z + box.max.z) / 2));
@@ -555,8 +555,8 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
         g.updateMatrixWorld(true);
         body.geometry.computeBoundingBox();
         const box = body.geometry.boundingBox.clone().applyMatrix4(body.matrixWorld);
-        const top = s.center[2] + s.h / 2 + 0.014, right = g.position.z - -s.center[1], a = Math.asin(right / s.r);
-        const onCurve = Math.abs(g.position.x - (s.center[0] - s.r * (1 - Math.cos(a)))) < 1e-4;
+        const top = s.center[2] + s.h / 2 + 0.014, right = g.position.z - -s.center[1];
+        const onFace = Math.abs(g.position.x - s.center[0]) < 1e-4;
         // The upper monitor's screen leans back over it: points along its bottom edge and a little up its face.
         const scr = L.scene.getObjectByName('screen_top'), sp = scr.geometry.attributes.position, corners = [];
         for (let i = 0; i < sp.count; i++) corners.push(new V().fromBufferAttribute(sp, i).applyMatrix4(scr.matrixWorld));
@@ -564,16 +564,16 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
         const [b0, b1, t0] = corners, upper = [];
         for (let i = 0; i <= 20; i++) for (const up of [0, 0.01, 0.02]) upper.push(b0.clone().lerp(b1, i / 20).add(t0.clone().sub(b0).setLength(up)));
         // The light bar (blender/zones/studio.py), in three's axes.
-        const bar = { min: [s.center[0] - 0.0475, s.center[2] + s.h / 2 + 0.019, -s.center[1] - 0.23], max: [s.center[0] - 0.0125, s.center[2] + s.h / 2 + 0.041, -s.center[1] + 0.23] };
+        const bar = { min: [s.center[0] - 0.0475, s.center[2] + s.h / 2 + 0.014, -s.center[1] - 0.23], max: [s.center[0] + 0.046, s.center[2] + s.h / 2 + 0.031, -s.center[1] + 0.23] };
         const clear = (b, o) => b.max.x < o.min[0] || b.min.x > o.max[0] || b.max.y < o.min[1] || b.min.y > o.max[1] || b.max.z < o.min[2] || b.min.z > o.max[2];
         const lens = new V(0, 0, 1).applyQuaternion(g.quaternion);
         const m = body.material;
-        return { seat: Math.abs(g.position.y - top), onCurve, right, size: box.getSize(new V()).toArray().map(v => +v.toFixed(3)), barClear: clear(box, bar),
+        return { seat: Math.abs(g.position.y - top), onFace, right, size: box.getSize(new V()).toArray().map(v => +v.toFixed(3)), barClear: clear(box, bar),
           upperClear: upper.every(q => !box.containsPoint(q)), lens: lens.toArray().map(v => +v.toFixed(3)),
           dims: m.customProgramCacheKey?.() === 'lamp', glowTag: led.material.userData.lamp, led: led.material.color.toArray().map(v => +v.toFixed(2)) };
       });
       const r = await cam();
-      check('a webcam sits on the main monitor: on its top bezel and its curve, right of the light bar', !!r && r.seat < 5e-4 && r.onCurve && r.right > 0.25 && r.right < 0.35 && r.barClear && r.upperClear, JSON.stringify(r));
+      check('a webcam sits on the main monitor: on its top bezel, right of the light bar and its clamp', !!r && r.seat < 5e-4 && r.onFace && r.right > 0.32 && r.right < 0.4 && r.barClear && r.upperClear, JSON.stringify(r));
       check('it is a small one, its lens looking out at me', !!r && r.size[0] < 0.085 && r.size[1] < 0.09 && r.size[2] < 0.11 && r.lens[0] < -0.95, r && `${r.size} m, lens ${r.lens}`);
       check('its body dims with the lamps; its light is tagged to keep its own glow, off while I stand', !!r && r.dims && r.glowTag === 'glow' && Math.max(...r.led) < 0.1, r && `${r.dims} ${r.glowTag} ${r.led}`);
       await standAt(p, W.points.desk_use, Math.PI / 2);

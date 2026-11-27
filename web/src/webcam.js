@@ -4,15 +4,15 @@ import { makeKit } from './persia/kit.js';
 // A small webcam clipped on the main monitor's top bezel, just right of the light bar: a pill body on a hinge, a glass
 // lens in a dark ring, and a clip whose plate rests on the monitor and whose leg hangs down behind it. Its status
 // light comes on while I sit at the desk.
-// Where it sits: this far right of the monitor's middle (the light bar takes 23 cm each way), and the monitor's frame
+// Where it sits: this far right of the monitor's middle (the light bar takes 23 cm each way, the upper monitor 31.5), and the monitor's frame
 // (blender/zones/studio.py: the shell runs from 2 mm to 4 cm behind the screen, its top 1.4 cm over the screen).
-export const WEBCAM = { right: 0.29, bezel: 0.014, front: 0.002, back: 0.04 };
+export const WEBCAM = { right: 0.36, bezel: 0.014, front: 0.002, back: 0.04 };
 const W = 0.088, H = 0.027, D = 0.024, R = 0.0125, HINGE = 0.005, PLATE = 0.003;
 
-// Its place on the curved top edge: the point under its middle and the way its lens looks (three's axes).
+// Its place on the top edge: the point under its middle and the way its lens looks (three's axes).
 export function webcamPlace(s, right = WEBCAM.right) {
-  const a = Math.asin(right / s.r), c = { x: s.center[0], y: s.center[2], z: -s.center[1] };
-  return { at: [c.x - s.r * (1 - Math.cos(a)), c.y + s.h / 2 + WEBCAM.bezel, c.z + right], facing: [-Math.cos(a), 0, -Math.sin(a)] };
+  const c = { x: s.center[0], y: s.center[2], z: -s.center[1] };
+  return { at: [c.x, c.y + s.h / 2 + WEBCAM.bezel, c.z + right], facing: [-1, 0, 0] };
 }
 
 // A rounded rectangle w by h (corner r) pushed back d from z 0, as one closed solid.
