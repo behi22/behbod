@@ -73,7 +73,7 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       let r = await rows(p);
       check('the TV menu shows the kit row on both match cards, the first kit picked', r.length === 2 && r.every(x => x.on.join() === 'home' && x.name === 'Your kit: White and purple'), JSON.stringify(r));
       const cards = await p.evaluate(() => [...document.querySelectorAll('.g-card')].map(c => [c.querySelector('h2').textContent, !!c.querySelector('.g-kit'), c.querySelectorAll('.g-kit-sw').length]));
-      check('only the two match cards carry it, six kits each', JSON.stringify(cards) === JSON.stringify([['Join as striker', true, 6], ['Join as keeper', true, 6], ['Save of the week', false, 0], ['Watch my videos', false, 0], ['Watch my film', false, 0]]), JSON.stringify(cards));
+      check('only the two match cards carry it, six kits each', JSON.stringify(cards) === JSON.stringify([['Join as striker', true, 6], ['Join as keeper', true, 6], ['Save of the week', false, 0], ['Watch my videos', false, 0], ['Watch my story', false, 0]]), JSON.stringify(cards));
       const focus0 = await p.evaluate(() => document.activeElement.textContent);
       check('the menu still opens with Play in focus', focus0 === 'Play', focus0);
       await p.screenshot({ path: path.join(OUT, 'tv-menu.png') });

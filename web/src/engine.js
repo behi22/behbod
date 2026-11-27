@@ -227,26 +227,35 @@ export function makeEngine(canvas, coarse) {
       // And each first used now, its logs read while nobody is waiting (see useahead.js).
       const used = new Set();
       for (const [s] of [[scene], bg && [bg.scene]].filter(Boolean)) s.traverse(o => { for (const m of [].concat(o.material || [])) used.add(m); });
-      await useAhead(renderer, used, { logs: true });
+      // A few at a time with a breath between (each waited for until the card has built it), so the page never stalls
+      // for seconds while my story plays over the loading.
+      await useAhead(renderer, used, { logs: true, rest: breath });
       // Pictures go to the graphics card the first time they are drawn: a 4096 px lightmap is a long stall, so send
       // every one now instead of when its zone first comes into view.
       const textures = new Set();
       for (const s of [scene, bg?.scene]) s?.traverse(o => {
         for (const m of [].concat(o.material || [])) for (const v of Object.values(m)) if (v?.isTexture && !v.isRenderTargetTexture) textures.add(v);
       });
-      for (const t of textures) renderer.initTexture(t);
+      await inSlices([...textures], t => renderer.initTexture(t), { rest: breath });
       // Reflections (the mirror, the studio floor) set up their own picture the first time they are seen; look at each
       // one once now, from in front of it.
       scene.updateMatrixWorld();
       const eye = new THREE.PerspectiveCamera(50, 1, 0.05, 50), c = new THREE.Vector3(), n = new THREE.Vector3(), q = new THREE.Quaternion();
-      scene.traverse(o => {
-        if (!o.isReflector) return;
+      // One at a time with a breath between, each one's shaders built in the background first, so no reflection holds
+      // the page for long.
+      const mirrors = [];
+      scene.traverse(o => { if (o.isReflector) mirrors.push(o); });
+      for (const o of mirrors) {
+        await breath();
         o.getWorldPosition(c); n.set(0, 0, 1).applyQuaternion(o.getWorldQuaternion(q));
         eye.position.copy(c).addScaledVector(n, 2); eye.lookAt(c); eye.updateMatrixWorld();
+        const rt = o.getRenderTarget?.();
+        if (rt && renderer.compileAsync) { const was = renderer.getRenderTarget(); let job; try { renderer.setRenderTarget(rt); job = renderer.compileAsync(scene, eye); } finally { renderer.setRenderTarget(was); } await job; }
         o.onBeforeRender(renderer, scene, eye);
-      });
+      }
     } finally { for (const o of hidden) o.visible = false; }
     // One real frame through the whole pipeline compiles the post effects too.
+    await breath();
     render(0);
   }
   addEventListener('resize', resize);

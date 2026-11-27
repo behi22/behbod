@@ -184,13 +184,12 @@ const quiet = async p => {
       await p.addInitScript(() => {
         if (window.top !== window) return;
         new MutationObserver((_, ob) => {
-          const note = document.getElementById('note');
-          if (note?.textContent !== 'Getting the room ready') return;
+          if (document.getElementById('gate')?.dataset.stage !== 'warming') return;
           ob.disconnect();
           const lose = document.getElementById('view').getContext('webgl2').getExtension('WEBGL_lose_context');
           lose.loseContext();
           setTimeout(() => lose.restoreContext(), 1500);
-        }).observe(document, { childList: true, subtree: true, characterData: true });
+        }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-stage'] });
       });
       await p.goto(`${BASE}/?auto&q=ultra`);
       const opened = await p.waitForFunction(() => window.__loft, null, { timeout: 60000 }).then(() => true, () => false);
