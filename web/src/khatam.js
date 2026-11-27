@@ -72,6 +72,12 @@ export function bar(g, x, y, w, h, soft = false) {
 const NARD = { w: 460, h: 320, band: 13, bar: 16, point: 120 };
 export function* nardSteps(g, k) {
   const { w, h, band, bar: bw, point } = NARD;
+  // The strip tiles first, each in a step of its own (making one is the board's costliest step), so they are drawn long
+  // before a strip is filled from them.
+  tile(band, k, true);
+  yield;
+  tile(bw, k, true);
+  yield;
   g.save();
   g.scale(k, k);
   let seed = 11;
@@ -113,11 +119,6 @@ export function* nardSteps(g, k) {
     g.strokeRect(x0 + 0.6, fy0 + 0.6, x1 - x0 - 1.2, fy1 - fy0 - 1.2);
     yield;
   }
-  // Each strip tile is made in a step of its own: making one is the board's costliest single step.
-  tile(band, k, true);
-  yield;
-  tile(bw, k, true);
-  yield;
   yield* frameSides(g, 0, 0, w, h, band);
   bar(g, fx1, band, bw, h - 2 * band, true);
   g.restore();

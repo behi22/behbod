@@ -404,7 +404,7 @@ export function makePanels(surface, ctx) {
     g.fillStyle = '#3a2412'; g.fillRect(224, 0, 12, 320);
     g.restore();
   });
-  const later = (f, wait = 2500) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f, { timeout: wait }) : setTimeout(f, Math.min(wait, 1200)));
+  const later = typeof requestIdleCallback === 'function' ? f => requestIdleCallback(f, { timeout: 2500 }) : f => setTimeout(f, 1200);
   live.push({ every: 0, last: 0, f(now) {
     if (khatamAt === Infinity) return;
     khatamAt ||= now + 3000;
@@ -415,20 +415,25 @@ export function makePanels(surface, ctx) {
       const c = document.createElement('canvas');
       c.width = 920; c.height = 640;
       const g = c.getContext('2d', { willReadFrequently: true }), steps = m.nardSteps(g, 2);
-      let done = false;
-      // Up to 8 ms of steps in a quiet moment, and 4 ms when none has come for a second, so a busy phone still gets the
-      // board in good time with no long task.
+      let done = false, read = true;
+      // Steps for what a quiet moment has left, 4 to 8 ms, for 4 ms when none has come for a second, and for 4 ms every
+      // quarter of a second in a browser with no quiet moments to offer (Safari): a slow phone gets the board in good time.
+      const next = () => (typeof requestIdleCallback === 'function' ? requestIdleCallback(step, { timeout: 1000 }) : setTimeout(step, 250));
       const step = deadline => {
-        const until = performance.now() + (deadline && !deadline.didTimeout ? 8 : 4);
-        // A canvas keeps its drawing to do until it is read: one pixel read after each step makes its drawing land now.
-        while (!done && performance.now() < until) { done = steps.next().done; g.getImageData(0, 0, 1, 1); }
-        if (!done || performance.now() >= until) { later(step, 1000); return; }
+        const until = performance.now() + (deadline && !deadline.didTimeout ? Math.min(8, Math.max(4, deadline.timeRemaining())) : 4);
+        do {
+          done = steps.next().done;
+          // A canvas keeps its drawing to do until it is read: one pixel read after each step makes its drawing land now.
+          // A read over 10 ms is waiting for drawing done in another process (WebKit), where reading buys nothing: stop.
+          if (read) { const t = performance.now(); g.getImageData(0, 0, 1, 1); read = performance.now() - t < 10; }
+        } while (!done && performance.now() < until);
+        if (!done || performance.now() >= until) { next(); return; }
         // Copied into the table's own canvas, the one its picture is sent from, so the scratch canvas can go.
         inlaid = true;
         S.backgammon.g.drawImage(c, 0, 0);
         S.backgammon.t.needsUpdate = true;
       };
-      later(step, 1000);
+      next();
     }).catch(e => console.warn('[loft] the khatam board could not be drawn', e)));
   } });
 
