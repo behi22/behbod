@@ -740,25 +740,43 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       check('typing: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
       // On a phone whose keyboard names no key (Android's "Unidentified"), the command box's text changing is what
-      // moves the fingers.
+      // moves the fingers: one stroke for each character typed, also after the page has set the line itself (Enter
+      // clearing it, Up bringing back the last command, the fill chip), which queued a Backspace for every character
+      // that had been there.
       const ph = await open(b, UPRIGHT);
       await standAt(ph.p, W.points.desk_use, Math.PI / 2);
       await ph.p.evaluate(() => __loft.useDesk());
       await ph.p.waitForFunction(() => window.__deskHands.loaded && __deskHands.group.visible, null, { timeout: 30000 });
       await ph.p.waitForTimeout(1500);
       const phone = await ph.p.evaluate(async () => {
-        const box = document.getElementById('cmd'), step = () => new Promise(r => requestAnimationFrame(r)), out = { most: 0, strokes: 0 };
-        box.focus();
-        for (const ch of 'hi') {
+        const box = document.getElementById('cmd'), step = () => new Promise(r => requestAnimationFrame(r)), out = { most: 0, strokes: 0, after: {} };
+        const settle = async () => { for (let i = 0; i < 150 && __deskHands.strokes; i++) await step(); await new Promise(r => setTimeout(r, 200)); };
+        // As a browser sends it: the key with no name, the text about to change, the change, then that it changed.
+        const type = async ch => {
+          await settle();
           box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Unidentified', bubbles: true }));
-          await new Promise(r => setTimeout(r, 200));
-          box.value += ch; box.dispatchEvent(new InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
-          out.strokes = Math.max(out.strokes, __deskHands.strokes);
+          box.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, data: ch, inputType: 'insertText' }));
+          box.value += ch;
+          box.dispatchEvent(new InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
+          const queued = __deskHands.strokes;
           for (let i = 0; i < 60 && (__deskHands.strokes || i < 3); i++) { await step(); out.most = Math.max(out.most, ...__deskHands.press); }
-        }
+          return queued;
+        };
+        const press = async key => { await settle(); box.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true })); };
+        box.focus();
+        for (const ch of 'help') out.strokes = Math.max(out.strokes, await type(ch));
+        await press('Enter');
+        out.after.enter = await type('l');
+        await press('ArrowUp');
+        out.after.history = await type('s');
+        await press('Enter');
+        await type('h'); await type('e');
+        // The fill chip over the box (on a branch with the terminal's autofill).
+        const chip = document.querySelector('.fill-chip.on');
+        if (chip) { chip.click(); out.after.chip = await type('x'); }
         return out;
       });
-      check('phone: typing that names no key still moves the fingers and presses the keys', phone.strokes >= 1 && phone.most > 0.003, JSON.stringify(phone));
+      check('phone: typing that names no key moves one finger for each character typed, also after Enter, the history and the fill chip set the line', phone.strokes === 1 && phone.most > 0.003 && phone.after.enter === 1 && phone.after.history === 1 && Object.values(phone.after).every(n => n === 1), JSON.stringify(phone));
       check('phone typing: no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
       await ph.ctx.close();
     }

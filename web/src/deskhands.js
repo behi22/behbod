@@ -101,16 +101,17 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
     stroke(key);
   }, true);
   // Some phones' keyboards name no key (Android's often say "Unidentified"): there the change in what a box holds is
-  // what was typed, each character added or taken away a stroke.
+  // what was typed, each character added or taken away a stroke. Its text is read just before each such change, so a
+  // line the page sets itself (Enter clearing it, the history, the fill chip) is never taken for typing.
+  addEventListener('beforeinput', e => { const box = e.target; if (box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement) texts.set(box, box.value); }, true);
   addEventListener('input', e => {
     const box = e.target;
-    if (!(box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement)) return;
-    const was = texts.get(box) ?? '', now = box.value;
-    texts.set(box, now);
+    if (!texts.has(box)) return;
+    const was = texts.get(box);
+    texts.delete(box);
     if (!seated || clock - named < SAME_PRESS) return;
-    for (const key of keysForText(was, now)) stroke(key);
+    for (const key of keysForText(was, box.value)) stroke(key);
   }, true);
-  addEventListener('focusin', e => { const box = e.target; if (box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement) texts.set(box, box.value); }, true);
   addEventListener('pointerdown', () => { if (seated) clicks = 0.16; }, true);
 
   // One finger's angles: home, over to its key, pressed, lifted on the way, from the per-key table.
