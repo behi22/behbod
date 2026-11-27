@@ -243,6 +243,35 @@ async function turn(p, label, phone) {
   return rows;
 }
 
+// ---------- stopping from a walk: the knees always bend forward ----------
+async function stop(p, label) {
+  await standAt(p, [11.5, 11, 0], 0, 1200);
+  const r = await p.evaluate(() => new Promise(res => {
+    const L = __loft, m = L.me, B = m.bones, V = L.camera.position.constructor, look = m.lookAround, t0 = performance.now();
+    const P = o => o.getWorldPosition(new V());
+    let letGo = 0, worst = Infinity, at = '';
+    L.keys.add('KeyW');
+    m.lookAround = (...a) => {
+      look(...a);
+      const f = L.facing, ahead = new V(Math.sin(f), 0, Math.cos(f)), now = performance.now();
+      if (!letGo) {
+        // Let go with the right foot swinging through ahead of the hips: the standing pose then puts it well back.
+        const fr = P(B.foot_r).sub(L.pos).dot(ahead), fl = P(B.foot_l).sub(L.pos).dot(ahead);
+        if (now - t0 > 1500 && fr > 0.15 && fl < -0.2) { L.keys.delete('KeyW'); letGo = now; }
+        else if (now - t0 > 5000) { L.keys.delete('KeyW'); m.lookAround = look; res(null); }
+        return;
+      }
+      for (const s of ['l', 'r']) {
+        const h = P(B['thigh_' + s]), ha = P(B['foot_' + s]).sub(h), hk = P(B['calf_' + s]).sub(h);
+        const fwd = hk.addScaledVector(ha, -hk.dot(ha) / ha.lengthSq()).dot(ahead);
+        if (fwd < worst) { worst = fwd; at = `${s === 'l' ? 'left' : 'right'} knee, ${Math.round(now - letGo)} ms after stopping`; }
+      }
+      if (now - letGo > 1500) { m.lookAround = look; res({ worst, at }); }
+    };
+  }));
+  check(`${label}: stopping from a walk, neither knee ever bends backwards`, !!r && r.worst > 0.01, r ? `the least a knee stood ahead of the line from hip to ankle: ${(r.worst * 100).toFixed(1)} cm (${r.at})` : 'never caught the right foot ahead to let go');
+}
+
 // ---------- the face blur stays on my head while the hips drop on the stairs ----------
 async function blur(p, label, aspect) {
   await p.evaluate(() => __loft.me.setLook({ head: 'mosaic', hood: null }));
@@ -304,6 +333,7 @@ async function timing(b) {
       await drops(d.p, 'desktop');
       await held(d.p, 'desktop');
       await turn(d.p, 'desktop');
+      await stop(d.p, 'desktop');
       await blur(d.p, 'desktop', 1280 / 720);
       check('desktop: no page errors, console errors or failed requests', d.errs.length === 0, d.errs.slice(0, 6).join(' | '));
       await d.ctx.close();
