@@ -16,13 +16,14 @@
 //   keyboard the desk keyboard at a real keyboard's size (keys 19 mm apart, 30 cm across)
 //   typing   seated, my hands load only now, rise onto the keys, type each key pressed with the right finger, then
 //            rest (left hand on the mouse) and go when I stand
+//   pishi    Pishi jumping onto the keyboard while I type, sitting on it and jumping off: my hands keep out of her
 //   LOFT_URL=http://127.0.0.1:8820 node test/desk.js [outdir] [only: parts, comma-separated]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
 const BASE = process.env.LOFT_URL || 'http://127.0.0.1:8810';
 const OUT = process.argv[2] || 'test-output/desk';
-const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view,webcam,keyboard,typing';
+const ONLY = process.argv[3] || 'fish,moods,glow,deploy,phone,button,fan,holo,jar,view,webcam,keyboard,typing,pishi';
 fs.mkdirSync(OUT, { recursive: true });
 const want = part => ONLY === 'all' || ONLY.split(',').includes(part);
 let fails = 0;
@@ -797,6 +798,83 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       check('phone: typing that names no key moves one finger for each character typed, also after Enter, the history and the fill chip set the line', phone.strokes === 1 && phone.most > 0.003 && phone.after.enter === 1 && phone.after.history === 1 && Object.values(phone.after).every(n => n === 1), JSON.stringify(phone));
       check('phone typing: no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
       await ph.ctx.close();
+    }
+    // ---------- Pishi on the keyboard while I type ----------
+    if (want('pishi')) {
+      const { ctx, p, errs } = await open(b, { viewport: { width: 1440, height: 900 } }, '&matchday=off');
+      await standAt(p, W.points.desk_use, Math.PI / 2);
+      await p.evaluate(() => __loft.useDesk());
+      await p.waitForFunction(() => window.__deskHands.loaded && __deskHands.group.visible, null, { timeout: 30000 });
+      await p.waitForTimeout(2000);
+      // How many corners of my hands and sleeves, as drawn, are inside her: each corner near her is inside when the
+      // nearest point of her surface faces away from it.
+      await p.evaluate(async () => {
+        const THREE = await import('three'), c = __loft.creatures.pishi, q = new THREE.Vector3(), n = new THREE.Vector3(), v = new THREE.Vector3();
+        const drawn = o => { for (let up = o; up; up = up.parent) if (!up.visible) return false; return true; };
+        window.__inPishi = () => {
+          const tris = [], her = new THREE.Box3(), out = { left: 0, right: 0 };
+          c.root.updateMatrixWorld(true);
+          c.root.traverse(o => {
+            if (!o.isMesh || !drawn(o)) return;
+            const P = o.geometry.attributes.position, I = o.geometry.index, at = i => new THREE.Vector3().fromBufferAttribute(P, I ? I.getX(i) : i).applyMatrix4(o.matrixWorld);
+            for (let i = 0; i < (I ? I.count : P.count); i += 3) { const t = new THREE.Triangle(at(i), at(i + 1), at(i + 2)); tris.push(t); her.expandByPoint(t.a).expandByPoint(t.b).expandByPoint(t.c); }
+          });
+          __deskHands.group.updateMatrixWorld(true);
+          __deskHands.group.traverse(m => {
+            if (!m.isMesh || !drawn(m)) return;
+            let side = null;
+            for (let up = m; up && !side; up = up.parent) side = /^(left|right)_/.exec(up.name)?.[1];
+            for (let i = 0; i < m.geometry.attributes.position.count; i += 2) {
+              m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld);
+              if (!her.containsPoint(v)) continue;
+              let d = Infinity, near = null;
+              for (const t of tris) { const e = t.closestPointToPoint(v, n).distanceToSquared(v); if (e < d) { d = e; near = t; q.copy(n); } }
+              if (v.clone().sub(q).dot(near.getNormal(n)) < 0) out[side]++;
+            }
+          });
+          return out;
+        };
+      });
+      // Typing all the while, as Pishi jumps onto the keyboard the way her moment has her do it, from the floor by
+      // the chair, sits there, and jumps off when I type shoo.
+      const watch = (ms, letters) => p.evaluate(async ([ms, letters]) => {
+        const out = { left: 0, right: 0, typing: 0, shown: false, frames: 0 }, t0 = performance.now();
+        let i = 0;
+        while (performance.now() - t0 < ms) {
+          if (letters) { const ch = letters[i++ % letters.length]; window.dispatchEvent(new KeyboardEvent('keydown', { code: ch === ' ' ? 'Space' : 'Key' + ch.toUpperCase(), key: ch })); }
+          for (let f = 0; f < 3; f++) await new Promise(done => requestAnimationFrame(done));
+          const r = __inPishi();
+          out.left = Math.max(out.left, r.left); out.right = Math.max(out.right, r.right); out.typing = Math.max(out.typing, __deskHands.typing); out.frames++;
+          out.shown ||= __deskHands.group.visible;
+        }
+        out.state = __loft.creatures.pishi.state;
+        return out;
+      }, [ms, letters]);
+      const jump = p.evaluate(async () => {
+        const THREE = await import('three'), c = __loft.creatures.pishi, box = new THREE.Box3(), ch = __loft.chair;
+        for (const o of __loft.world.deskThings) if (/^kb_/.test(o.name)) box.expandByObject(o);
+        const kb = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y + 0.005, box.min.z + 0.1), from = new THREE.Vector3(ch.x - 0.3, ch.y, ch.z + 0.8);
+        await new Promise(done => setTimeout(done, 600));
+        Object.assign(c, { route: [], pending: null, then: null, moving: false, state: 'todesk', onFloor: false });
+        c.epoch++; c.pos.copy(from);
+        c.hop = { a: from.clone(), b: kb, k: 0, dur: 0.55, h: 0.35, walk: false, then: () => Object.assign(c, { state: 'keys', timer: 60, keyAt: 60 }) };
+      });
+      const on = await watch(3000, 'asdfjkl;ghtyvbnm ');
+      await jump;
+      const sitting = await watch(2500, 'the quick brown fox ');
+      // A fresh line first: the letters typed till now went into the terminal too.
+      await p.keyboard.press('Enter');
+      await p.keyboard.type('shoo', { delay: 80 });
+      await p.keyboard.press('Enter');
+      const off = await watch(1500, '');
+      await p.waitForTimeout(500);
+      const back = await watch(1200, 'jk');
+      const most = Math.max(on.left, on.right, sitting.left, sitting.right, off.left, off.right);
+      check('Pishi jumping onto the keyboard while I type, sitting on it and jumping off: no part of my hands is ever inside her', most === 0 && on.frames > 10 && sitting.state === 'keys', JSON.stringify({ on, sitting, off }));
+      check('while she has the keyboard my hands are down in my lap, and what I type still reaches the terminal: shoo moves her', !sitting.shown && off.state !== 'keys', `hands ${sitting.shown ? 'shown' : 'down'}, then she is ${off.state}`);
+      check('once she has gone my hands come back up and type again', back.shown && back.typing > 0.9, `typing ${back.typing.toFixed(2)}`);
+      check('pishi: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
     }
   } finally {
     await b.close();

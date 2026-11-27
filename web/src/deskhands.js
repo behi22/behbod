@@ -4,7 +4,9 @@ import { KEYS, keyFor, keysForText, fingerFor, HOME, spotOn, strokeAt, advance, 
 // My hands at the desk, seen from my own eyes once the camera has glided in: fetched the first time I sit, they come
 // up onto the keyboard as my body leaves the view. While I type at the terminal or play a desk game both hands are on
 // the keys, each key press made by the finger that touch-types it, the key going down under it; otherwise the right
-// hand is on the mouse (right of the keyboard) and the left rests beside the keys. Same soft white, same hoodie as me.
+// hand is on the mouse (right of the keyboard) and the left rests beside the keys. While Pishi has the keyboard
+// (`taken`: jumping onto it, sitting on it, jumping off) they go back down into my lap, what I type still typing.
+// Same soft white, same hoodie as me.
 const FINGER_KEYS = ['index', 'middle', 'ring', 'pinky', 'thumb'];
 const lerpA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
 const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
@@ -14,8 +16,8 @@ const ELBOW = { back: 0.24, down: 0.09, out: 0.11 };
 // A key press that named a key: an input's text changing just after it is that same press, not another.
 const SAME_PRESS = 0.15;
 
-export function makeDeskHands({ scene, world, me, playing = () => false, lamp = () => 1 }) {
-  let kit = null, loading = null, seated = false, shown = 0, typing = 0, lastKey = -1e9, named = -1e9, clock = 0, clicks = 0;
+export function makeDeskHands({ scene, world, me, playing = () => false, lamp = () => 1, taken = () => false }) {
+  let kit = null, loading = null, seated = false, free = true, shown = 0, typing = 0, lastKey = -1e9, named = -1e9, clock = 0, clicks = 0;
   const group = new THREE.Group(), strokes = [], texts = new WeakMap(), rise = new Float32Array(KEYS.length);
   // The keys' press, shared with the lit legends over them (kblegends.js).
   const press = scene.getObjectByName('kb_legends')?.userData.press || new Float32Array(KEYS.length);
@@ -91,7 +93,7 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
   function stroke(key) {
     const f = fingerFor(key);
     lastKey = clock;
-    if (strokes.filter(x => x.side === f.side && x.digit === f.digit).length > 2) return;
+    if (!free || strokes.filter(x => x.side === f.side && x.digit === f.digit).length > 2) return;
     strokes.push({ ...f, key, t: 0, away: HOME[f.side][f.digit] !== key.id });
   }
   // A key pressed while I sit: its finger strokes it. Every key this board has counts; ones it has not are left alone.
@@ -154,12 +156,14 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
     // seated: I sit at the desk; body: my body is still drawn (the glide has not reached my eyes yet).
     tick(dt, isSeated, body) {
       seated = isSeated;
+      free = !taken();
       clock += dt;
       if (seated && !loading) loading = load().catch(e => console.warn('[loft] the desk hands did not load', e));
       if (!kit) return;
-      shown = Math.max(0, Math.min(1, shown + (seated && !body ? dt : -dt) / 0.45));
+      shown = Math.max(0, Math.min(1, shown + (seated && !body && free ? dt : -dt) / 0.45));
       group.visible = shown > 0;
       if (!group.visible) { strokes.length = 0; press.fill(0); return; }
+      if (!free) strokes.length = 0;
       const want = strokes.length || clock - lastKey < 2.5 || playing() ? 1 : 0;
       typing = Math.max(0, Math.min(1, typing + (want ? dt : -dt) / 0.4));
       clicks = Math.max(0, clicks - dt);

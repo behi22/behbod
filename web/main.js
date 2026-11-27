@@ -349,7 +349,10 @@ things.items.push(deskBits.spot, jar.spot); window.__desk = deskBits; window.__j
 const followPose = makeFollowCam(col, meta.regions);
 const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
 const desk = makeDesk({ camera, me, meta, coarse, follow });
-const deskHands = makeDeskHands({ scene, world, me, lamp: () => lights.k, playing: () => { const g = screens.desktop.games.playing; return !!(g && !g.paused && !g.done); } }); window.__deskHands = deskHands;
+// Pishi on the keyboard, or jumping onto it or off it: my hands keep off the keys while she is there.
+const onKeys = v => { const kb = keyboard(); return !!v && !!kb && Math.hypot(v.x - kb.x, v.z - kb.z) < 0.3 && Math.abs(v.y - kb.y) < 0.15; };
+const deskHands = makeDeskHands({ scene, world, me, lamp: () => lights.k, playing: () => { const g = screens.desktop.games.playing; return !!(g && !g.paused && !g.done); },
+  taken: () => { const c = creatures.pishi; return [c.pos, c.hop?.a, c.hop?.b].some(onKeys); } }); window.__deskHands = deskHands;
 // The computer's desktop, laid over the monitor while I sit at it.
 const deskView = makeDesktopView({ camera, meta, screens, act: deskAct, coarse, sfx: audio.sfx, tapTerminal: () => { if (coarse) $('cmd').focus(); } });
 const deskCtx = () => ({ records: audio.music.records, playing: audio.music.current, sound: sound.on, quality: autoTier ? 'auto' : tierName, hood: me.hoodUp,
