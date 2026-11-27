@@ -48,8 +48,8 @@ const quiet = async p => {
     // (whose chain is built in the background and swapped in, so the switch lands a moment later).
     for (const [from, steps] of [['ultra', ['high', 'ultra', 'high', 'ultra']], ['high', ['medium', 'high', 'medium', 'high']]]) {
       const { p, errs } = await open(b, from, { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
-      // The house's start-up work has long tasks of its own, with no switch at all: the khatam board's drawing about 3.5 s
-      // in (50 to 60 ms), after 3 s with none, inside the first switch's window. The switches start after 5 s with none.
+      // The house's start-up work can have long tasks of its own, with no switch at all (before 3193f20 the khatam board's
+      // drawing held 50 to 60 ms about 3.5 s in), so the switches start after 5 s with none.
       const settled = await quiet(p);
       const worst = [];
       for (const to of steps) {
