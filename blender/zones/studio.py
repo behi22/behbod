@@ -1,6 +1,6 @@
 """The raised studio: the L-shaped battlestation on the east wall, the racing chair, the rack and 3D printer, the glass
 board and STAY CURIOUS poster, acoustic panels, the arcade cabinet and the GPU rig."""
-import math, random
+import json, math, os, random
 import bmesh
 from mathutils import Vector, Matrix
 from lib.core import (zone, box, cyl, sphere, plane, tube, bezier, prism, link, collider, point, screen, interact, char_light,
@@ -18,6 +18,10 @@ CHAIR = Vector((14.45, 2.2, Z0))
 # east wall from the corner, the return flat along the south wall, so the desk wraps the corner.
 EW = 16.0
 DESK_AT = (W - EW, -1.0, 0.0)
+# Where each thing on the desk stands, shared with the page's checks (test/unit/desklayout.test.mjs).
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'desklayout.json'), encoding='utf-8') as f:
+    LAYOUT = json.load(f)
+ON = {k: Vector(v['at']) for k, v in LAYOUT['things'].items()}
 
 
 def curved_screen(M, E):
@@ -51,6 +55,20 @@ def curved_screen(M, E):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     link('monitor_back', bm, M['black'])
     screen('main', MC, MW, MH, r=MR)
+
+
+def ring(name, ro, ri, ln, loc, mat, seg=24):
+    # An open ring along x with real thickness (outer and inner walls and both rims), so no side of it vanishes.
+    bm, rows = bmesh.new(), []
+    for i in range(seg):
+        a = 2 * math.pi * i / seg
+        rows.append([bm.verts.new(P(Vector(loc) + Vector((dx, r * math.cos(a), r * math.sin(a))))) for r, dx in ((ro, -ln / 2), (ro, ln / 2), (ri, ln / 2), (ri, -ln / 2))])
+    for i in range(seg):
+        a, b = rows[i], rows[(i + 1) % seg]
+        for k in range(4):
+            bm.faces.new((a[k], b[k], b[(k + 1) % 4], a[(k + 1) % 4]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return link(name, bm, mat)
 
 
 def flat_monitor(name, M, E, c, w, h, yaw=0.0, tilt=0.0):
@@ -96,10 +114,12 @@ def build(M, E, G):
             flat_monitor('code', M, E, (15.52, 3.16, DZ + 0.44), 0.34, 0.6, yaw=28)
             box('vmon_stand', (0.04, 0.04, 0.3), (15.6, 3.2, DZ + 0.15), M['metal'])
             cyl('vmon_base', 0.11, 0.015, (15.6, 3.2, DZ + 0.008), M['metal'])
-            for y, nm in ((1.78, 'contrib'), (2.2, 'loss'), (2.62, 'pishi')):
-                box(f'mini_case_{nm}', (0.05, 0.18, 0.115), (15.41, y, DZ + 0.075), M['black'], bevel=0.008)
-                plane(f'screen_{nm}', 0.16, 0.095, (15.384, y, DZ + 0.078), E['screen'], '-X')
-                screen(nm, (15.384, y, DZ + 0.078), 0.16, 0.095)
+            for nm in ('contrib', 'loss', 'pishi'):
+                x, y = ON['mini_' + nm]
+                box(f'mini_case_{nm}', (0.05, 0.18, 0.115), (x, y, DZ + 0.075), M['mini_case'], bevel=0.008)
+                box(f'mini_foot_{nm}', (0.032, 0.11, 0.0145), (x, y, DZ + 0.01125), M['mini_case'], bevel=0.002)
+                plane(f'screen_{nm}', 0.16, 0.095, (x - 0.026, y, DZ + 0.078), E['screen'], '-X')
+                screen(nm, (x - 0.026, y, DZ + 0.078), 0.16, 0.095)
             # Light bar on the ultrawide, bias light behind it.
             box('lightbar', (0.035, 0.46, 0.022), (MC.x - 0.03, MC.y, MC.z + MH / 2 + 0.03), M['metal'], bevel=0.006)
             box('lightbar_glow', (0.012, 0.42, 0.004), (MC.x - 0.045, MC.y, MC.z + MH / 2 + 0.018), E['warm_soft'], kind='emit')
@@ -116,27 +136,32 @@ def build(M, E, G):
             point('postit', top - Vector((0, 0, 0.04)))
 
             # ---------- keyboard, mouse, desk mat, wrist rest, the pomegranate keycap, a coiled cable ----------
-            kb = Vector((15.33, MC.y, DZ + 0.018))
-            # A real keyboard's size: keys 19 mm apart (15 across, 5 deep), so real hands type on it.
-            KP, KS = 0.019, 0.0175
-            box('kb_case', (0.115, 0.3, 0.022), kb, M['plastic'], bevel=0.006)
+            kb = ON['keyboard'].to_3d() + Vector((0, 0, DZ + 0.018))
+            # A 65% gaming keyboard at a real one's size: 68 black keys 19.05 mm apart in five staggered rows (their
+            # letters and backlight are the page's, web/src/kblegends.js), so real hands type on it.
+            K = LAYOUT['keys']
+            box('kb_case', (0.115, LAYOUT['things']['keyboard']['size'][1], 0.022), kb, M['kb_body'], bevel=0.006)
             bm = bmesh.new()
-            for r in range(5):
-                for c in range(15):
+            for r, row in enumerate(K['rows']):
+                u = 0
+                for w in row:
                     g = bmesh.ops.create_cube(bm, size=1.0)
-                    bmesh.ops.scale(bm, vec=Vector((KS, KS, 0.01)), verts=g['verts'])
-                    bmesh.ops.translate(bm, vec=P(kb + Vector((-2 * KP + r * KP, -7 * KP + c * KP, 0.016))), verts=g['verts'])
+                    bmesh.ops.scale(bm, vec=Vector((K['pitch'] - K['gap'], w * K['pitch'] - K['gap'], 0.01)), verts=g['verts'])
+                    bmesh.ops.translate(bm, vec=P(kb + Vector(((r - 2) * K['pitch'], -(u + w / 2 - 8) * K['pitch'], 0.016))), verts=g['verts'])
+                    u += w
             link('keycaps', bm, M['keycap'])
-            box('kb_glow', (0.117, 0.302, 0.004), kb + Vector((0, 0, -0.012)), E['rgb_teal'], kind='emit')
-            sphere('pom_key', 0.009, kb + Vector((-2 * KP, 7 * KP, 0.025)), M['pom'], sub=2, scale=(1, 1, 0.8))
-            box('wrist_rest', (0.07, 0.3, 0.016), (kb.x - 0.095, kb.y, DZ + 0.012), M['leather'], bevel=0.008, seg=3)
-            box('mouse', (0.11, 0.065, 0.035), (15.35, 2.68, DZ + 0.018), M['plastic'], bevel=0.016, seg=4)
+            box('kb_glow', (0.117, 0.327, 0.004), kb + Vector((0, 0, -0.012)), E['rgb_teal'], kind='emit')
+            # The pomegranate is an artisan cap on Escape, top left.
+            sphere('pom_key', 0.009, kb + Vector((2 * K['pitch'], 7.5 * K['pitch'], 0.025)), M['pom'], sub=2, scale=(1, 1, 0.8))
+            box('wrist_rest', (0.07, LAYOUT['things']['wrist_rest']['size'][1], 0.016), (ON['wrist_rest'].x, ON['wrist_rest'].y, DZ + 0.012), M['wrist_pad'], bevel=0.008, seg=3)
+            box('mouse', (0.11, 0.065, 0.035), (ON['mouse'].x, ON['mouse'].y, DZ + 0.018), M['kb_body'], bevel=0.016, seg=4)
             coil = []
-            for i in range(160):
-                t = i / 159
-                p = Vector((kb.x + 0.065 + t * 0.32, kb.y + 0.12 - t * 0.12, DZ + 0.012 + t * 0.03))
-                if 0.15 < t < 0.6:
-                    p += Vector((0, math.cos(t * 70) * 0.008, math.sin(t * 70) * 0.008))
+            ease = lambda t, a, b: (lambda u: u * u * (3 - 2 * u))(min(1.0, max(0.0, (t - a) / (b - a))))
+            for i in range(200):
+                t = i / 199
+                k = ease(t, 0.12, 0.17) * (1 - ease(t, 0.58, 0.63))
+                p = Vector((kb.x + 0.05 + t * 0.395, kb.y + 0.12 - t * 0.16, DZ + 0.0065 + 0.0055 * (1 - ease(t, 0.0, 0.06)) + 0.008 * k + 0.0235 * ease(t, 0.85, 1.0)))
+                p += Vector((0, math.cos(t * 70) * 0.008 * k, math.sin(t * 70) * 0.008 * k))
                 coil.append(tuple(p))
             tube('kb_cable', coil, 0.0025, M['braid'], 6)
             bm = bmesh.new()
@@ -147,19 +172,21 @@ def build(M, E, G):
             for lp, uv in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
                 lp[uvl].uv = uv
             link('desk_mat', bm, M['felt'], 'emit')
+            box('desk_mat_base', (hd * 2, hw * 2, 0.0035), (mx, my, DZ + 0.00175), M['felt'])
             screen('mat', (mx, my, DZ + 0.004), hw * 2, hd * 2)
 
             # ---------- stream deck, DEPLOY, mic boom, ON AIR ----------
-            box('streamdeck', (0.09, 0.12, 0.03), (15.33, 1.74, DZ + 0.02), M['black'], bevel=0.006)
+            SD, DP, MC2 = ON['streamdeck'], ON['deploy'], ON['mic_clamp']
+            box('streamdeck', (0.09, 0.12, 0.035), (SD.x, SD.y, DZ + 0.0175), M['black'], bevel=0.006)
             for r in range(3):
                 for c in range(5):
-                    box(f'sd_key{r}{c}', (0.018, 0.018, 0.006), (15.305 + r * 0.025, 1.69 + c * 0.024, DZ + 0.037), E['rgb_teal'] if (r + c) % 3 else E['rgb_purple'], kind='emit')
-            cyl('deploy_base', 0.045, 0.02, (15.36, 2.9, DZ + 0.01), M['black'])
-            sphere('deploy_btn', 0.035, (15.36, 2.9, DZ + 0.022), E['onair'], kind='emit', scale=(1, 1, 0.55))
-            point('deploy', (15.36, 2.9, DZ + 0.03))
+                    box(f'sd_key{r}{c}', (0.018, 0.018, 0.006), (SD.x - 0.025 + r * 0.025, SD.y - 0.05 + c * 0.024, DZ + 0.037), E['rgb_teal'] if (r + c) % 3 else E['rgb_purple'], kind='emit')
+            cyl('deploy_base', 0.045, 0.02, (DP.x, DP.y, DZ + 0.01), M['black'])
+            sphere('deploy_btn', 0.035, (DP.x, DP.y, DZ + 0.022), E['onair'], kind='emit', scale=(1, 1, 0.55))
+            point('deploy', (DP.x, DP.y, DZ + 0.03))
             MIC = Vector((15.4, 2.98, DZ + 0.22))
-            cyl('mic_clamp', 0.02, 0.08, (15.88, 3.3, DZ + 0.04), M['metal'])
-            tube('mic_arm', [(15.88, 3.3, DZ + 0.08), (15.8, 3.22, DZ + 0.5), (15.55, 3.08, DZ + 0.42), (MIC.x + 0.04, MIC.y, MIC.z + 0.05)], 0.012, M['metal'])
+            cyl('mic_clamp', 0.02, 0.08, (MC2.x, MC2.y, DZ + 0.04), M['metal'])
+            tube('mic_arm', [(MC2.x, MC2.y, DZ + 0.08), (15.8, 3.22, DZ + 0.5), (15.55, 3.08, DZ + 0.42), (MIC.x + 0.04, MIC.y, MIC.z + 0.05)], 0.012, M['metal'])
             cyl('mic', 0.028, 0.15, MIC, M['black'])
             for dz in (-0.04, 0.04):
                 tube(f'shock{dz:+.2f}', [(MIC.x + math.cos(2 * math.pi * k / 24) * 0.045, MIC.y + math.sin(2 * math.pi * k / 24) * 0.045, MIC.z + dz) for k in range(25)], 0.003, M['metal'])
@@ -172,9 +199,9 @@ def build(M, E, G):
             # ---------- the maxed PC behind glass on the return, facing the room ----------
             PCX, PCY = 14.28, 1.3
             # The case is open on the glass side, so everything inside shows.
-            box('pc_back', (0.5, 0.012, 0.52), (PCX, PCY - 0.124, DZ + 0.26), M['black'], bevel=0.004)
+            box('pc_back', (0.476, 0.012, 0.496), (PCX, PCY - 0.124, DZ + 0.26), M['black'], bevel=0.004)
             for nm, z in (('pc_floor', DZ + 0.006), ('pc_roof', DZ + 0.514)):
-                box(nm, (0.5, 0.26, 0.012), (PCX, PCY, z), M['black'], bevel=0.004)
+                box(nm, (0.476, 0.26, 0.012), (PCX, PCY, z), M['black'], bevel=0.004)
             for sx in (-1, 1):
                 box(f'pc_side{sx}', (0.012, 0.26, 0.52), (PCX + sx * 0.244, PCY, DZ + 0.26), M['black'], bevel=0.004)
             box('pc_board', (0.42, 0.01, 0.44), (PCX, PCY - 0.11, DZ + 0.27), M['plastic'])
@@ -197,7 +224,7 @@ def build(M, E, G):
                 box(f'ram{i}_led', (0.006, 0.0045, 0.006), (PCX + 0.12 + i * 0.012, PCY - 0.09, DZ + 0.438), E['rgb_purple'] if i % 2 else E['rgb_teal'], kind='emit')
             # Water cooling you can see through the glass: a lit reservoir, a radiator with three fans under the roof, and
             # hard tubes round the loop (reservoir, CPU block, radiator, down the far side and back), clear of the cards.
-            cyl('coolant_res', 0.032, 0.17, (PCX + 0.2, PCY + 0.04, DZ + 0.2), E['rgb_teal'], seg=20, kind='emit')
+            cyl('coolant_res', 0.032, 0.168, (PCX + 0.2, PCY + 0.04, DZ + 0.199), E['rgb_teal'], seg=20, kind='emit')
             cyl('res_cap', 0.034, 0.012, (PCX + 0.2, PCY + 0.04, DZ + 0.29), M['metal'], seg=20)
             box('radiator', (0.4, 0.12, 0.028), (PCX - 0.01, PCY - 0.04, DZ + 0.48), M['black'], bevel=0.004)
             for i in range(3):
@@ -214,6 +241,7 @@ def build(M, E, G):
             LX, LY = 14.85, 1.3
             box('laptop_stand', (0.26, 0.2, 0.012), (LX, LY, DZ + 0.06), M['steel'], tilt=(math.radians(-14), 0, 0))
             box('laptop_stand_leg', (0.2, 0.012, 0.11), (LX, LY - 0.09, DZ + 0.055), M['steel'])
+            box('laptop_stand_lip', (0.25, 0.008, 0.032), (LX, LY + 0.094, DZ + 0.016), M['steel'])
             box('laptop_base', (0.31, 0.22, 0.014), (LX, LY, DZ + 0.088), M['metal'], bevel=0.004, tilt=(math.radians(-14), 0, 0))
             lid_c = (LX, LY - 0.13, DZ + 0.2)
             box('laptop_lid', (0.31, 0.01, 0.21), lid_c, M['metal'], bevel=0.004, tilt=(math.radians(8), 0, 0))
@@ -223,7 +251,7 @@ def build(M, E, G):
                 box(f'sticker{i}', (0.05, 0.001, 0.05), (LX - 0.08 + (i % 2) * 0.1, LY - 0.14, DZ + 0.16 + (i // 2) * 0.07), M[c])
             box('dock', (0.06, 0.16, 0.025), (LX + 0.22, LY + 0.05, DZ + 0.013), M['black'], bevel=0.005)
             box('dock_led', (0.003, 0.02, 0.004), (LX + 0.19, LY + 0.1, DZ + 0.022), E['led_blue'], kind='emit')
-            tube('dock_cable', bezier((LX + 0.2, LY + 0.0, DZ + 0.015), (LX + 0.17, LY - 0.05, DZ + 0.015), (LX + 0.14, LY - 0.05, DZ + 0.06), (LX + 0.155, LY - 0.02, DZ + 0.09)), 0.003, M['braid'])
+            tube('dock_cable', bezier((LX + 0.2, LY + 0.0, DZ + 0.004), (LX + 0.15, LY - 0.05, DZ + 0.0), (LX + 0.14, LY - 0.05, DZ + 0.06), (LX + 0.155, LY - 0.02, DZ + 0.09)), 0.003, M['braid'])
 
             # ---------- speakers, subwoofer, cable tray ----------
             for nm, sy in (('l', 2.92), ('r', 1.45)):
@@ -238,46 +266,63 @@ def build(M, E, G):
             tube('cable_floor', bezier((DX1 - 0.12, 1.4, DZ - 0.12), (DX1 - 0.1, 1.2, Z0 + 0.3), (DX1 - 0.05, 1.1, Z0 + 0.05), (DX1 - 0.03, 1.0, Z0 + 0.01)), 0.008, M['braid'])
 
             # ---------- the small things: headset, tea, succulent, notebook, phone on its charger, pomodoro, fan ----------
-            cyl('hs_base', 0.06, 0.012, (15.72, 1.14, DZ + 0.006), M['metal'])
-            cyl('hs_pole', 0.008, 0.26, (15.72, 1.14, DZ + 0.13), M['metal'])
-            bm = bmesh.new()
-            bmesh.ops.create_circle(bm, cap_ends=False, segments=20, radius=0.085)
-            bmesh.ops.rotate(bm, cent=Vector(), matrix=Matrix.Rotation(math.pi / 2, 3, 'X'), verts=bm.verts)
-            bmesh.ops.translate(bm, vec=P((15.72, 1.14, DZ + 0.22)), verts=bm.verts)
-            geom = bmesh.ops.extrude_edge_only(bm, edges=bm.edges[:])
-            bmesh.ops.translate(bm, vec=Vector((0.03, 0, 0)), verts=[g for g in geom['geom'] if isinstance(g, bmesh.types.BMVert)])
+            HX, HY = 15.72, 1.14
+            cyl('hs_base', 0.06, 0.012, (HX, HY, DZ + 0.006), M['metal'])
+            cyl('hs_pole', 0.008, 0.252, (HX, HY, DZ + 0.136), M['metal'])
+            cyl('hs_hanger', 0.006, 0.026, (HX, HY, DZ + 0.266), M['metal'], axis='X')
+            bm, rows = bmesh.new(), []
+            for i in range(25):
+                a = math.radians(-25 + 230 * i / 24)
+                rows.append([bm.verts.new(P((HX + dx, HY + r * math.cos(a), DZ + 0.19 + r * math.sin(a)))) for r, dx in ((0.089, -0.015), (0.089, 0.015), (0.082, 0.015), (0.082, -0.015))])
+            for i in range(24):
+                for k in range(4):
+                    bm.faces.new((rows[i][k], rows[i + 1][k], rows[i + 1][(k + 1) % 4], rows[i][(k + 1) % 4]))
+            for end in (rows[0], rows[-1][::-1]):
+                bm.faces.new(end)
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
             link('headset_band', bm, M['black'])
             for s in (-1, 1):
-                cyl(f'hs_cup{s}', 0.045, 0.03, (15.72, 1.14 + s * 0.085, DZ + 0.16), M['black'], axis='Y')
-            TEA = (15.28, 1.52, DZ)
+                cyl(f'hs_cup{s}', 0.045, 0.03, (HX, HY + s * 0.085, DZ + 0.15), M['black'], axis='Y')
+            TEA = (ON['tea'].x, ON['tea'].y, DZ)
             cyl('saucer', 0.05, 0.006, (TEA[0], TEA[1], DZ + 0.003), M['clockface'])
             cyl('estekan', 0.022, 0.07, (TEA[0], TEA[1], DZ + 0.04), G['teaglass'], seg=16, kind='glass', r2=0.026)
-            cyl('tea', 0.02, 0.055, (TEA[0], TEA[1], DZ + 0.033), M['tea'], seg=16, r2=0.024)
+            cyl('tea', 0.02, 0.053, (TEA[0], TEA[1], DZ + 0.034), M['tea'], seg=16, r2=0.024)
             point('tea', (TEA[0], TEA[1], DZ + 0.08))
-            cyl('succ_pot', 0.045, 0.07, (15.86, 1.08, DZ + 0.035), M['pot'], r2=0.055)
-            cyl('succ_soil', 0.05, 0.005, (15.86, 1.08, DZ + 0.068), M['soil'])
+            SU = ON['succulent']
+            cyl('succ_pot', 0.045, 0.07, (SU.x, SU.y, DZ + 0.035), M['pot'], r2=0.055)
+            cyl('succ_soil', 0.05, 0.005, (SU.x, SU.y, DZ + 0.068), M['soil'])
             for i in range(14):
                 a, rr = i * 2.4, 0.012 + 0.0025 * i
-                sphere(f'succ_leaf{i}', 0.018, (15.86 + math.cos(a) * rr, 1.08 + math.sin(a) * rr, DZ + 0.085 - i * 0.001), M['leaf2'] if i % 2 else M['leaf'], sub=1, scale=(1.6, 0.7, 0.5), rot=(0, -0.5, a))
-            box('notebook', (0.15, 0.21, 0.012), (14.6, 1.48, DZ + 0.006), M['cover'], bevel=0.003, rot=math.radians(8))
-            box('notebook_pages', (0.145, 0.205, 0.006), (14.6, 1.48, DZ + 0.014), M['paper'], rot=math.radians(8))
+                sphere(f'succ_leaf{i}', 0.018, (SU.x + math.cos(a) * rr, SU.y + math.sin(a) * rr, DZ + 0.085 - i * 0.001), M['leaf2'] if i % 2 else M['leaf'], sub=1, scale=(1.6, 0.7, 0.5), rot=(0, -0.5, a))
+            # A pocket notebook in front of the PC and the laptop, its two pens lying on it.
+            NB, (nw, nd) = ON['notebook'], LAYOUT['things']['notebook']['size']
+            box('notebook', (nw, nd, 0.012), (NB.x, NB.y, DZ + 0.006), M['cover'], bevel=0.003)
+            box('notebook_pages', (nw - 0.005, nd - 0.005, 0.006), (NB.x, NB.y, DZ + 0.014), M['paper'])
             for i, c in enumerate((M['black'], M['lego_b'])):
-                cyl(f'pen{i}', 0.004, 0.14, (14.58 + i * 0.012, 1.38, DZ + 0.006), c, axis='Y', seg=10)
+                cyl(f'pen{i}', 0.004, 0.12, (ON['notebook_pens'].x, ON['notebook_pens'].y - 0.006 + i * 0.012, DZ + 0.021), c, axis='X', seg=10)
+            # A pad of sticky notes in the desk's front left corner, beside the pen the page lays there (pure/residents.js).
+            ST, STT = ON['sticky'], math.radians(LAYOUT['things']['sticky']['turn'])
+            pad = principled('sticky_pad', (0.62, 0.88, 0.78), 0.85)
+            box('sticky_pad', (0.076, 0.076, 0.008), (ST.x, ST.y, DZ + 0.004), pad, bevel=0.0008, rot=STT)
+            box('sticky_top', (0.076, 0.076, 0.0006), (ST.x + 0.0015, ST.y - 0.001, DZ + 0.0083), pad, rot=STT + math.radians(4))
             box('phone_stand', (0.05, 0.08, 0.012), (15.3, 3.08, DZ + 0.006), M['black'], bevel=0.003)
-            box('phone', (0.012, 0.075, 0.15), (15.31, 3.08, DZ + 0.08), M['black'], bevel=0.004, tilt=(0, math.radians(-15), 0))
-            plane('screen_phone', 0.066, 0.135, (15.302, 3.08, DZ + 0.081), E['screen'], '-X')
+            box('phone', (0.012, 0.075, 0.15), (15.31, 3.08, DZ + 0.08), M['black'], bevel=0.004, tilt=(0, math.radians(15), 0))
+            ph, piv = plane('screen_phone', 0.066, 0.135, (15.302, 3.08, DZ + 0.081), E['screen'], '-X'), P((15.31, 3.08, DZ + 0.08))
+            for v in ph.data.vertices:
+                v.co = piv + Matrix.Rotation(math.radians(15), 3, 'Y') @ (v.co - piv)
             screen('phone', (15.302, 3.08, DZ + 0.081), 0.066, 0.135)
-            box('pomodoro', (0.06, 0.06, 0.06), (15.3, 2.95, DZ + 0.03), M['plastic'], bevel=0.008)
-            plane('screen_timer', 0.044, 0.03, (15.269, 2.95, DZ + 0.032), E['screen'], '-X')
-            screen('timer', (15.269, 2.95, DZ + 0.032), 0.044, 0.03)
+            PO = ON['pomodoro']
+            box('pomodoro', (0.06, 0.06, 0.06), (PO.x, PO.y, DZ + 0.03), M['plastic'], bevel=0.008)
+            plane('screen_timer', 0.044, 0.03, (PO.x - 0.031, PO.y, DZ + 0.032), E['screen'], '-X')
+            screen('timer', (PO.x - 0.031, PO.y, DZ + 0.032), 0.044, 0.03)
             cyl('fan_base', 0.05, 0.015, (15.82, 3.3, DZ + 0.008), M['white'])
             cyl('fan_neck', 0.008, 0.12, (15.82, 3.3, DZ + 0.07), M['white'])
-            cyl('fan_cage', 0.07, 0.04, (15.8, 3.3, DZ + 0.16), M['white'], axis='X', cap=False, seg=20)
+            ring('fan_cage', 0.07, 0.064, 0.04, (15.8, 3.3, DZ + 0.16), M['white'])
 
             # ---------- Aria, the desk robot (the Pebble design): pearl body, dark face, teal eyes ----------
-            AR = Vector((15.7, 2.86, DZ + 0.12))
+            AR = ON['aria'].to_3d() + Vector((0, 0, DZ + 0.12))
             sphere('aria_body', 0.075, AR, M['pearl'], sub=3, scale=(1, 1, 0.92))
-            cyl('aria_base', 0.06, 0.035, (AR.x, AR.y, DZ + 0.02), M['plastic'])
+            cyl('aria_base', 0.06, 0.052, (AR.x, AR.y, DZ + 0.0285), M['plastic'])
             for s in (-1, 1):
                 cyl(f'aria_wheel{s}', 0.022, 0.012, (AR.x, AR.y + s * 0.055, DZ + 0.022), M['black'], axis='Y')
             box('aria_face', (0.02, 0.085, 0.05), (AR.x - 0.064, AR.y, AR.z + 0.005), M['aria_face'], bevel=0.012)

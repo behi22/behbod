@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { makeConfetti } from './confetti.js';
 import { makeWebcam } from './webcam.js';
+import { makeKeyLight } from './kblegends.js';
 import { newFan, fanStep, fanSet, DEPLOY_SPOT } from './pure/desk.js';
 
 export { FAN_SPOT } from './pure/desk.js';
@@ -9,7 +10,7 @@ export { FAN_SPOT } from './pure/desk.js';
 // The desk's own goings-on. DEPLOY, from the terminal or the button (E, a tap or a click): the lines, the green sweep,
 // the fanfare and the achievement as before, plus confetti out of the button and a dance from BH-22; one at a time.
 // And the fan, which BH-22 switches on while the PC is busy: a game on its screen or a deploy. And the webcam on the
-// main monitor, its light on while I sit there.
+// main monitor, its light on while I sit there. And the keyboard's backlight, its legends lit.
 export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy }) {
   const btn = b2t(...meta.points.deploy);
   const desks = meta.colliders.filter(c => c.name === 'desk' || c.name === 'desk_return');
@@ -19,7 +20,7 @@ export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy 
   const at = DEPLOY_SPOT, spot = { id: 'deploy', at, r: 0.42, label: 'Press DEPLOY', x: at[0], y: at[2], z: -at[1] };
   const reach = new THREE.Sphere(btn.clone(), 0.06), hitAt = new THREE.Vector3();
   let confetti = null;
-  const fan = newFan(), webcam = makeWebcam(scene, meta);
+  const fan = newFan(), webcam = makeWebcam(scene, meta), keyLight = makeKeyLight(scene, world);
   const busy = () => { const g = screens.desktop.games.playing; return world.deploying || !!(g && !g.paused && !g.done); };
 
   // say(...lines): the terminal's, when the deploy was typed or the terminal is open to show it.
@@ -39,7 +40,7 @@ export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy 
     return true;
   }
   return {
-    spot, deploy, webcam,
+    spot, deploy, webcam, keyLight,
     // The button pressed: a deploy unless one is running, with its lines in the terminal if the terminal is open.
     press() {
       if (world.deploying) return false;

@@ -485,7 +485,16 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
         kb.geometry.computeBoundingBox();
         const box = kb.geometry.boundingBox.clone().applyMatrix4(kb.matrixWorld), key = at(new V(box.max.x, box.max.y + 0.03, (box.min.z + box.max.z) / 2));
         const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), dt = document.querySelector('.dt.on');
-        return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), key, fov: L.camera.fov, cam: L.camera.position.toArray(), dt: dt ? (dt.classList.contains('narrow') ? 'narrow' : 'on the screen') : 'none' };
+        // The desktop laid on the screen against the screen's own top and bottom edges, in the middle, in page pixels:
+        // above the top edge or below the bottom one it would hide the frame there.
+        let layer = null;
+        if (dt && !dt.classList.contains('narrow')) {
+          const M = new DOMMatrix(dt.style.transform), w = parseFloat(dt.style.width), h = parseFloat(dt.style.height);
+          const on = (x, y) => { const q = M.transformPoint(new DOMPoint(x, y, 0, 1)); return q.y / q.w; };
+          const edge = y => at(new V(c.x, c.y + y * s.h / 2, c.z))[1] * innerHeight;
+          layer = { top: on(w / 2, 0) - edge(1), bottom: on(w / 2, h) - edge(-1) };
+        }
+        return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), key, fov: L.camera.fov, cam: L.camera.position.toArray(), dt: dt ? (dt.classList.contains('narrow') ? 'narrow' : 'on the screen') : 'none', layer };
       });
       // The camera's path through a glide, one sample each frame the glide moves it (it sets the lens every frame).
       const track = (p, ms, how) => p.evaluate(async ([w, h]) => {
@@ -519,6 +528,7 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
         check(`${name}: the glide in ends at the seat's eye, in one smooth move`, Math.hypot(...r.cam.map((x, i) => x - want[i])) < 0.002 && Math.abs(r.fov - v.fov) < 0.01 && jumpy(glideIn) < 1.25, `eye ${r.cam.map(x => x.toFixed(3))}, fov ${r.fov.toFixed(1)}, fastest frame ${jumpy(glideIn).toFixed(2)} times its neighbours`);
         const w = r.x1 - r.x0, h = r.y1 - r.y0, d = `${(w * 100).toFixed(1)}% wide, ${(h * 100).toFixed(1)}% tall, top ${(r.y0 * 100).toFixed(1)}%, bottom ${(r.y1 * 100).toFixed(1)}%, keyboard ${(r.key[1] * 100).toFixed(1)}% down, desktop ${r.dt}`;
         if (kind === 'wide') check(`${name}: the monitor fills 80 to 85% of the width, its top and bottom in view, the keyboard below, the desktop on its screen`, w > 0.8 && w < 0.85 && r.x0 > 0 && r.x1 < 1 && r.y0 > 0.03 && r.y1 < 0.8 && r.key[1] > r.y1 && r.key[1] < 0.98 && r.dt === 'on the screen', d);
+        if (kind === 'wide') check(`${name}: the desktop stays inside the screen's curved top and bottom edges, so the frame shows evenly all round`, r.layer && r.layer.top > -1 && r.layer.top < 2 && r.layer.bottom < 1 && r.layer.bottom > -2, `the desktop's top ${r.layer?.top.toFixed(1)} px below the screen's top edge, its bottom ${r.layer?.bottom.toFixed(1)} px below the bottom edge, in the middle`);
         if (kind === 'side') check(`${name}: the whole monitor in view, as tall as leaves the keyboard showing below`, w > 0.6 && w < 0.85 && r.x0 > 0 && r.x1 < 1 && r.y0 > 0.03 && r.y1 < 0.8 && r.key[1] > r.y1 && r.key[1] < 0.98 && r.dt === 'narrow', d);
         if (kind === 'up') {
           check(`${name}: the monitor's whole height in view, the keyboard below, dragged across its width`, r.y0 > 0.03 && r.y1 < 0.65 && r.key[1] > r.y1 && r.key[1] < 0.98 && v.range > 0 && r.dt === 'narrow', d);
@@ -601,7 +611,9 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
     if (want('keyboard')) {
       const { ctx, p, errs } = await open(b, DESK);
       const g = await p.evaluate(() => { const o = __loft.world.deskThings.find(m => m.name === 'kb_glow'); o.geometry.computeBoundingBox(); const s = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld).getSize(new __loft.camera.position.constructor()); return [s.x, s.z]; });
-      check('the keyboard is a real one\'s size: 30 cm across, 11.7 cm deep (its glow underneath)', Math.abs(g[1] - 0.302) < 0.003 && Math.abs(g[0] - 0.117) < 0.003, g.map(v => v.toFixed(3)).join(' x '));
+      check('the keyboard is a 65% board at a real one\'s size: 32.5 cm across, 11.7 cm deep (its glow underneath)', Math.abs(g[1] - 0.327) < 0.003 && Math.abs(g[0] - 0.117) < 0.003, g.map(v => v.toFixed(3)).join(' x '));
+      const lit = await p.evaluate(() => { const m = __loft.scene.getObjectByName('kb_legends'), pl = m?.getObjectByName('kb_plate'); return m && { quads: m.geometry.index.count / 6, glow: m.material.userData.lamp, map: !!m.material.map, plate: pl?.material.userData.lamp, shown: m.visible && pl.visible }; });
+      check('its 66 legends (all but the bare space bar and the pomegranate on Escape) lit from inside, the light under its keys too, both kept lit with the lamps off', !!lit && lit.quads === 66 && lit.glow === 'glow' && lit.map && lit.plate === 'glow' && lit.shown, JSON.stringify(lit));
       check('keyboard: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
@@ -618,25 +630,84 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.waitForTimeout(2000);
       const fetched = asked.filter(u => /hand\.glb/.test(u)).length;
       check('seated, the hands load once and rise onto the desk; the skin picture is not fetched', fetched === 1 && !asked.some(u => /skin\.webp/.test(u)), `${fetched} hand file, ${asked.length} requests`);
-      // Typing j: the right first finger strokes J (row 2, column 7) and the key goes down under it.
-      const stroke = await p.evaluate(async () => {
-        const out = { most: 0, at: -1, typing: 0 }, step = () => new Promise(r => requestAnimationFrame(r));
-        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ', key: 'j' }));
+      // A key typed: the finger that touch-types it strokes it and the key goes down under it, its legend with it; at
+      // the bottom the finger's tip (the lowest of the skin round its last bone, as drawn) is on the key's cap.
+      const strokeOf = (code, key) => p.evaluate(async ([code, key]) => {
+        const { KEY, fingerFor, spotOn } = await import('/src/pure/typing.js'), k = KEY[code], f = fingerFor(k), [sx, sz] = spotOn(k, f.side, f.digit);
+        const out = { most: 0, at: -1, typing: 0, want: k.index, tip: null }, step = () => new Promise(r => requestAnimationFrame(r));
+        const V = __loft.camera.position.constructor, base = __loft.scene.getObjectByName('kb_legends').position;
+        window.dispatchEvent(new KeyboardEvent('keydown', { code, key }));
         const t0 = performance.now();
-        while (performance.now() - t0 < 500) { await step(); const P = __deskHands.press; for (let i = 0; i < P.length; i++) if (P[i] > out.most) { out.most = P[i]; out.at = i; } out.typing = Math.max(out.typing, __deskHands.typing); }
+        while (performance.now() - t0 < 1000) {
+          await step();
+          const P = __deskHands.press;
+          for (let i = 0; i < P.length; i++) if (P[i] > out.most) {
+            out.most = P[i]; out.at = i;
+            const bone = __deskHands.group.getObjectByName(`${f.side}_${f.digit}3`), mesh = __deskHands.group.getObjectByName(`${f.side}_realhand`), end = bone.getWorldPosition(new V()), v = new V();
+            let low = null;
+            mesh.updateMatrixWorld(true);
+            for (let n = 0; n < mesh.geometry.attributes.position.count; n++) { mesh.getVertexPosition(n, v).applyMatrix4(mesh.matrixWorld); if (v.distanceTo(end) < 0.03 && (!low || v.y < low.y)) low = v.clone(); }
+            const tip = low.sub(base);
+            out.tip = [tip.x - sx, tip.y - 0.039 + P[i], tip.z - sz].map(v => +v.toFixed(4));
+            out.cap = [k.d / 2, k.w / 2, Math.abs(tip.x - k.x) < k.d / 2, Math.abs(tip.z - k.z) < k.w / 2];
+          }
+          out.typing = Math.max(out.typing, __deskHands.typing);
+        }
+        return out;
+      }, [code, key]);
+      for (const [code, key] of [['KeyJ', 'j'], ['KeyP', 'p'], ['KeyQ', 'q'], ['Digit1', '1'], ['Backspace', 'Backspace']]) {
+        const st = await strokeOf(code, key);
+        await p.waitForTimeout(150);
+        check(`${code} typed: its key goes all the way down under the finger that touch-types it, the fingertip on it, then up`, st.at === st.want && st.most > 0.003 && st.typing > 0.5 && st.cap[2] && st.cap[3] && Math.hypot(st.tip[0], st.tip[2]) < 0.009 && st.tip[1] > -0.0015 && st.tip[1] < 0.003 && (await p.evaluate(() => Math.max(...__deskHands.press))) === 0, JSON.stringify(st));
+      }
+      // Seen from my eyes, the keys being typed nearest me are not hidden behind my sleeves.
+      const hid = await p.evaluate(async () => {
+        const { KEY } = await import('/src/pure/typing.js'), T = __loft.camera.position.constructor, base = __loft.scene.getObjectByName('kb_legends').position;
+        const ray = new (await import('three')).Raycaster(), sleeves = [];
+        __deskHands.group.traverse(o => { if (o.isMesh && o.parent?.name === 'sleeve') sleeves.push(o); });
+        const out = {};
+        for (const id of ['KeyV', 'KeyB', 'KeyN', 'KeyM', 'KeyC', 'Space']) {
+          window.dispatchEvent(new KeyboardEvent('keydown', { code: id, key: id === 'Space' ? ' ' : id.slice(3).toLowerCase() }));
+          for (let i = 0; i < 8; i++) await new Promise(r => requestAnimationFrame(r));
+          const k = KEY[id], at = new T(k.x, 0.039, k.z).add(base), eye = __loft.camera.getWorldPosition(new T());
+          ray.set(eye, at.clone().sub(eye).normalize()); ray.far = eye.distanceTo(at) - 0.004;
+          out[id] = ray.intersectObjects(sleeves, false).length;
+        }
         return out;
       });
-      check('a key typed: its key goes all the way down under the finger that touch-types it, then up', stroke.at === 2 * 15 + 7 && stroke.most > 0.003 && stroke.typing > 0.5 && (await p.evaluate(() => Math.max(...__deskHands.press))) === 0, JSON.stringify(stroke));
+      check('seated, the keys typed nearest me are not behind my sleeves', Object.values(hid).every(n => n === 0), JSON.stringify(hid));
       await p.keyboard.type('the quick brown fox', { delay: 70 });
       const busy = await p.evaluate(() => __deskHands.typing);
       await p.waitForTimeout(3500);
       const idle = await p.evaluate(() => __deskHands.typing);
-      check('typing keeps both hands on the keys; a pause sends the left hand back to the mouse', busy > 0.99 && idle === 0, `${busy} then ${idle}`);
+      check('typing keeps both hands on the keys; a pause sends the right hand back to the mouse', busy > 0.99 && idle === 0, `${busy} then ${idle}`);
       await p.evaluate(() => __loft.leaveDesk());
       await p.waitForTimeout(2500);
       check('standing up, the hands go', !(await p.evaluate(() => __deskHands.group.visible)));
       check('typing: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
+      // On a phone whose keyboard names no key (Android's "Unidentified"), the command box's text changing is what
+      // moves the fingers.
+      const ph = await open(b, UPRIGHT);
+      await standAt(ph.p, W.points.desk_use, Math.PI / 2);
+      await ph.p.evaluate(() => __loft.useDesk());
+      await ph.p.waitForFunction(() => window.__deskHands.loaded && __deskHands.group.visible, null, { timeout: 30000 });
+      await ph.p.waitForTimeout(1500);
+      const phone = await ph.p.evaluate(async () => {
+        const box = document.getElementById('cmd'), step = () => new Promise(r => requestAnimationFrame(r)), out = { most: 0, strokes: 0 };
+        box.focus();
+        for (const ch of 'hi') {
+          box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Unidentified', bubbles: true }));
+          await new Promise(r => setTimeout(r, 200));
+          box.value += ch; box.dispatchEvent(new InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
+          out.strokes = Math.max(out.strokes, __deskHands.strokes);
+          for (let i = 0; i < 60 && (__deskHands.strokes || i < 3); i++) { await step(); out.most = Math.max(out.most, ...__deskHands.press); }
+        }
+        return out;
+      });
+      check('phone: typing that names no key still moves the fingers and presses the keys', phone.strokes >= 1 && phone.most > 0.003, JSON.stringify(phone));
+      check('phone typing: no error', ph.errs.length === 0, ph.errs.slice(0, 3).join(' | '));
+      await ph.ctx.close();
     }
   } finally {
     await b.close();

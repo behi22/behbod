@@ -11,7 +11,10 @@ META = {'zones': [], 'colliders': [], 'floors': [], 'screens': {}, 'points': {},
 GROUPS = {}
 # Surfaces baked as one material but shown darker, per channel, so the light they bounce onto the room stays the same.
 # The mezzanine's boards bake as oak and show as the dark wood of the version he liked.
-SHADE = {'oak_mezz': (0.093, 0.082, 0.047)}
+# The desk's black things (keyboard, mouse, wrist rest, the three mini screens' cases): near black under the desk lamp
+# bakes mid grey, and they must read black. The sticky pad bakes white instead of its mint.
+SHADE = {'oak_mezz': (0.093, 0.082, 0.047), 'keycap': (0.15, 0.15, 0.15), 'kb_body': (0.08, 0.08, 0.08), 'wrist_pad': (0.12, 0.12, 0.12),
+         'mini_case': (0.1, 0.1, 0.1), 'sticky_pad': (0.14, 0.14, 0.14)}
 _zone = [None]
 _off = [Vector()]
 
@@ -218,7 +221,9 @@ def make_materials():
         'black': principled('black', (0.015, 0.015, 0.018), 0.4),
         'plastic': principled('plastic', (0.04, 0.042, 0.048), 0.5),
         'white': principled('white', (0.8, 0.8, 0.78), 0.5),
-        'keycap': principled('keycap', (0.11, 0.115, 0.13), 0.55),
+        'keycap': principled('keycap', (0.016, 0.016, 0.019), 0.42),
+        'kb_body': principled('kb_body', (0.04, 0.042, 0.048), 0.5),
+        'mini_case': principled('mini_case', (0.015, 0.015, 0.018), 0.4),
         'chair': principled('chair', (0.03, 0.03, 0.035), 0.6),
         'chair_white': principled('chair_white', (0.78, 0.78, 0.76), 0.55),
         'pot': principled('pot', (0.74, 0.32, 0.16), 0.8),
@@ -245,6 +250,7 @@ def make_materials():
         'lampshade': principled('lampshade', (0.9, 0.82, 0.65), 0.9),
         'cable': principled('cable', (0.02, 0.02, 0.02), 0.6),
         'leather': principled('leather', (0.025, 0.025, 0.028), 0.55),
+        'wrist_pad': principled('wrist_pad', (0.025, 0.025, 0.028), 0.55),
         'leather_brown': principled('leather_brown', (0.2, 0.09, 0.04), 0.5),
         'speaker': node_mat('speaker', noisy((0.06, 0.055, 0.05), 60, 0.2, 0.7)),
         'cone': principled('cone', (0.02, 0.02, 0.022), 0.7),

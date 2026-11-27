@@ -4,13 +4,13 @@
 // The monitor round its screen (blender/zones/studio.py): a 1.4 cm bezel above and below, 1.25% more curve at each
 // side, and the light bar on top, 4.1 cm over the screen's top edge and 4.75 cm in front of it.
 export const FRAME = { bezel: 0.014, side: 1.025, bar: { up: 0.041, out: 0.0475, half: 0.23 } };
-// The bezel's top sits this far down the view, so the light bar and a strip of the screen above stay in sight.
-export const TOP = 0.06;
+// The bezel's top sits this far down a wide view, so the light bar and a strip of the screen above stay in sight.
+export const TOP = 0.045;
 // A wide view: the monitor takes this share of its width, unless that makes it taller than MAX_H of its height, which
-// would leave no room for the keyboard below.
-export const WIDE = { fov: 42, width: 0.82, maxH: 0.66 };
-// An upright view: the monitor's full height, panned across its width as before.
-export const TALL = { fov: 58, back: 1.0 };
+// would leave no room below for the keyboard and the Pishi cam in front of the monitor, its whole case in view.
+export const WIDE = { fov: 42, width: 0.805, maxH: 0.625 };
+// An upright view: the monitor's full height, its bezel's top `top` down the view, panned across its width as before.
+export const TALL = { fov: 58, back: 1.0, top: 0.06 };
 // How far back the eye may sit: no further than my eyes in the chair, no nearer than a lean in.
 export const BACK = { min: 0.8, max: 1.2 };
 // The eye sits a centimetre over the monitor's middle, about where my eyes are.
@@ -52,14 +52,14 @@ function solve(f, lo, hi) {
   for (let i = 0; i < 48; i++) { const m = (lo + hi) / 2; if (f(m) > 0) hi = m; else lo = m; }
   return (lo + hi) / 2;
 }
-// The pitch that puts the bezel's top TOP down the view.
-const pitchFor = (s, v, aspect) => solve(p => TOP - frameBox(s, { ...v, pitch: p }, aspect).y0, -0.2, 0.6);
+// The pitch that puts the bezel's top `top` down the view.
+const pitchFor = (s, v, aspect, top = TOP) => solve(p => top - frameBox(s, { ...v, pitch: p }, aspect).y0, -0.2, 0.6);
 
 // { fov (degrees), back (metres), up, pitch (radians, down), range (metres of pan each way) }.
 export function seatView(s, aspect) {
   if (aspect < 1.2) {
     let v = { fov: TALL.fov, back: TALL.back, up: EYE_UP, pitch: 0 };
-    v.pitch = pitchFor(s, v, aspect);
+    v.pitch = pitchFor(s, v, aspect, TALL.top);
     // How far the eye pans each way to bring either end of the frame into view, with 2 cm to spare.
     const half = s.w / 2 / s.r * FRAME.side, chord = s.r * Math.sin(half), sag = s.r * (1 - Math.cos(half));
     const tx = Math.tan(rad(v.fov) / 2) * aspect;

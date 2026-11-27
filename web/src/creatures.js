@@ -1035,7 +1035,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
     const near = FLOOR.filter(q => { const d = Math.hypot(q[0] - pishi.pos.x, q[1] + pishi.pos.z); return d > 2 && d < 6; });
     goTo(pishi, pick(near.length ? near : FLOOR), lap);
   }
-  // The pen on the desk: up by the keyboard, she looks right at me and paws it off, slowly; it falls to the floor.
+  // The pen on the desk: up on the sticky notes beside it, she looks right at me and paws it off, slowly; it falls to the floor.
   const PEN_HOME = b2t(...PEN.home).setY(PEN.home[2] + 0.0045);
   const pen = mesh([
     piece(cyl(0.0045, 0.0045, 0.12, 8), '#1f2c55'),
@@ -1084,7 +1084,7 @@ export function makeCreatures(scene, meta, { findPath, clear, groundAt, sound, f
       if (pishi.state !== 'todesk') return;
       const kb = keyboard();
       if (!ok || !kb || penSt.at !== 'home') { pishiNext(); return; }
-      hop(pishi, kb, () => Object.assign(pishi, { state: 'knock', knockT: 0, pushed: false, said: false }), 0.55, 0.4);
+      hop(pishi, b2t(...PEN.sit), () => Object.assign(pishi, { state: 'knock', knockT: 0, pushed: false, said: false }), 0.55, 0.4);
     });
   }
   function tickKnock(dt, ctx) {

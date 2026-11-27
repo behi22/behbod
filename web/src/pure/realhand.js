@@ -110,6 +110,8 @@ const MOVED = Object.fromEntries(DIGITS.map(d => {
   const c = CHAIN(d);
   return [d, [0, 1, 2].map(k => PTS.filter(s => c.slice(k).includes(s.j0) || (s.w < 0.999 && c.slice(k).includes(s.j1))))];
 }));
+// The points each digit's end bone carries most: its tip (a point it only shares can be dragged off by a neighbour).
+const END = Object.fromEntries(DIGITS.map(d => [d, PTS.filter(s => s.j0 === CHAIN(d)[2])]));
 // The pad of each digit's end bone, and the points over the palm, each on the bone that carries it.
 const PAD = Object.fromEntries(DIGITS.map(d => [d, toLocal(CHAIN(d)[2], PADS[d])]));
 const PALM_PTS = PALM.map(p => toLocal(bi('hand'), p));
@@ -135,6 +137,11 @@ export function worldFor(side, pose, elbow = null) {
   return world(mirrorPose(pose), elbow && mz(elbow)).map(b => ({ p: mz(b.p), q: mq(b.q) }));
 }
 export const padFor = (side, pose, d) => flip(side, padAt(side === 'left' ? mirrorPose(pose) : pose, d));
+// The skin points of a digit's tip, on a posed hand of either side.
+export function tipPoints(side, pose, d) {
+  const F = world(side === 'left' ? mirrorPose(pose) : pose);
+  return END[d].map(s => flip(side, skin(F, s)));
+}
 
 // ---------- the wrist ----------
 // The forearm's way from the wrist in the hand's own axes, the wrist relaxed.
@@ -203,13 +210,21 @@ export function wrap(side, d, pose, sdf, { from = null, joints = [1, 2, 3], squa
 
 // The angles that put a digit's pad on a point, kept out of `sdf`, found by a small sure search started at `from`.
 // A finger's end joint follows its middle one (`follow`); a thumb's end follows its knuckle.
-export function reach(side, d, pose, target, { from = null, follow = d === 'thumb' ? 0.8 : 0.7, sdf = null, keep = 0.0008, sweep = true } = {}) {
-  const P = side === 'left' ? mirrorPose(pose) : pose, S = sdf && asRight(side, sdf), T = flip(side, target), L = LIMITS[d], thumb = d === 'thumb';
-  const free = thumb ? [0, 1, 2, 4] : [0, 1, 2], start = (from || P.digits[d]).slice();
+// With `tip`, it is the lowest point of the digit's end that goes on the point (a fingertip on a key); `lo` raises the
+// joints' lower limits (a typist's knuckles never bend back); `level` weighs being off sideways against being off in
+// height (a fingertip pressing a key may roll a little along it), `cap` ({ at: [x, z], half: [x, z] }) keeps the tip
+// over a key's top, and the angles in `hold` stay as they start.
+export function reach(side, d, pose, target, { from = null, follow = d === 'thumb' ? 0.8 : 0.7, sdf = null, keep = 0.0008, sweep = true, tip = false, lo = null, level = 1, cap = null, hold = [] } = {}) {
+  const P = side === 'left' ? mirrorPose(pose) : pose, S = sdf && asRight(side, sdf), T = flip(side, target), thumb = d === 'thumb';
+  const L = lo ? { lo: LIMITS[d].lo.map((v, i) => Math.max(v, lo[i] ?? -Infinity)), hi: LIMITS[d].hi } : LIMITS[d];
+  const C = cap && { at: [cap.at[0], side === 'left' ? -cap.at[1] : cap.at[1]], half: cap.half };
+  const free = (thumb ? [0, 1, 2, 4] : [0, 1, 2]).filter(i => !hold.includes(i)), start = (from || P.digits[d]).map((v, i) => (lo ? clamp(v, L.lo[i], L.hi[i]) : v));
   const angles = x => { const a = x.slice(); a[3] = clamp(x[2] * follow, L.lo[3], L.hi[3]); return a; };
+  const lowest = F => { let low = null; for (const s of END[d]) { const q = skin(F, s); if (!low || q[1] < low[1]) low = q; } return low; };
   const cost = x => {
-    const a = angles(x), D = { ...P.digits, [d]: a }, F = world({ ...P, digits: D }), e = sub(padAt(P, d, F), T);
-    let c = dot(e, e) + 1e-7 * free.reduce((s, i) => s + (x[i] - start[i]) ** 2, 0);
+    const a = angles(x), D = { ...P.digits, [d]: a }, F = world({ ...P, digits: D }), e = sub(tip ? lowest(F) : padAt(P, d, F), T);
+    let c = level * (e[0] * e[0] + e[2] * e[2]) + e[1] * e[1] + 1e-7 * free.reduce((s, i) => s + (x[i] - start[i]) ** 2, 0);
+    if (C) { const q = lowest(F), ox = Math.max(0, Math.abs(q[0] - C.at[0]) - C.half[0]), oz = Math.max(0, Math.abs(q[2] - C.at[1]) - C.half[1]); c += 20 * (ox * ox + oz * oz); }
     if (S) { const m = deepestOf(MOVED[d][0], F, S) - keep; if (m < 0) c += m * m * 2e4; }
     return c;
   };

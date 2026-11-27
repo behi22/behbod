@@ -220,6 +220,8 @@ export function makeCanvases(meta, opts = {}) {
       for (let x = 24; x < c.width; x += 48) for (let y = BAR + 24; y < c.height - DOCK; y += 48) g.fillRect(x, y, 2, 2);
     }
     g.fillStyle = STYLE.bar; g.fillRect(0, 0, c.width, BAR);
+    // Under the seated desktop only slivers at the corners show (desktop.js), so nothing there may echo its words.
+    if (desk.covered) { t.needsUpdate = true; desk.dirty = false; return; }
     g.font = `700 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = STYLE.ink; g.fillText('home', 18, 22);
     g.font = `400 ${STYLE.small}px ${STYLE.font}`; g.fillStyle = STYLE.dim;
     g.fillText(desk.st.focus ? appById(desk.st.focus).title : '', 84, 22);
@@ -381,7 +383,7 @@ export function makeCanvases(meta, opts = {}) {
       set sfx(v) { desk.sfx = v; },
       setCtx(patch) { Object.assign(desk.ctx, patch); changed(); },
       get ctx() { return desk.ctx; },
-      set covered(on) { desk.covered = on; if (!on) desk.dirty = true; },
+      set covered(on) { desk.covered = on; desk.dirty = true; },
       changed,
       listen(fn) { desk.listeners.push(fn); },
       get wallpaper() { return desk.ctx.wallpaper; },

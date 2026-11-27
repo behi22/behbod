@@ -5,7 +5,7 @@ import { loadHand, makeRealHand, handMaterial, makeSleeve } from '../src/realhan
 import { makeSleeveMaterials } from '../src/range/hands.js';
 import { rest, relaxed } from '../src/pure/realhand.js';
 import { DESK_POSES } from '../src/pure/realposes.js';
-import { DESK, keyTop } from '../src/pure/realholds.js';
+import { DESK, KEYS, keyTop } from '../src/pure/realholds.js';
 import { makeGun } from '../src/range/gun.js';
 import { stats } from '../src/pure/arsenal.js';
 import { newWeapon, step } from '../src/pure/weapon.js';
@@ -44,8 +44,8 @@ add(desk, new THREE.BoxGeometry(0.45, 0.003, 1.12), std(0x1d2024, 0.9), [0.1, 0.
 add(desk, new RoundedBoxGeometry(...DESK.case.size, 2, 0.006), std(0x3a3d43, 0.5), DESK.case.at);
 add(desk, new RoundedBoxGeometry(...DESK.rest.size, 3, 0.008), std(0x2b2523, 0.8), DESK.rest.at);
 add(desk, new RoundedBoxGeometry(...DESK.mouse.size, 4, DESK.mouse.r), std(0x3a3d43, 0.45), DESK.mouse.at);
-const keys = {}, capG = new RoundedBoxGeometry(DESK.key.w, DESK.key.h, DESK.key.d, 2, 0.002), capM = std(0xc9ccd2, 0.55);
-for (let r = 0; r < DESK.key.rows; r++) for (let c = 0; c < DESK.key.cols; c++) { const t = keyTop(r, c); keys[`${r},${c}`] = add(desk, capG, capM, [t[0], t[1] - DESK.key.h / 2, t[2]]); }
+const keys = {}, capM = std(0x1a1b1e, 0.45);
+for (const k of KEYS) { const t = keyTop(k); keys[k.id] = add(desk, new RoundedBoxGeometry(k.d, DESK.key.h, k.w, 2, 0.002), capM, [t[0], t[1] - DESK.key.h / 2, t[2]]); }
 const deskHands = {};
 for (const side of ['left', 'right']) {
   const h = makeRealHand(side, geo, looks[look]);
@@ -58,11 +58,11 @@ const SEAT = [[-0.62, 0.36, 0.0], [0.02, 0.02, 0]];
 const DESK_VIEWS = {
   typing: { poses: DESK_POSES.home, cam: SEAT },
   'typing-close': { poses: DESK_POSES.home, cam: [[0.22, 0.26, 0.34], [-0.06, 0.05, 0.02]] },
-  press: { poses: DESK_POSES.press, down: { '3,11': 0.003, '2,7': 0.0015 }, cam: SEAT },
-  'press-close': { poses: DESK_POSES.press, down: { '3,11': 0.003, '2,7': 0.0015 }, cam: [[0.22, 0.26, -0.34], [-0.06, 0.05, -0.02]] },
-  reach: { poses: DESK_POSES.reach, down: { '3,4': 0.002 }, cam: SEAT },
-  mouse: { poses: DESK_POSES.mouse, cam: [[-0.3, 0.28, -0.22], [-0.02, 0.02, -0.46]] },
-  rest: { poses: DESK_POSES.rest, cam: [[-0.3, 0.3, 0.62], [-0.04, 0.0, 0.34]] },
+  press: { poses: DESK_POSES.press, down: { KeyE: 0.0035, KeyJ: 0.0018 }, cam: SEAT },
+  'press-close': { poses: DESK_POSES.press, down: { KeyE: 0.0035, KeyJ: 0.0018 }, cam: [[0.22, 0.26, -0.34], [-0.06, 0.05, -0.02]] },
+  reach: { poses: DESK_POSES.reach, cam: SEAT },
+  mouse: { poses: DESK_POSES.mouse, cam: [[-0.3, 0.28, 0.22], [-0.02, 0.02, 0.26]] },
+  rest: { poses: DESK_POSES.rest, cam: [[-0.3, 0.3, -0.62], [-0.04, 0.0, -0.3]] },
 };
 
 // ---------- a hand alone, up close ----------
@@ -105,7 +105,13 @@ async function gunScene(id) {
 }
 
 // Outside cameras on a gun (the eye's space: the gun sits about 30 cm ahead, low and right), to check a hold all round.
-const AROUND = { right: [[0.62, -0.1, -0.31], [0.085, -0.12, -0.31]], left: [[-0.45, -0.1, -0.31], [0.085, -0.12, -0.31]], below: [[0.1, -0.6, -0.26], [0.085, -0.12, -0.31]], front: [[0.09, -0.1, -0.85], [0.085, -0.12, -0.31]], top: [[0.09, 0.42, -0.2], [0.085, -0.12, -0.31]] };
+// Each from the gun's grip (the pistol's at the hip), on a long gun from between its two hands and further out; 'behind'
+// is from over my shoulder.
+const AROUND = { right: [0.535, 0.02, 0], left: [-0.535, 0.02, 0], below: [0.015, -0.48, 0.05], front: [0.005, 0.02, -0.54], top: [0.005, 0.54, 0.11], behind: [0.02, 0.12, 0.3] };
+function aroundGun(id, side) {
+  const hip = RIGS[id].hip.p, long = id !== 'pistol', at = [hip[0], hip[1] - 0.048, hip[2] + 0.02 - (long ? 0.15 : 0)], k = long ? 1.5 : 1;
+  return [AROUND[side].map((v, i) => at[i] + v * k), at];
+}
 const GUN_IDS = ['pistol', 'smg', 'rifle', 'sniper', 'lmg'];
 const views = [...Object.keys(DESK_VIEWS), ...Object.keys(SOLO), ...GUN_IDS];
 const extra = GUN_IDS.flatMap(g => Object.keys(AROUND).map(a => `${g}-${a}`));
@@ -120,12 +126,12 @@ async function draw() {
   for (const h of [...Object.values(deskHands), soloHand]) h.setMaterial(looks[look]);
   if (DESK_VIEWS[view]) {
     const v = DESK_VIEWS[view];
-    for (const [k, m] of Object.entries(keys)) { const [r, c] = k.split(',').map(Number); m.position.y = keyTop(r, c)[1] - DESK.key.h / 2 - ((v.down || {})[k] || 0); }
+    for (const [k, m] of Object.entries(keys)) m.position.y = DESK.key.top - DESK.key.h / 2 - ((v.down || {})[k] || 0);
     for (const side of ['left', 'right']) {
       const p = v.poses[side];
       deskHands[side].root.visible = !!p;
       // The forearm runs back toward me from the wrist, a little out to that side.
-      if (p) deskHands[side].pose(p, [p.at[0] - 0.24, p.at[1] - 0.02, p.at[2] + (side === 'left' ? -0.06 : 0.06)]);
+      if (p) deskHands[side].pose(p, [p.at[0] - 0.24, p.at[1] - 0.09, p.at[2] + (side === 'left' ? -0.11 : 0.11)]);
     }
     cam.fov = 40; cam.position.set(...v.cam[0]); cam.lookAt(...v.cam[1]); cam.updateProjectionMatrix();
     renderer.render(desk, cam);
@@ -135,7 +141,7 @@ async function draw() {
     cam.fov = 35; cam.position.set(...v.cam[0]); cam.lookAt(...v.cam[1]); cam.updateProjectionMatrix();
     renderer.render(solo, cam);
   } else {
-    const [id, side] = view.split('-'), around = AROUND[side], G = await gunScene(id);
+    const [id, side] = view.split('-'), around = AROUND[side] && aroundGun(id, side), G = await gunScene(id);
     // The soft white is the range's own material, under the range's light.
     for (const h of Object.values(G.gun.hands)) h.setMaterial(look === 'toy' ? G.own : looks.skin);
     G.eye.aspect = W / H;

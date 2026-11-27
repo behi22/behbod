@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FINGERS, DIGITS, deepest, deepestBody, miss, fingersShape, LIMITS, within, padFor, palmGap, worldFor, bi, forearm } from '../../web/src/pure/realhand.js';
-import { solveHolds, onSurface, foreThumb, SHOOT, SUPPORT, typing, onMouse, resting, keyTop, HOME, DESK, deskShape, mouseShape } from '../../web/src/pure/realholds.js';
-import { roundBox, qAxis, qMul, qRot, sub, norm } from '../../web/src/pure/hands.js';
-import { TRAVEL } from '../../web/src/pure/typing.js';
+import { solveHolds, onSurface, foreThumb, SHOOT, SUPPORT, typing, onMouse, resting, REST_LEFT, HOME, KEY, landing, deskShape, mouseShape } from '../../web/src/pure/realholds.js';
+import { qAxis, qMul, qRot, sub, norm } from '../../web/src/pure/hands.js';
 import { GUNS, DESK_POSES } from '../../web/src/pure/realposes.js';
 import { GUN_HOLDS, rotTrigger, ELBOWS } from '../../web/src/pure/handling.js';
 import { CLIPS } from '../../web/src/pure/clips.js';
@@ -17,8 +16,8 @@ const inRange = p => DIGITS.every(d => within(d, p.digits[d]).every((v, i) => Ma
 
 test('the poses the bench reads are the ones the solver gives (else run node blender/realposes.js)', () => {
   assert.deepEqual(DESK_POSES.home.right, bake(typing('right')));
-  assert.deepEqual(DESK_POSES.mouse.left, bake(onMouse('left')));
-  assert.deepEqual(DESK_POSES.rest.right, bake(resting('right', [-0.06, 0, 0.21])));
+  assert.deepEqual(DESK_POSES.mouse.right, bake(onMouse('right')));
+  assert.deepEqual(DESK_POSES.rest.left, bake(resting('left', REST_LEFT)));
   const h = solveHolds('pistol');
   for (const side of ['right', 'left']) for (const [name, p] of Object.entries(h[side])) assert.deepEqual(GUNS.pistol[side][name], bake(p), `${side} ${name}`);
   assert.deepEqual(Object.keys(GUNS).sort(), Object.keys(GUN_HOLDS).sort());
@@ -127,25 +126,25 @@ test('the support hand: over the shooting hand\'s fingers on the pistol, round t
   assert.ok(deepest('left', GUNS.pistol.left.over, GUN_HOLDS.pistol.shape) > 0.002);
 });
 
-test('typing: each finger rests on its own key, a pressed key pressed, nothing through the keys', () => {
-  const K = DESK.key, own = (row, col, down = 0) => { const t = keyTop(row, col, down); return p => roundBox(p, [t[0], t[1] - K.h / 2, t[2]], [K.w / 2, K.h / 2, K.d / 2], 0.002); };
+test('typing: each finger rests on its own home key, its tip on the cap, the fingers arched; E pressed by the left middle finger', () => {
   for (const side of ['left', 'right']) {
     const P = DESK_POSES.home[side];
-    for (const d of FINGERS) { const k = deepest(side, P, own(...HOME[side][d]), [d]); assert.ok(k > -0.001 && k < 0.0012, `${side} ${d} on its key: ${k}`); }
+    for (const d of [...FINGERS, 'thumb']) {
+      const k = KEY[HOME[side][d]], r = landing(side, d, k, P, 0);
+      assert.ok(r.inside && r.off < 0.004 && r.gap > -0.0006 && r.gap < 0.0025, `${side} ${d} on ${k.id}: ${JSON.stringify(r)}`);
+    }
     assert.ok(deepest(side, P, deskShape) > -0.0015, side);
     // The fingers arch down onto the keys, as a typist's do; the little finger may lie straighter.
     for (const d of ['index', 'middle', 'ring']) assert.ok(P.digits[d][2] > 0.35, `${side} ${d} arched: ${P.digits[d]}`);
   }
-  const e = deepest('left', DESK_POSES.press.left, own(3, 11, TRAVEL), ['middle']);
-  assert.ok(e > -0.001 && e < 0.001, `the left middle finger presses E down: ${e}`);
+  const e = landing('left', 'middle', KEY.KeyE, DESK_POSES.press.left);
+  assert.ok(e.inside && e.gap < 0.002 && e.gap > -0.0006, `the left middle finger presses E down: ${JSON.stringify(e)}`);
 });
 
-test('on the mouse and at rest: resting on it, not in it', () => {
-  const M = DESK_POSES.mouse.left;
-  assert.ok(deepest('left', M, mouseShape) > -0.0015 && deepest('left', M, mouseShape) < 0.002);
-  for (const side of ['left', 'right']) {
-    const R = DESK_POSES.rest[side], d = deepest(side, R, p => p[1]);
-    assert.ok(d > -0.0015 && d < 0.002, `${side} rest ${d}`);
-  }
+test('between words: the right hand on the mouse, resting on it, not in it; the left resting on the desk', () => {
+  const M = DESK_POSES.mouse.right;
+  assert.ok(deepest('right', M, mouseShape) > -0.0015 && deepest('right', M, mouseShape) < 0.002);
+  const d = deepest('left', DESK_POSES.rest.left, p => p[1]);
+  assert.ok(d > -0.0015 && d < 0.002, `left rest ${d}`);
   assert.ok(LIMITS.index.hi[1] > 1.5);
 });

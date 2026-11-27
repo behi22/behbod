@@ -4,7 +4,7 @@ import { W, H, BAR, DOCK, TITLE, PAD, STYLE, appById, dock, rows, layout, open, 
 import { show as calcShow, NAME as CALC_NAME } from './pure/calc.js';
 import { SANDBOX, ALLOW, allowed, siteById, browserLayout, LOCK } from './pure/browser.js';
 import { launcherLayout, playLayout, gameById } from './pure/arcade.js';
-import { homography } from './pure/homography.js';
+import { homography, insetToEdges } from './pure/homography.js';
 import { readerLayout } from './pure/reader.js';
 import { paintStory } from './shah/scenes.js';
 import { storyById } from './pure/shahnameh.js';
@@ -98,6 +98,9 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
   const s = meta.screens.main, c = b2t(...s.center), half = s.w / 2 / s.r;
   const chord = s.r * Math.sin(half), sag = s.r * (1 - Math.cos(half));
   const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => new THREE.Vector3(c.x - sag, c.y + y * s.h / 2, c.z + z * chord));
+  // Points along its curved top and bottom edges, which the flat layer must stay inside to leave the frame showing.
+  const edge = y => Array.from({ length: 17 }, (_, i) => { const a = -half + 2 * half * i / 16; return new THREE.Vector3(c.x - s.r * (1 - Math.cos(a)), c.y + y * s.h / 2, c.z + s.r * Math.sin(a)); });
+  const edges = [edge(1), edge(-1)];
   const v = new THREE.Vector3();
   let shown = false, narrow = false, scale = 1, box = { w: W, h: H }, lastT = '', lastBox = '', drag = null, pending = false, notesEl = null;
   // A redraw replaces the buttons, so none happens while a finger or the mouse is down, or a click could miss.
@@ -458,12 +461,13 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
 
   // Lays the desktop on the screen as the camera sees it, or across the view when the screen does not fit.
   function fitView() {
-    const pts = corners.map(p => { v.copy(p).project(camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
+    const onPage = p => { v.copy(p).project(camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; };
+    const pts = corners.map(onPage);
     const wide = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]);
     const fits = !coarse && pts.every(([x, y]) => x > -2 && x < innerWidth + 2 && y > -2 && y < innerHeight + 2) && wide >= 760;
     let tf;
     if (fits) {
-      const m = homography(W, H, pts);
+      const m = homography(W, H, insetToEdges(pts, edges[0].map(onPage), edges[1].map(onPage)));
       if (!m) return;
       box = { w: W, h: H }; scale = wide / W;
       tf = `matrix3d(${m.map(n => +n.toFixed(9)).join(',')})`;

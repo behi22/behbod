@@ -6,6 +6,8 @@ export const SAYS = [
   'Aria: "Still waking up. Come back soon and we can talk."',
 ];
 export const NOTE_SIZE = 0.085;
+// How far in from the monitor's left end the note's middle is: out at the end, clear of the screen and the Pishi cam.
+export const NOTE_IN = 0.06;
 
 const rad = d => d * Math.PI / 180;
 const turn = (v, k, t) => {
@@ -15,9 +17,10 @@ const turn = (v, k, t) => {
 };
 
 // The tattoo post-it in blender/zones/studio.py, mirrored to the other end of the curved monitor's bottom bezel, the
-// end Aria sits by. Corners top left, top right, bottom left, bottom right, as seen from the chair.
+// end Aria sits by, and further out toward her. Corners top left, top right, bottom left, bottom right, as seen from
+// the chair.
 export function noteCorners({ center: [cx, cy, cz], w, h, r }) {
-  const a = Math.asin((w / 2 - 0.11) / r), S = NOTE_SIZE;
+  const a = Math.asin((w / 2 - NOTE_IN) / r), S = NOTE_SIZE;
   const top = [cx - r * (1 - Math.cos(a)), cy + r * Math.sin(a), cz - h / 2 - 0.005];
   const toward = [-Math.cos(a), -Math.sin(a), 0], along = [-Math.sin(a), Math.cos(a), 0];
   return [[S / 2, 0], [-S / 2, 0], [S / 2, -S], [-S / 2, -S]].map(([y, z]) => {
