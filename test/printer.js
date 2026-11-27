@@ -463,8 +463,10 @@ const lineAfter = (lines, cmd) => lines[lines.lastIndexOf('$ ' + cmd) + 1] || ''
       // A busy phone, with no quiet moment at all (every wait for one runs out): the warm-up still ends soon after the house
       // settles, so a first keychain asked for then is quick. Failed before: its waits, 5 s and then 1 s a piece, left it
       // unfinished for 10 s, and a keychain asked for meanwhile did the first-time work itself (15 to 34 ms).
+      // At the printer, as a visitor asks for one, so its first print (and its worker) is made before the keychain is asked for.
       const busy = await open(b, UPRIGHT, { save: null, init: [noQuiet, timeWarm], slow: 4 });
-      await busy.p.waitForFunction(() => window.__warm.length >= 6, null, { timeout: 60000, polling: 200 }).catch(() => {});
+      await standAt(busy.p, SPOT);
+      await busy.p.waitForFunction(() => window.__warm.length >= 6 && __loft.printer.built, null, { timeout: 60000, polling: 200 }).catch(() => {});
       const w = await busy.p.evaluate(() => ({ pieces: window.__warm.slice(), took: Math.round(window.__warmAt.at(-1)?.[1] - window.__warmAt[0]?.[0]) }));
       const askMs = await busy.p.evaluate(() => { const t = performance.now(); __loft.printer.ask('a keychain to build'); return +(performance.now() - t).toFixed(1); });
       check('4x slower phone with no quiet moment: the keychain\'s font and words are still ready within 3.5 s of the house settling, a piece at a time', w.pieces.length === 6 && w.took < 3500 && Math.max(...w.pieces) < 16.7, `${w.took} ms, pieces ${JSON.stringify(w.pieces)} ms`);
