@@ -112,7 +112,7 @@ const shades = p => p.evaluate(() => {
       // The studio's purple strips: the biggest merged mesh in the chill scene's purple, found at the start.
       await p.evaluate(() => {
         let found = null;
-        __loft.scene.traverse(o => { if (o.isMesh && /^merged_/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6 && (!found || o.geometry.attributes.position.count > found.geometry.attributes.position.count)) found = o; });
+        __loft.scene.traverse(o => { if (o.isMesh && /^merged_/.test(o.name) && !/^merged_(pc_fans_|ram\d_led|gpu\d_led)/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6 && (!found || o.geometry.attributes.position.count > found.geometry.attributes.position.count)) found = o; });
         window.__strip = found.material;
         window.__main = __loft.scene.getObjectByName('screen_main').material;
       });

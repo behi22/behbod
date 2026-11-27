@@ -13,10 +13,10 @@ GROUPS = {}
 # The mezzanine's boards bake as oak and show as the dark wood of the version he liked.
 # The desk's black things (keyboard, mouse, wrist rest, the three mini screens' cases): near black under the desk lamp
 # bakes mid grey, and they must read black. The sticky pad bakes white instead of its mint, the laptop's aluminium
-# white instead of silver, and the PC's insides would drown its coolant's glow.
+# white instead of silver, and the PC case's rear, facing the monitor's light, bakes grey.
 SHADE = {'oak_mezz': (0.093, 0.082, 0.047), 'keycap': (0.15, 0.15, 0.15), 'kb_body': (0.08, 0.08, 0.08), 'wrist_pad': (0.12, 0.12, 0.12),
          'mini_case': (0.1, 0.1, 0.1), 'sticky_pad': (0.14, 0.14, 0.14),
-         'alu': (0.4, 0.4, 0.4), 'pc_inside': (0.35, 0.35, 0.35)}
+         'alu': (0.4, 0.4, 0.4), 'pc_case_rear': (0.5, 0.5, 0.5)}
 _zone = [None]
 _off = [Vector()]
 
@@ -294,6 +294,7 @@ def make_materials():
         'screen': principled('E_screen', (0, 0, 0), 0.3, emit=(0.55, 0.7, 1.0), strength=2.5),
         'rgb_purple': principled('E_purple', (0, 0, 0), 0.5, emit=(0.55, 0.15, 1.0), strength=12),
         'rgb_teal': principled('E_teal', (0, 0, 0), 0.5, emit=(0.1, 0.9, 0.8), strength=10),
+        'coolant': principled('E_coolant', (0, 0, 0), 0.5, emit=(0.1, 0.9, 0.8), strength=3.5),
         'warm': principled('E_warm', (0, 0, 0), 0.5, emit=(1.0, 0.62, 0.3), strength=8),
         'warm_soft': principled('E_warm_soft', (0, 0, 0), 0.5, emit=(1.0, 0.75, 0.45), strength=5),
         'onair': principled('E_onair', (0, 0, 0), 0.5, emit=(1.0, 0.08, 0.06), strength=6),

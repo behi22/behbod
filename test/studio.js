@@ -1,5 +1,6 @@
-// Team colours for the football games, the studio's LEDs with the music, the goal reactions and the horn, in a real Chrome.
-//   LOFT_URL=http://127.0.0.1:8815 node test/studio.js [outdir] [only: kits,phone,stored,music,goals,flash,horn,motes]
+// Team colours for the football games, the studio's LEDs with the music, the goal reactions and the horn, and the PC's
+// lights and insides, in a real Chrome.
+//   LOFT_URL=http://127.0.0.1:8815 node test/studio.js [outdir] [only: kits,phone,stored,music,goals,flash,horn,motes,pc]
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -46,11 +47,11 @@ const near = (p, sel, hex) => p.evaluate(([s, h]) => {
   return k;
 }, [sel, hex]);
 // The studio's purple strips: the one material the merged strip is drawn with, found by its colour at the start.
-// (The PC's purple parts are merged in that colour too, so the strips are the biggest such mesh.)
+// (The PC's purple lights are merged in that colour too, as their own mesh, and are left out.)
 const findStrip = p => p.evaluate(() => {
   let found = null;
   __loft.scene.traverse(o => {
-    if (o.isMesh && /^merged_/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6
+    if (o.isMesh && /^merged_/.test(o.name) && !/^merged_(pc_fans_|ram\d_led|gpu\d_led)/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6
       && (!found || o.geometry.attributes.position.count > found.geometry.attributes.position.count)) found = o;
   });
   window.__strip = found?.material || null;
@@ -410,6 +411,73 @@ const exact = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
       const on = await p.evaluate(() => ({ k: __lights.k, room: __lights.uniforms.room.value.toArray() }));
       check('the light switch still turns the room down and back exactly', off.k === 0 && off.room.every(v => v < 1) && on.k === 1 && on.room.every(v => v === 1), JSON.stringify({ off, on }));
       check('motes: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    // ---------- the PC: its lights follow their channels at their own strengths, its perforated steel, and its insides
+    // keep their own light when the lamps go off ----------
+    if (want('pc')) {
+      const { ctx, p, errs } = await open(b, DESK);
+      const { OWN_LIGHT } = await import('../web/src/pure/lamps.js');
+      // Every colour the PC's lights are drawn in (they are merged by colour, so each mesh is one channel and strength).
+      const glow = () => p.evaluate(() => {
+        const out = [];
+        __loft.scene.traverse(o => { if (o.isMesh && /^(merged_)?(coolant_|cpu_block|pc_fans_|ram\d_led|gpu\d_led)/.test(o.name)) out.push(o.material.color.toArray().map(v => +v.toFixed(4))); });
+        return out;
+      });
+      const has = (list, c) => list.some(a => a.every((v, i) => Math.abs(v - c[i]) < 1e-3));
+      // The coolant glows at 0.75 (world.js EMISSIVE.E_coolant), the pump block and the fans at the RGB's 3.2.
+      const TEAL = [0.32, 2.88, 2.56], RED = [0.75, 0.09, 0.075], RED_PUMP = [3.2, 0.384, 0.32], TEAL_COOLANT = [0.075, 0.675, 0.6];
+      await p.evaluate(() => __loft.screens.run('scene chill', () => {}));
+      const start = await glow();
+      check('the PC starts with teal fans and RAM, a teal pump block and softer teal coolant', has(start, TEAL) && has(start, [0.3, 2.7, 2.4]) && has(start, TEAL_COOLANT), JSON.stringify(start));
+      await p.evaluate(() => __loft.world.coolant('red'));
+      await p.waitForTimeout(300);
+      const red = await glow();
+      check('coolant red: the tubes and reservoir a soft red, the pump block bright red, the fans and RAM as they were',
+        has(red, RED) && has(red, RED_PUMP) && has(red, TEAL) && !has(red, TEAL_COOLANT), JSON.stringify(red));
+      await p.evaluate(() => __loft.screens.run('scene movie', () => {}));
+      await p.waitForTimeout(400);
+      const movie = await glow();
+      check('Movie dims the fans and RAM but not the coolant', has(movie, [0.096, 0.64, 0.576]) && !has(movie, TEAL) && has(movie, RED) && has(movie, RED_PUMP), JSON.stringify(movie));
+      await p.evaluate(() => { __loft.screens.run('scene chill', () => {}); __loft.world.coolant('teal'); });
+      const sheet = await p.evaluate(() => {
+        const m = __loft.scene.getObjectByName('pc_mesh').material, img = m.map.image, d = img.getContext('2d').getImageData(0, 0, img.width, img.height).data, a = (x, y) => d[(y * img.width + x) * 4 + 3];
+        return { transparent: m.transparent, twoSided: m.side === 2, onePass: m.forceSinglePass, hole: a(8, 8), steel: a(0, 16), lamp: m.userData.lamp || null, dims: !!m.customProgramCacheKey && m.customProgramCacheKey() === 'lamp' };
+      });
+      check('the front mesh is perforated steel: see-through holes, drawn in one pass, dimmed by the lamps like the case', sheet.transparent && sheet.twoSided && sheet.onePass && sheet.hole === 0 && sheet.steel === 255 && !sheet.lamp && sheet.dims, JSON.stringify(sheet));
+      // Through the glass, a bare patch of the case's inside wall (beside the reservoir's tube, above the 24-pin cable),
+      // without bloom so the pixels are the baked light times the lamps.
+      await p.evaluate(() => {
+        __loft.setQuality('low');
+        const st = document.createElement('style'); st.textContent = 'body * { visibility: hidden !important; } canvas { visibility: visible !important; }'; document.head.append(st);
+      });
+      const wall = [20.18, 0.182, 1.592];
+      await p.evaluate(([w]) => {
+        const c = __loft.camera, own = Object.getPrototypeOf(c).lookAt, V = c.position.constructor, E = new V(w[0], 1.5, -0.9), L = new V(w[0], w[2], -w[1]);
+        c.lookAt = function () { this.position.copy(E); this.fov = 40; this.updateProjectionMatrix(); return own.call(this, L); };
+      }, [wall]);
+      await p.waitForTimeout(1200);
+      const patch = async () => {
+        const at = await p.evaluate(([w]) => { const c = __loft.camera, v = new c.position.constructor(w[0], w[2], -w[1]).project(c); return [Math.round((v.x + 1) / 2 * innerWidth), Math.round((1 - v.y) / 2 * innerHeight)]; }, [wall]);
+        const png = await p.screenshot({ clip: { x: at[0] - 6, y: at[1] - 6, width: 12, height: 12 } });
+        return p.evaluate(async b64 => {
+          const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();
+          const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+          const d = g.getImageData(0, 0, c.width, c.height).data, lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }, s = [0, 0, 0];
+          for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) s[k] += lin(d[i + k]);
+          return s.map(v => v / (d.length / 4));
+        }, png.toString('base64'));
+      };
+      const on = await patch();
+      await p.evaluate(() => __lights.set(false)); await p.waitForTimeout(1500);
+      const off = await patch(), room = await p.evaluate(() => __lights.uniforms.room.value.toArray());
+      await p.evaluate(() => __lights.set(true)); await p.waitForTimeout(1500);
+      const back = await patch();
+      const kept = off.map((v, i) => v / on[i]), want = room.map(r => 1 - (1 - OWN_LIGHT) * (1 - r));
+      check('with the lamps off the PC\'s insides keep most of their own light, far more than the room keeps',
+        on.every(v => v > 0.004) && kept.every((k, i) => Math.abs(k - want[i]) < 0.1 && k > room[i] + 0.2), JSON.stringify({ on, off, kept, want, room }));
+      check('and come back exactly with the lamps on', back.every((v, i) => Math.abs(v - on[i]) < 0.002), JSON.stringify({ on, back }));
+      check('pc: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
   } finally {
