@@ -284,9 +284,9 @@ const shades = p => p.evaluate(() => {
           }
           c.route = []; c.hop = null; c.then = null; c.pending = null; c.epoch++; c.moving = false; c.groomUntil = 0;
           c.pos.set(at[0], at[2], -at[1]); c.state = state; c.timer = 999; c.keyAt = 999; c.onFloor = false;
-          await new Promise(r => setTimeout(r, 900));
+          await new Promise(r => setTimeout(r, 1300));
+          // Sitting, she may start grooming in any frame: that is undone and all of it read at once, before another frame.
           c.groomUntil = 0;
-          await new Promise(r => setTimeout(r, 400));
           const eye = __pishiCam.eye, her = c.pos.clone().setY(c.pos.y + 0.16), v = her.clone().project(eye);
           const ray = new THREE.Raycaster(eye.position, her.clone().sub(eye.position).normalize(), 0.05, eye.position.distanceTo(her) + 0.3);
           ray.camera = eye;
