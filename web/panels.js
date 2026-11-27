@@ -189,16 +189,6 @@ export function makePanels(surface, ctx) {
     for (let i = 0; i < 24; i++) { const hgt = 30 + 40 * Math.abs(Math.sin(i * 0.7 + Date.now() / 4000)); g.fillStyle = i % 3 ? '#1b2533' : '#3ee6c4'; g.fillRect(400 + i * 9, 230 - hgt, 6, hgt); }
   }, 1000);
 
-  // The laptop on its dock: this world's own code, in an editor.
-  add('laptop', 560, 360, (g, c) => {
-    g.fillStyle = '#0d1117'; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = '#161b22'; g.fillRect(0, 0, c.width, 30); g.fillRect(0, 30, 120, c.height);
-    text(g, 'world.js · behbod', 140, 20, 14, '#8b949e');
-    ['src/', '  engine.js', '  world.js', '  me.js', '  desk.js', 'blender/', '  zones/', '  lib/'].forEach((l, i) => text(g, l, 10, 54 + i * 22, 13, i === 2 ? '#e6edf3' : '#8b949e'));
-    const code = ['// The zones\' baked geometry plus', '// everything lit or moved at runtime.', 'export function makeWorld(scene, zones) {', '  for (const z of zones) {', '    scene.add(z);', '    z.traverse(o => {', '      if (o.name.endsWith(\'_baked\'))', '        o.material = baked(o);', '    });', '  }', '}'];
-    code.forEach((l, i) => text(g, l, 140, 58 + i * 24, 15, l.startsWith('//') ? '#6a7690' : /export|const|for|if/.test(l) ? '#c792ea' : '#cfd8e8'));
-  });
-
   add('phone', 132, 270, (g, c) => {
     const v = vanTime(new Date());
     const gr = g.createLinearGradient(0, 0, 0, c.height); gr.addColorStop(0, '#1a1340'); gr.addColorStop(1, '#0a2a3a');
