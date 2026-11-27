@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Worker } from 'node:worker_threads';
 import { FINGERS, DIGITS, deepest, deepestBody, miss, fingersShape, LIMITS, within, padFor, palmGap, worldFor, bi, forearm } from '../../web/src/pure/realhand.js';
-import { solveHolds, onSurface, foreThumb, SHOOT, SUPPORT, typing, onMouse, resting, REST_LEFT, HOME, KEY, landing, deskShape, mouseShape } from '../../web/src/pure/realholds.js';
+import { onSurface, foreThumb, SHOOT, SUPPORT, typing, onMouse, resting, REST_LEFT, HOME, KEY, landing, deskShape, mouseShape } from '../../web/src/pure/realholds.js';
 import { qAxis, qMul, qRot, sub, norm } from '../../web/src/pure/hands.js';
 import { GUNS, DESK_POSES } from '../../web/src/pure/realposes.js';
 import { GUN_HOLDS, rotTrigger, ELBOWS } from '../../web/src/pure/handling.js';
@@ -14,13 +15,25 @@ const bake = p => ({ at: p.at.map(r6), q: p.q.map(r6), cup: r6(p.cup || 0), digi
 // Within the joints' range, give or take the baked poses' rounding to a millionth.
 const inRange = p => DIGITS.every(d => within(d, p.digits[d]).every((v, i) => Math.abs(v - p.digits[d][i]) <= 5e-7));
 
-test('the poses the bench reads are the ones the solver gives (else run node blender/realposes.js)', () => {
+// Each gun solved in a thread of its own (10 to 25 seconds a gun), so all five take about as long as the slowest.
+const SOLVE = "const { parentPort, workerData: w } = require('node:worker_threads'); import(w.url).then(m => parentPort.postMessage(m.solveHolds(w.id)));";
+const solved = id => new Promise((ok, fail) => {
+  const w = new Worker(SOLVE, { eval: true, workerData: { id, url: new URL('../../web/src/pure/realholds.js', import.meta.url).href } });
+  w.once('message', ok).once('error', fail).once('exit', code => fail(new Error(`${id}: the solver stopped (${code})`)));
+});
+test('the poses the bench reads are the ones the solver gives, on every gun (else run node blender/realposes.js)', async () => {
+  const guns = Object.keys(GUN_HOLDS), holds = Promise.all(guns.map(solved));
   assert.deepEqual(DESK_POSES.home.right, bake(typing('right')));
   assert.deepEqual(DESK_POSES.mouse.right, bake(onMouse('right')));
   assert.deepEqual(DESK_POSES.rest.left, bake(resting('left', REST_LEFT)));
-  const h = solveHolds('pistol');
-  for (const side of ['right', 'left']) for (const [name, p] of Object.entries(h[side])) assert.deepEqual(GUNS.pistol[side][name], bake(p), `${side} ${name}`);
-  assert.deepEqual(Object.keys(GUNS).sort(), Object.keys(GUN_HOLDS).sort());
+  assert.deepEqual(Object.keys(GUNS).sort(), guns.slice().sort());
+  (await holds).forEach((h, i) => {
+    const id = guns[i];
+    for (const side of ['right', 'left']) {
+      assert.deepEqual(Object.keys(GUNS[id][side]).sort(), Object.keys(h[side]).sort(), `${id} ${side}`);
+      for (const [name, p] of Object.entries(h[side])) assert.deepEqual(GUNS[id][side][name], bake(p), `${id} ${side} ${name}`);
+    }
+  });
 });
 
 // What each pose holds: the gun; a magazine as it sits home (the pistol's longer one by its own foot); the pistol's
