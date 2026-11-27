@@ -1,5 +1,5 @@
 {
-  "about": "Where each thing on the studio desk stands: blender/zones/studio.py builds them from here and test/unit/desklayout.test.mjs checks none of them crowd another. Desk frame (before DESK_AT): x toward the wall, y left, metres. at is the middle, size the footprint (x, y), r a round one's radius; group: pieces of one thing; on: lies on another.",
+  "about": "Where each thing on the studio desk stands, so test/unit/desklayout.test.mjs can check none of them crowd another. blender/zones/studio.py builds the keyboard, wrist rest, mouse, the three little screens, stream deck, DEPLOY, mic clamp, sticky notes, pomodoro, tea, succulent, Aria, notebook and its pens from here; the phone stand, Rubik's cube, monitor arm, code screen, speakers, headset, fan, PC, laptop and dock it places with numbers of its own, and the pen is the page's (web/src/pure/residents.js). Desk frame (before DESK_AT): x toward the wall, y left, metres. at is the middle, size the footprint (x, y), r a round one's radius; group: pieces of one thing; on: lies on another.",
   "desk": { "main": [15.15, 15.95, 1.0, 3.4], "return": [13.95, 15.15, 1.0, 1.6] },
   "things": {
     "keyboard": { "at": [15.33, 2.24], "size": [0.115, 0.325], "group": "keyboard" },
