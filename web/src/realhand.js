@@ -53,17 +53,36 @@ function withNails(m, gloss) {
   return m;
 }
 
-// The two looks: real skin (its picture is fetched only for this look), and the character's soft white.
-export function handMaterial(look, { skinUrl = 'assets/hand/skin.webp', prepare = m => m } = {}) {
-  const lin = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.LinearSRGBColorSpace);
+// A soft studio's light seen on a ball: a broad key from above and to the left, a gentle fill, no dark side. Made once.
+let soft = null;
+function softLight() {
+  if (soft) return soft;
+  const N = 128, c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d'), img = g.createImageData(N, N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const nx = (x + 0.5) / N * 2 - 1, ny = 1 - (y + 0.5) / N * 2, r2 = nx * nx + ny * ny, i = (y * N + x) * 4;
+    const nz = Math.sqrt(Math.max(0, 1 - r2)), key = Math.max(0, -0.45 * nx + 0.6 * ny + 0.66 * nz), v = Math.min(1, 0.62 + 0.3 * key + 0.08 * nz);
+    img.data[i] = img.data[i + 1] = v * 255; img.data[i + 2] = v * 249; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  soft = new THREE.CanvasTexture(c);
+  soft.colorSpace = THREE.SRGBColorSpace;
+  return soft;
+}
+
+// The two looks: real skin (its picture is fetched only for this look), and the character's soft white, the same at
+// the desk and the range whatever their own light (a matcap: the desk's light for my body sits right over the keyboard
+// and the range's over the firing line, and either burns a lit hand flat white). Its colour can be dimmed with the lamps.
+export function handMaterial(look, { skinUrl = 'assets/hand/skin.webp' } = {}) {
   if (look === 'skin') {
     const map = new THREE.TextureLoader().load(skinUrl);
     map.colorSpace = THREE.SRGBColorSpace;
     map.anisotropy = 4;
-    return prepare(withNails(new THREE.MeshPhysicalMaterial({ name: 'M_HandSkin', map, roughness: 0.56, metalness: 0, sheen: 0.35, sheenRoughness: 0.55, sheenColor: lin(0.9, 0.55, 0.45) }), 0.3));
+    const lin = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.LinearSRGBColorSpace);
+    return withNails(new THREE.MeshPhysicalMaterial({ name: 'M_HandSkin', map, roughness: 0.56, metalness: 0, sheen: 0.35, sheenRoughness: 0.55, sheenColor: lin(0.9, 0.55, 0.45) }), 0.3);
   }
-  // The character's own soft white (as M_Toy on the range's hands).
-  return prepare(withNails(new THREE.MeshStandardMaterial({ name: 'M_HandToy', color: lin(0.83, 0.82, 0.79), roughness: 0.5, metalness: 0 }), 0.3));
+  return new THREE.MeshMatcapMaterial({ name: 'M_HandToy', matcap: softLight(), color: new THREE.Color().setRGB(0.8, 0.79, 0.76, THREE.LinearSRGBColorSpace) });
 }
 
 // The hoodie's sleeve over the forearm, along the arm bone (x toward the elbow): a ribbed cuff that starts two

@@ -20,11 +20,12 @@ function watch(p, errs, files) {
 }
 // The page's own sound, counted: the gun's moves as they are cued, and the sound card's buffers as they are played.
 function countSound() {
-  window.__heard = { cues: [], shots: 0, buffers: 0, played: 0 };
+  window.__heard = { cues: [], shots: 0, buffers: 0, made: 0, played: 0 };
   const C = window.BaseAudioContext || window.AudioContext, make = C.prototype.createBuffer;
   C.prototype.createBuffer = function (ch, n, sr) { if (ch === 2 && sr === 48000) window.__heard.buffers++; return make.call(this, ch, n, sr); };
   const AB = window.AudioBuffer;
-  window.AudioBuffer = function (o) { if (o?.numberOfChannels === 2 && o.sampleRate === 48000) window.__heard.buffers++; return new AB(o); };
+  // The gun's sounds are made this way (audio/range.js); the house's reverb and room loops by createBuffer.
+  window.AudioBuffer = function (o) { if (o?.numberOfChannels === 2 && o.sampleRate === 48000) { window.__heard.buffers++; window.__heard.made++; } return new AB(o); };
   window.AudioBuffer.prototype = AB.prototype;
   const start = AudioBufferSourceNode.prototype.start;
   AudioBufferSourceNode.prototype.start = function (...a) { if (this.buffer && this.buffer.sampleRate === 48000 && this.buffer.numberOfChannels === 2) window.__heard.played++; return start.apply(this, a); };
@@ -114,7 +115,7 @@ const since = (a, b) => b.cues.slice(a.cues.length);
     let h1 = await heard(p);
     check('a click fires: the shot is heard as a made sample', (await p.evaluate(() => __loft.range.debug.run.shots)) === shots0 + 1 && h1.shots === h0.shots + 1 && h1.played > h0.played && h1.buffers >= 1, JSON.stringify({ shots: h1.shots - h0.shots, played: h1.played - h0.played, buffers: h1.buffers }));
     const bank = await p.evaluate(() => __loft.audio.sfx.gunSoundStats());
-    check('the gun\'s sounds were made off the page\'s thread, each held once, no suppressed shot without a suppressor', bank.where === 'worker' && bank.sounds === 16 && bank.queued === 0 && bank.bytes < 4.5e6 && h1.buffers <= bank.sounds + 1, JSON.stringify({ ...bank, buffers: h1.buffers }));
+    check('the gun\'s sounds were made off the page\'s thread, each held once, no suppressed shot without a suppressor', bank.where === 'worker' && bank.sounds === 16 && bank.queued === 0 && bank.bytes < 4.5e6 && h1.made === bank.sounds, JSON.stringify({ ...bank, made: h1.made, buffers: h1.buffers }));
 
     // A reload on R: the magazine's moves are heard in order, the gun is full again.
     h0 = await heard(p);

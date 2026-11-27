@@ -21,16 +21,6 @@ WHITE.colorSpace = THREE.SRGBColorSpace; WHITE.needsUpdate = true;
 // How far the eye sits behind a scope's eyepiece when aimed (a holo sight keeps the eye where the iron sights had it).
 const RELIEF = 0.075;
 
-// The range's light on a material that changes its shader already (the hand's glossier nails), keeping both.
-function litToo(m) {
-  const own = m.onBeforeCompile, ownKey = m.customProgramCacheKey();
-  lit(m);
-  const range = m.onBeforeCompile;
-  m.onBeforeCompile = (sh, r) => { own(sh, r); range(sh, r); };
-  m.customProgramCacheKey = () => 'range-lit-' + ownKey;
-  return m;
-}
-
 function flashTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -57,7 +47,7 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   // The hip in the eye's space (x right, y up, -z ahead), the way the magazine comes out, the grip's middle a clip turns about.
   const HIP = spec.hip, WELL = new THREE.Vector3(...spec.well), PIVOT = new THREE.Vector3(...spec.pivot), LOCK = spec.lock ?? 1;
   // The gun file is packed with meshopt (blender/squeeze.js); the realistic hand and its poses come with it, never sooner.
-  const [gltf, real, { relaxed, blend }, { GUNS }] = await Promise.all([new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file || spec.file),
+  const [gltf, real, { relaxed, blend, forearm }, { GUNS }] = await Promise.all([new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file || spec.file),
     import('../realhand.js').then(m => m.loadHand().then(geometry => ({ ...m, geometry }))), import('../pure/realhand.js'), import('../pure/realposes.js')]);
   const model = gltf.scene;
   const scene = new THREE.Scene();
@@ -129,9 +119,9 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   spent.visible = false;
   part.mag.parent.add(spent);
 
-  // The hands: the realistic hand in my soft white, under the range's own light (its nails kept), in my hoodie's
-  // sleeves, in the gun's own space. A breath between them, so a slowed phone never holds a frame for both.
-  const hm = makeSleeveMaterials(m => lit(m)), skin = real.handMaterial('toy', { prepare: litToo });
+  // The hands: the realistic hand in my soft white (the same as at the desk), in my hoodie's sleeves under the range's
+  // own light, in the gun's own space. A breath between them, so a slowed phone never holds a frame for both.
+  const hm = makeSleeveMaterials(m => lit(m)), skin = real.handMaterial('toy'), white = skin.color.clone();
   for (const m of [skin, ...Object.values(hm)]) (mats[m.name] ||= new Set()).add(m);
   const makeHand = side => {
     const h = real.makeRealHand(side, real.geometry, skin);
@@ -356,6 +346,7 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
       rim.position.copy(eye.position).add(v.set(-1.5, 1.2, 4)); rim.target.position.copy(eye.position);
       const L = 0.03 + 0.97 * st.lights;
       sky.intensity = 0.75 * L; key.intensity = 2.4 * L; rim.intensity = 0.9 * L;
+      skin.color.copy(white).multiplyScalar(L);
 
       // The look over ends by itself, or eases back when the aim, a reload or the gun's state takes over.
       if (st.inspT >= 0) {
@@ -473,12 +464,12 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
         spent.rotation.z = -3.2 * fall;
       } else spent.visible = false;
 
-      // The hands, from the clip's poses; each forearm hangs from its elbow.
+      // The hands, from the clip's poses; each forearm runs toward its elbow as far as a relaxed wrist lets it.
       const elbows = spec.elbows || ELBOWS;
       for (const side of ['right', 'left']) {
         let p = pick(side, now[side]);
         if (back) p = blend(p, pick(side, was[side]), back);
-        hands[side].pose(p, arr(eyeToGun(elbows[side], v2)));
+        hands[side].pose(p, forearm(side, p, arr(eyeToGun(elbows[side], v2))));
       }
       // The charm swings; all the way into a scope, its own picture is all there is to see.
       api.swingCharm(dt);

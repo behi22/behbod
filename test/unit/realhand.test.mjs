@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BONES, REST, LIMITS, DIGITS, FINGERS, rest, relaxed, within, world, worldFor, locals, skinPoints, padAt, padFor, mirrorPose, wrap, reach, seat, deepest, palmGap, miss, blend, fingersShape } from '../../web/src/pure/realhand.js';
+import { BONES, REST, LIMITS, DIGITS, FINGERS, rest, relaxed, within, world, worldFor, locals, skinPoints, padAt, padFor, mirrorPose, wrap, reach, seat, deepest, palmGap, miss, blend, fingersShape, wrist, forearm, WRIST } from '../../web/src/pure/realhand.js';
 import { JOINTS, POINTS } from '../../web/src/pure/handrig.js';
-import { qAxis, qRot, rod } from '../../web/src/pure/hands.js';
+import { qAxis, qMul, qRot, rod, add, sub, norm } from '../../web/src/pure/hands.js';
 
 const near = (a, b, eps) => a.every((x, i) => Math.abs(x - b[i]) < eps);
 const N = { thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5 };
@@ -98,4 +98,33 @@ test('between two poses everything eases across; another hand can close round th
   assert.ok(near(m.at, [0.05, 0, 0], 1e-12) && Math.abs(m.cup - 0.2) < 1e-12);
   const S = fingersShape('right', rest());
   assert.ok(S(padAt(rest(), 'middle')) < 0.004 && S([0.1, 0.2, 0]) > 0.1);
+});
+
+// How far past its relaxed range a wrist is bent toward an elbow: at most 1 is within it.
+const strain = (side, P, elbow) => {
+  const b = wrist(side, P, elbow);
+  return Math.hypot(b.flex / (b.flex > 0 ? WRIST.flex : WRIST.extend), b.radial / (b.radial > 0 ? WRIST.radial : WRIST.ulnar));
+};
+test('the wrist: straight at rest, each way it bends read right, and the forearm drawn never past its relaxed range', () => {
+  const elbowOf = P => add(P.at, qRot(P.q, JOINTS.elbow));
+  for (const side of ['right', 'left']) {
+    const P = { ...rest(), at: [0.1, 0.2, -0.3], q: qAxis(norm([1, 2, 3]), 0.7) }, E = side === 'left' ? add(mirrorPose(P).at, qRot(mirrorPose(P).q, JOINTS.elbow)).map((v, i) => (i === 2 ? -v : v)) : elbowOf(P);
+    const b = wrist(side, P, E);
+    assert.ok(Math.abs(b.flex) < 1e-9 && Math.abs(b.radial) < 1e-9, `${side} straight ${JSON.stringify(b)}`);
+    // An elbow within the range is kept as it is.
+    assert.deepEqual(forearm(side, P, E), E);
+  }
+  // The hand turned palm-ward against a fixed forearm is flexed; toward the little finger, ulnar (right hand).
+  const P = { ...rest(), at: [0, 0, 0] }, E = qRot([0, 0, 0, 1], JOINTS.elbow);
+  assert.ok(wrist('right', { ...P, q: qAxis([0, 0, 1], -0.3) }, E).flex > 0.25, 'flexed');
+  assert.ok(wrist('right', { ...P, q: qAxis([0, 1, 0], -0.3) }, E).radial < -0.25, 'toward the little finger');
+  // Any elbow at all, for hands turned every way: the forearm drawn stays within the range, and as near as it can.
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  for (let i = 0; i < 400; i++) {
+    const side = i % 2 ? 'left' : 'right', Q = { ...rest(), at: [rnd() * 0.2, rnd() * 0.2, rnd() * 0.2], q: qAxis(norm([rnd(), rnd(), rnd()]), rnd() * 3) };
+    const elbow = add(Q.at, [rnd() * 0.4, rnd() * 0.4, rnd() * 0.4]), F = forearm(side, Q, elbow);
+    assert.ok(strain(side, Q, F) < 1 + 1e-6, `${i} ${strain(side, Q, F)}`);
+    assert.ok(Math.abs(Math.hypot(...sub(F, Q.at)) - Math.hypot(...sub(elbow, Q.at))) < 1e-9, 'as long');
+  }
 });

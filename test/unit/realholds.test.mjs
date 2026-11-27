@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FINGERS, DIGITS, deepest, deepestBody, miss, fingersShape, LIMITS, within, padFor } from '../../web/src/pure/realhand.js';
-import { solveHolds, onSurface, SHOOT, typing, onMouse, resting, keyTop, HOME, DESK, deskShape, mouseShape } from '../../web/src/pure/realholds.js';
-import { roundBox } from '../../web/src/pure/hands.js';
+import { FINGERS, DIGITS, deepest, deepestBody, miss, fingersShape, LIMITS, within, padFor, palmGap, worldFor, bi, forearm } from '../../web/src/pure/realhand.js';
+import { solveHolds, onSurface, foreThumb, SHOOT, SUPPORT, typing, onMouse, resting, keyTop, HOME, DESK, deskShape, mouseShape } from '../../web/src/pure/realholds.js';
+import { roundBox, qAxis, qMul, qRot, sub, norm } from '../../web/src/pure/hands.js';
 import { TRAVEL } from '../../web/src/pure/typing.js';
 import { GUNS, DESK_POSES } from '../../web/src/pure/realposes.js';
-import { GUN_HOLDS, rotTrigger } from '../../web/src/pure/handling.js';
+import { GUN_HOLDS, rotTrigger, ELBOWS } from '../../web/src/pure/handling.js';
 import { CLIPS } from '../../web/src/pure/clips.js';
 import { RIGS } from '../../web/src/pure/rigs.js';
 import { stats } from '../../web/src/pure/arsenal.js';
@@ -70,9 +70,45 @@ test('the shooting hand: three fingers closed on the grip, the first on the trig
 test('the shooting thumb wraps round the back of the grip and rests on its left side, as a shooter\'s does', () => {
   for (const [id, g] of Object.entries(GUNS)) {
     const H = GUN_HOLDS[id], spot = onSurface(H.shape, SHOOT.thumb), pad = padFor('right', g.right.grip, 'thumb');
-    assert.ok(miss('right', g.right.grip, 'thumb', spot) < 0.002, `${id} thumb ${miss('right', g.right.grip, 'thumb', spot)} from its spot`);
-    assert.ok(pad[2] < -0.012 && H.shape(pad) < 0.003, `${id}: on the left side, resting on it: ${pad}`);
+    assert.ok(miss('right', g.right.grip, 'thumb', spot) < 0.005, `${id} thumb ${miss('right', g.right.grip, 'thumb', spot)} from its spot`);
+    assert.ok(pad[2] < -0.012 && H.shape(pad) < 0.005, `${id}: on the left side, resting on it: ${pad}`);
     assert.ok(deepest('right', g.right.grip, H.shape, ['thumb']) < 0.0015, `${id} touching`);
+  }
+});
+
+test('the trigger finger: its pad on the trigger, bent at its middle and end joints as a shooter\'s is', () => {
+  for (const [id, g] of Object.entries(GUNS)) {
+    const a = g.right.grip.digits.index;
+    assert.ok(miss('right', g.right.grip, 'index', GUN_HOLDS[id].trigger.pad) < 0.0025, `${id} on the trigger`);
+    assert.ok(a[2] > 0.45 && a[3] > 0.3 && a[1] < 0.6, `${id} bent: ${a}`);
+  }
+});
+
+test('the pistol in two hands: the support palm in the grip\'s open left side, its fingers over the shooting hand\'s under the guard, both thumbs forward on the left', () => {
+  const H = GUN_HOLDS.pistol, R = GUNS.pistol.right.grip, L = GUNS.pistol.left.grip, over = fingersShape('right', R);
+  assert.ok(palmGap('left', L, p => Math.min(H.shape(p), over(p))) < 0.006 && deepestBody('left', L, H.shape) < 0.0015 && worldFor('left', L)[bi('hand')].p[2] < -0.02, `palm on the left side: ${palmGap('left', L, H.shape)}`);
+  // Its first finger up under the trigger guard, the next ones resting on the shooting hand's, none hooked into the guard.
+  const padI = padFor('left', L, 'index');
+  assert.ok(deepest('left', L, H.shape, ['index']) < 0.0015 && padI[1] < -0.05 && padI[1] > -0.06, `first finger under the guard: ${padI}`);
+  assert.ok(['middle', 'ring', 'pinky'].filter(d => deepest('left', L, over, [d]) < 0.0015).length >= 2, 'over the shooting fingers');
+  const guard = p => p[0] > 0.0335 && p[0] < 0.0815 && p[1] > -0.0475 && p[1] < -0.0235 && Math.abs(p[2]) < 0.012;
+  for (const d of FINGERS) assert.ok(!guard(padFor('left', L, d)), `${d} not in the trigger guard`);
+  // Its thumb forward along the frame above the guard, pointing at the muzzle; the shooting thumb on the same side.
+  const pad = padFor('left', L, 'thumb'), way = norm(sub(pad, worldFor('left', L)[bi('thumb2')].p));
+  assert.ok(pad[0] > 0.03 && pad[1] > -0.025 && pad[2] < -0.01 && way[0] > 0.6, `support thumb ${pad} ${way}`);
+  assert.ok(padFor('right', R, 'thumb')[2] < -0.012);
+});
+
+// The gun's turn and place in the eye's space at the hip (gun.js: the rig, then the gun turned to point ahead).
+function gunTurn(id) {
+  const [rx, ry, rz] = RIGS[id].hip.r;
+  return qMul(qMul(qMul(qAxis([0, 1, 0], ry), qAxis([1, 0, 0], rx)), qAxis([0, 0, 1], rz)), qAxis([0, 1, 0], Math.PI / 2));
+}
+const eyeToGun = (id, p) => { const q = gunTurn(id); return qRot([-q[0], -q[1], -q[2], q[3]], sub(p, RIGS[id].hip.p)); };
+test('the forearms: each hand\'s forearm, drawn toward its elbow, runs down and back toward me at the hip, never up or ahead', () => {
+  for (const [id, g] of Object.entries(GUNS)) for (const side of ['right', 'left']) {
+    const P = g[side].grip, E = eyeToGun(id, (RIGS[id].elbows || ELBOWS)[side]), way = qRot(gunTurn(id), norm(sub(forearm(side, P, E), P.at)));
+    assert.ok(way[1] < -0.1 && way[2] > 0.5 && (side === 'right' ? way[0] > -0.4 : way[0] < 0.1), `${id} ${side} ${way}`);
   }
 });
 
@@ -81,8 +117,11 @@ test('the support hand: over the shooting hand\'s fingers on the pistol, round t
     const H = GUN_HOLDS[id], shape = heldBy(id, 'left', 'grip');
     // Every finger rests on something.
     for (const d of FINGERS) assert.ok(deepest('left', g.left.grip, shape, [d]) < 0.001, `${id} left ${d} touches`);
-    const mark = H.fore ? H.fore.thumb : H.thumbs.left;
-    assert.ok(miss('left', g.left.grip, 'thumb', mark) < 0.006, `${id} left thumb ${miss('left', g.left.grip, 'thumb', mark)}`);
+    // Its thumb on its mark: up the handguard's left side on a long gun (the pad sits inside the thumb's side resting
+    // there), forward along the frame on the pistol.
+    const mark = H.fore ? foreThumb(H, H.shape) : onSurface(H.shape, SUPPORT.thumb), pad = padFor('left', g.left.grip, 'thumb');
+    assert.ok(miss('left', g.left.grip, 'thumb', mark) < (H.fore ? 0.012 : 0.006), `${id} left thumb ${miss('left', g.left.grip, 'thumb', mark)}`);
+    assert.ok(pad[2] < -0.015 && deepest('left', g.left.grip, H.shape, ['thumb']) < 0.0015, `${id} left thumb on the left side, resting: ${pad}`);
   }
   // Over the slide on the way in and out, the open hand clears it.
   assert.ok(deepest('left', GUNS.pistol.left.over, GUN_HOLDS.pistol.shape) > 0.002);

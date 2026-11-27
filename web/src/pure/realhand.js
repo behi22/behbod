@@ -136,6 +136,29 @@ export function worldFor(side, pose, elbow = null) {
 }
 export const padFor = (side, pose, d) => flip(side, padAt(side === 'left' ? mirrorPose(pose) : pose, d));
 
+// ---------- the wrist ----------
+// The forearm's way from the wrist in the hand's own axes, the wrist relaxed.
+const FOREARM = norm(JOINTS.elbow);
+const slope = (v, k) => Math.atan2(v[k], -v[0]);
+// How a wrist is bent, the forearm running toward `elbow` (radians): flex, the palm bent toward the forearm (less than
+// none is the back bent toward it); radial, the hand bent toward the thumb (less than none, toward the little finger).
+export function wrist(side, pose, elbow) {
+  const P = side === 'left' ? mirrorPose(pose) : pose, e = qRot(qConj(P.q), norm(sub(flip(side, elbow), P.at)));
+  return { flex: slope(FOREARM, 1) - slope(e, 1), radial: slope(FOREARM, 2) - slope(e, 2) };
+}
+// How far a relaxed wrist goes each way without strain (radians): the palm bent in a little, the back bent in more,
+// toward the thumb a little, toward the little finger more.
+export const WRIST = { flex: 0.35, extend: 0.7, radial: 0.21, ulnar: 0.52 };
+// Where the forearm runs: toward `elbow` as far as the wrist goes without strain, so no wrist ever looks broken.
+export function forearm(side, pose, elbow) {
+  const b = wrist(side, pose, elbow), u = b.flex / (b.flex > 0 ? WRIST.flex : WRIST.extend), v = b.radial / (b.radial > 0 ? WRIST.radial : WRIST.ulnar);
+  const k = Math.hypot(u, v);
+  if (k <= 1) return elbow;
+  const P = side === 'left' ? mirrorPose(pose) : pose, d = len(sub(elbow, pose.at));
+  const e = norm([-1, Math.tan(slope(FOREARM, 1) - b.flex / k), Math.tan(slope(FOREARM, 2) - b.radial / k)]);
+  return flip(side, add(P.at, scale(qRot(P.q, e), d)));
+}
+
 // ---------- fitting ----------
 const deepestOf = (list, F, sdf) => { let m = Infinity; for (const s of list) m = Math.min(m, sdf(skin(F, s))); return m; };
 // How deep any point of the posed hand goes into a shape (negative is into it), all of it or some digits only.

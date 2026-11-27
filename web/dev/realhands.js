@@ -105,7 +105,7 @@ async function gunScene(id) {
 }
 
 // Outside cameras on a gun (the eye's space: the gun sits about 30 cm ahead, low and right), to check a hold all round.
-const AROUND = { right: [[0.62, -0.1, -0.31], [0.085, -0.12, -0.31]], left: [[-0.45, -0.1, -0.31], [0.085, -0.12, -0.31]], below: [[0.1, -0.6, -0.26], [0.085, -0.12, -0.31]], front: [[0.09, -0.1, -0.85], [0.085, -0.12, -0.31]] };
+const AROUND = { right: [[0.62, -0.1, -0.31], [0.085, -0.12, -0.31]], left: [[-0.45, -0.1, -0.31], [0.085, -0.12, -0.31]], below: [[0.1, -0.6, -0.26], [0.085, -0.12, -0.31]], front: [[0.09, -0.1, -0.85], [0.085, -0.12, -0.31]], top: [[0.09, 0.42, -0.2], [0.085, -0.12, -0.31]] };
 const GUN_IDS = ['pistol', 'smg', 'rifle', 'sniper', 'lmg'];
 const views = [...Object.keys(DESK_VIEWS), ...Object.keys(SOLO), ...GUN_IDS];
 const extra = GUN_IDS.flatMap(g => Object.keys(AROUND).map(a => `${g}-${a}`));

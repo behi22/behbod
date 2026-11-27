@@ -9,22 +9,6 @@ const FINGER_KEYS = ['index', 'middle', 'ring', 'pinky', 'thumb'];
 const lerpA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
 const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
 
-// A soft white studio's light seen on a ball: a broad key from above and to the left, a gentle fill, a darker rim.
-function softLight() {
-  const N = 128, c = document.createElement('canvas');
-  c.width = c.height = N;
-  const g = c.getContext('2d'), img = g.createImageData(N, N);
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const nx = (x + 0.5) / N * 2 - 1, ny = 1 - (y + 0.5) / N * 2, r2 = nx * nx + ny * ny, i = (y * N + x) * 4;
-    const nz = Math.sqrt(Math.max(0, 1 - r2)), key = Math.max(0, -0.45 * nx + 0.6 * ny + 0.66 * nz), v = Math.min(1, 0.42 + 0.48 * key + 0.12 * nz) * (r2 > 1 ? 0 : 1);
-    img.data[i] = img.data[i + 1] = v * 236; img.data[i + 2] = v * 228; img.data[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 export function makeDeskHands({ scene, world, me, playing = () => false, lamp = () => 1 }) {
   let kit = null, loading = null, seated = false, shown = 0, typing = 0, lastKey = -1e9, clock = 0, clicks = 0;
   const group = new THREE.Group(), strokes = [], press = new Float32Array(DESK.key.rows * DESK.key.cols);
@@ -68,13 +52,12 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
   }
 
   async function load() {
-    const [{ loadHand, makeRealHand, makeSleeve }, { localsFor }, { DESK_POSES, KEYS }] = await Promise.all([import('./realhand.js'), import('./pure/realhand.js'), import('./pure/realposes.js')]);
+    const [{ loadHand, makeRealHand, makeSleeve, handMaterial }, { localsFor }, { DESK_POSES, KEYS }] = await Promise.all([import('./realhand.js'), import('./pure/realhand.js'), import('./pure/realposes.js')]);
     const geo = await loadHand();
     const mats = {};
     me.root.traverse(o => { for (const m of o.material ? [].concat(o.material) : []) mats[m.name] ||= m; });
-    // My soft white, lit by its own soft studio light (a matcap): the room's light for my body sits 40 cm over the
-    // keyboard and burns anything this close to it white. It dims with the lamps by hand.
-    const toy = new THREE.MeshMatcapMaterial({ name: 'M_DeskHands', matcap: softLight(), color: mats.M_Toy.color.clone() });
+    // My soft white, the same as at the range; it dims with the lamps by hand.
+    const toy = handMaterial('toy');
     const hands = {};
     for (const side of ['left', 'right']) {
       const h = makeRealHand(side, geo, toy);
