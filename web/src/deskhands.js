@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { KEYS, keyFor, keysForText, fingerFor, HOME, spotOn, strokeAt, advance, TRAVEL, DESK } from './pure/typing.js';
+import { inSlices, whenIdle } from './pure/slices.js';
+import { prepare } from './range/room.js';
 
-// My hands at the desk, seen from my own eyes once the camera has glided in: fetched the first time I sit, they come
-// up onto the keyboard as my body leaves the view. While I type at the terminal or play a desk game both hands are on
-// the keys, each key press made by the finger that touch-types it, the key going down under it; otherwise the right
-// hand is on the mouse (right of the keyboard) and the left rests beside the keys. While Pishi has the keyboard
-// (`taken`: jumping onto it, sitting on it, jumping off) they go back down into my lap, what I type still typing.
-// Same soft white, same hoodie as me.
+// My hands at the desk, seen from my own eyes once the camera has glided in: fetched and made ready in quiet moments
+// as I come to the desk (`ready`), or as I sit if I got there some other way, they come up onto the keyboard as my
+// body leaves the view. While I type at the terminal or play a desk game both hands are on the keys, each key press
+// made by the finger that touch-types it, the key going down under it; otherwise the right hand is on the mouse
+// (right of the keyboard) and the left rests beside the keys. While Pishi has the keyboard (`taken`: jumping onto it,
+// sitting on it, jumping off) they go back down into my lap, what I type still typing. Same soft white, same hoodie as
+// me.
 const FINGER_KEYS = ['index', 'middle', 'ring', 'pinky', 'thumb'];
 const lerpA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
 const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
@@ -16,8 +19,8 @@ const ELBOW = { back: 0.24, down: 0.09, out: 0.11 };
 // A key press that named a key: an input's text changing just after it is that same press, not another.
 const SAME_PRESS = 0.15;
 
-export function makeDeskHands({ scene, world, me, playing = () => false, lamp = () => 1, taken = () => false }) {
-  let kit = null, loading = null, seated = false, free = true, shown = 0, typing = 0, lastKey = -1e9, named = -1e9, clock = 0, clicks = 0;
+export function makeDeskHands({ scene, world, me, renderer, camera, playing = () => false, lamp = () => 1, taken = () => false }) {
+  let kit = null, readying = null, seated = false, free = true, shown = 0, typing = 0, lastKey = -1e9, named = -1e9, clock = 0, clicks = 0;
   const group = new THREE.Group(), strokes = [], texts = new WeakMap(), rise = new Float32Array(KEYS.length);
   // The keys' press, shared with the lit legends over them (kblegends.js).
   const press = scene.getObjectByName('kb_legends')?.userData.press || new Float32Array(KEYS.length);
@@ -37,55 +40,78 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
     for (const k of KEYS) if (Math.abs(v.x - k.x) <= k.d / 2 + 0.0006 && Math.abs(v.z - k.z) <= k.w / 2 + 0.0006) return k.index;
     return -1;
   }
-  // The keys are baked into the studio's one mesh: each of their corners learns which key it belongs to, so a press
-  // can push just that key down, keeping its baked light.
-  function keysPress(o) {
+  // The keys are baked into the studio's one mesh: each of their corners learns which key it belongs to, a few
+  // thousand at a time, so a press can push just that key down, keeping its baked light.
+  async function keysPress(o) {
     let mesh = null;
     scene.traverse(m => { if (m.isMesh && m.name === 'studio_baked') mesh = m; });
     if (!mesh) return;
-    const g = mesh.geometry, p = g.attributes.position, idx = new Float32Array(p.count).fill(-1), v = new THREE.Vector3();
+    const g = mesh.geometry, p = g.attributes.position, idx = new Float32Array(p.count).fill(-1), v = new THREE.Vector3(), rows = [];
     mesh.updateMatrixWorld(true);
-    for (let i = 0; i < p.count; i++) {
-      const k = idx[i] = capAt(v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld).sub(o));
-      // A finger stroking a key with something standing on it lands on that, as high as it stands under the finger.
-      if (k >= 0 && v.y > DESK.key.top) {
-        const f = fingerFor(KEYS[k]), [x, z] = spotOn(KEYS[k], f.side, f.digit);
-        if (Math.hypot(v.x - x, v.z - z) < 0.004) rise[k] = Math.max(rise[k], v.y - DESK.key.top);
+    for (let i = 0; i < p.count; i += 2048) rows.push(i);
+    await inSlices(rows, from => {
+      for (let i = from; i < Math.min(p.count, from + 2048); i++) {
+        const k = idx[i] = capAt(v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld).sub(o));
+        // A finger stroking a key with something standing on it lands on that, as high as it stands under the finger.
+        if (k >= 0 && v.y > DESK.key.top) {
+          const f = fingerFor(KEYS[k]), [x, z] = spotOn(KEYS[k], f.side, f.digit);
+          if (Math.hypot(v.x - x, v.z - z) < 0.004) rise[k] = Math.max(rise[k], v.y - DESK.key.top);
+        }
       }
-    }
-    g.setAttribute('aKey', new THREE.BufferAttribute(idx, 1));
+    }, { rest: whenIdle });
     // Down in the mesh's own axes, a metre long in the room's.
     const down = new THREE.Vector3(0, -1, 0).applyMatrix3(new THREE.Matrix3().setFromMatrix4(mesh.matrixWorld).invert());
     const m = mesh.material, before = m.onBeforeCompile, key = m.customProgramCacheKey;
     const U = { uPress: { value: press }, uDown: { value: down } };
-    m.onBeforeCompile = (sh, r) => {
-      before.call(m, sh, r);
-      Object.assign(sh.uniforms, U);
-      sh.vertexShader = `attribute float aKey;\nuniform float uPress[${press.length}];\nuniform vec3 uDown;\n` + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nif (aKey >= 0.0) transformed += uDown * uPress[int(aKey + 0.5)];');
+    const keyed = {
+      onBeforeCompile: (sh, r) => {
+        before.call(m, sh, r);
+        Object.assign(sh.uniforms, U);
+        sh.vertexShader = `attribute float aKey;\nuniform float uPress[${press.length}];\nuniform vec3 uDown;\n` + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nif (aKey >= 0.0) transformed += uDown * uPress[int(aKey + 0.5)];');
+      },
+      customProgramCacheKey: () => key.call(m) + '-keys',
     };
-    m.customProgramCacheKey = () => key.call(m) + '-keys';
+    // The pressing shader is built first for a stand-in, so the studio changes over to it with nothing left to build.
+    await prepare(renderer, new THREE.Mesh(g, Object.assign(m.clone(), keyed)), camera, { into: scene, rest: whenIdle });
+    g.setAttribute('aKey', new THREE.BufferAttribute(idx, 1));
+    Object.assign(m, keyed);
     m.needsUpdate = true;
   }
 
-  async function load() {
+  async function build() {
+    await whenIdle();
     const [{ loadHand, makeRealHand, makeSleeve, handMaterial }, { DESK_POSES, KEYS: TABLE }] = await Promise.all([import('./realhand.js'), import('./pure/realposes.js')]);
+    await whenIdle();
     const geo = await loadHand();
+    await whenIdle();
     const mats = {};
     me.root.traverse(o => { for (const m of o.material ? [].concat(o.material) : []) mats[m.name] ||= m; });
     // My soft white, the same as at the range; it dims with the lamps by hand.
     const toy = handMaterial('toy');
     const hands = {};
+    // Each hand and each sleeve in a quiet moment of its own.
     for (const side of ['left', 'right']) {
+      await whenIdle();
       const h = makeRealHand(side, geo, toy);
+      await whenIdle();
       h.root.getObjectByName(`${side}_arm`).add(makeSleeve({ cloth: mats.M_Hoodie, rib: mats.M_Hoodie_Rib || mats.M_Hoodie }));
       group.add(h.root);
       hands[side] = h;
     }
+    await whenIdle();
     const o = origin();
     group.position.copy(o);
     scene.add(group);
-    keysPress(o);
+    await keysPress(o);
+    // Their own shaders and the soft light they are drawn with, made ready before they first show.
+    await prepare(renderer, group, camera, { into: scene, rest: whenIdle });
+    renderer.initTexture(toy.matcap);
     kit = { hands, P: DESK_POSES, TABLE, base: o.clone(), toy, white: toy.color.clone() };
+  }
+  // Fetches and builds the hands once, a piece at a time in quiet moments; asked again, it is the same promise.
+  function ready() {
+    readying ||= build().catch(e => console.warn('[loft] the desk hands did not load', e));
+    return readying;
   }
 
   // A key's stroke, by the finger that touch-types it. A finger strokes one key at a time, so keys typed faster than it
@@ -149,6 +175,7 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
 
   return {
     group,
+    ready,
     get loaded() { return !!kit; },
     get typing() { return typing; },
     get strokes() { return strokes.length; },
@@ -158,7 +185,7 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
       seated = isSeated;
       free = !taken();
       clock += dt;
-      if (seated && !loading) loading = load().catch(e => console.warn('[loft] the desk hands did not load', e));
+      if (seated) ready();
       if (!kit) return;
       shown = Math.max(0, Math.min(1, shown + (seated && !body && free ? dt : -dt) / 0.45));
       group.visible = shown > 0;

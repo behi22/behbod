@@ -351,7 +351,7 @@ const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
 const desk = makeDesk({ camera, me, meta, coarse, follow });
 // Pishi on the keyboard, or jumping onto it or off it: my hands keep off the keys while she is there.
 const onKeys = v => { const kb = keyboard(); return !!v && !!kb && Math.hypot(v.x - kb.x, v.z - kb.z) < 0.3 && Math.abs(v.y - kb.y) < 0.15; };
-const deskHands = makeDeskHands({ scene, world, me, lamp: () => lights.k, playing: () => { const g = screens.desktop.games.playing; return !!(g && !g.paused && !g.done); },
+const deskHands = makeDeskHands({ scene, world, me, renderer, camera, lamp: () => lights.k, playing: () => { const g = screens.desktop.games.playing; return !!(g && !g.paused && !g.done); },
   taken: () => { const c = creatures.pishi; return [c.pos, c.hop?.a, c.hop?.b].some(onKeys); } }); window.__deskHands = deskHands;
 // The computer's desktop, laid over the monitor while I sit at it.
 const deskView = makeDesktopView({ camera, meta, screens, act: deskAct, coarse, sfx: audio.sfx, tapTerminal: () => { if (coarse) $('cmd').focus(); } });
@@ -822,6 +822,8 @@ function walk(dt, now) {
   if (-pos.z > meta.regions[1].min[1]) earn('balcony');
   // A computer asks from the library's doorway; a phone only at the shelf itself, so the walk past it costs no data.
   if (!rangeAsked && pos.y < 2 && Math.hypot(pos.x - bookcase.x, pos.z - bookcase.z) < (coarse ? 2.2 : 4.5)) askRange();
+  // My hands at the desk are fetched and made ready on the way to it, so the first sit has nothing left to build.
+  if (Math.abs(pos.y - deskUse.y) < 1 && Math.hypot(pos.x - deskUse.x, pos.z - deskUse.z) < (coarse ? 3 : 5)) deskHands.ready();
   const was = near;
   near = null;
   if (grounded) {

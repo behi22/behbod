@@ -9,6 +9,9 @@
 //   holo     its rare hologram
 //   jar      the pets' treat jar
 //   smooth   the first of each new thing costs no long frame (it measures frames: run it alone, under the timing lock)
+//   firstsit on a slowed phone my hands are made ready while I stand at the desk, and the first sit builds no shader
+//            and holds no long frame (failed before these changes; it measures frames: run it alone, under the timing
+//            lock)
 //   view     seated, the whole main monitor fills most of the view with its bottom and the keyboard below, at each shape;
 //            the glides in and out are smooth (the body no longer jumps mid glide in: failed before these changes)
 //   webcam   a small webcam on the main monitor's top bezel: in view from the seat, its body dims with the lamps, its
@@ -474,6 +477,42 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       check('smooth: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await ctx.close();
     }
+    // ---------- the first sit on a slowed phone ----------
+    if (want('firstsit')) {
+      const ctx = await b.newContext({ ...UPRIGHT, deviceScaleFactor: 3 }), p = await ctx.newPage(), errs = [];
+      watch(p, errs);
+      await (await ctx.newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      await p.goto(`${BASE}/?auto&q=low&matchday=off`);
+      await p.waitForFunction(() => window.__loft && window.__loft.renderer.info.render.calls > 0, null, { timeout: 180000 });
+      await p.waitForTimeout(8000);
+      // The longest frame, the shader programs built and the long tasks: over `ms`, or until my hands are ready, or
+      // from the moment I sit.
+      const frames = (ms, how) => p.evaluate(async ([ms, how]) => {
+        const R = __loft.renderer, tasks = [], po = new PerformanceObserver(l => { for (const e of l.getEntries()) tasks.push(Math.round(e.duration)); });
+        po.observe({ type: 'longtask' });
+        const p0 = R.info.programs.length, t0 = performance.now();
+        let last = t0, worst = 0;
+        if (how === 'sit') __loft.useDesk();
+        while (how === 'ready' ? !__deskHands.loaded && performance.now() - t0 < ms : performance.now() - t0 < ms) {
+          await new Promise(done => requestAnimationFrame(done));
+          const now = performance.now();
+          worst = Math.max(worst, now - last); last = now;
+        }
+        po.disconnect();
+        return { worst: Math.round(worst), programs: R.info.programs.length - p0, tasks, ms: Math.round(performance.now() - t0) };
+      }, [ms, how]);
+      // At the desk, standing as I would before I sit: my hands are made ready meanwhile, a piece at a time (asking
+      // about a shader still being built held the page 120 to 150 ms). Then the first sit: before the hands, the house
+      // kept it under 70 ms here; with their shaders built in it, it held frames of 90 to 220 ms.
+      await standAt(p, W.points.desk_use, Math.PI / 2);
+      const ready = await frames(20000, 'ready');
+      await p.waitForTimeout(1000);
+      const sit = await frames(6000, 'sit'), shown = await p.evaluate(() => __deskHands.group.visible);
+      check('slowed phone: standing at the desk, my hands are made ready before I sit, no piece of it holding the page long', ready.ms < 20000 && ready.tasks.every(t => t < 80), `${ready.ms} ms, longest frame ${ready.worst} ms, long tasks ${ready.tasks.join(' ') || 'none'}`);
+      check('slowed phone: the first sit builds no shader and holds no long frame, and my hands show', sit.programs === 0 && sit.worst < 100 && shown, `${sit.programs} programs built, longest frame ${sit.worst} ms, long tasks ${sit.tasks.join(' ') || 'none'}`);
+      check('first sit: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
     // ---------- seated: the whole main monitor, bezel and all, fills most of the view; its bottom and the keyboard show ----------
     if (want('view')) {
       const { seatView } = await import('../web/src/pure/seatview.js');
@@ -626,13 +665,15 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       const asked = [];
       p.on('request', r => { if (/assets\/hand\/|realhand|realposes/.test(r.url())) asked.push(r.url()); });
       await p.waitForTimeout(1500);
-      check('nothing of the hands is fetched before I sit', asked.length === 0, asked.slice(0, 2).join(' '));
+      check('nothing of the hands is fetched while I am away from the desk', asked.length === 0, asked.slice(0, 2).join(' '));
       await standAt(p, W.points.desk_use, Math.PI / 2);
+      await p.waitForFunction(() => window.__deskHands.loaded, null, { timeout: 30000 });
+      check('standing at the desk, my hands are fetched and made ready before I sit', !(await p.evaluate(() => __deskHands.group.visible)) && asked.some(u => /hand\.glb/.test(u)), `${asked.length} requests`);
       await p.evaluate(() => __loft.useDesk());
       await p.waitForFunction(() => window.__deskHands.loaded && __deskHands.group.visible, null, { timeout: 30000 });
       await p.waitForTimeout(2000);
       const fetched = asked.filter(u => /hand\.glb/.test(u)).length;
-      check('seated, the hands load once and rise onto the desk; the skin picture is not fetched', fetched === 1 && !asked.some(u => /skin\.webp/.test(u)), `${fetched} hand file, ${asked.length} requests`);
+      check('seated, the hands rise onto the desk, their file fetched once; the skin picture is not fetched', fetched === 1 && !asked.some(u => /skin\.webp/.test(u)), `${fetched} hand file, ${asked.length} requests`);
       // Each key goes down whole: no triangle of the studio has its corners on different keys, or some on a key and
       // some not, and the pomegranate standing on Escape is all Escape's (it tore when Escape went down).
       const whole = await p.evaluate(async () => {
