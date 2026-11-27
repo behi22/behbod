@@ -632,6 +632,22 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.waitForTimeout(2000);
       const fetched = asked.filter(u => /hand\.glb/.test(u)).length;
       check('seated, the hands load once and rise onto the desk; the skin picture is not fetched', fetched === 1 && !asked.some(u => /skin\.webp/.test(u)), `${fetched} hand file, ${asked.length} requests`);
+      // Each key goes down whole: no triangle of the studio has its corners on different keys, or some on a key and
+      // some not, and the pomegranate standing on Escape is all Escape's (it tore when Escape went down).
+      const whole = await p.evaluate(async () => {
+        const { DESK, KEY } = await import('/src/pure/typing.js'), base = __loft.scene.getObjectByName('kb_legends').position, v = base.clone();
+        let mesh = null;
+        __loft.scene.traverse(m => { if (m.isMesh && m.name === 'studio_baked') mesh = m; });
+        const g = mesh.geometry, k = g.attributes.aKey.array, I = g.index, at = i => (I ? I.getX(i) : i), out = { torn: 0, pom: 0, onEscape: 0 };
+        for (let i = 0; i < (I ? I.count : k.length); i += 3) if (k[at(i)] !== k[at(i + 1)] || k[at(i)] !== k[at(i + 2)]) out.torn++;
+        mesh.updateMatrixWorld(true);
+        for (let i = 0; i < k.length; i++) {
+          v.fromBufferAttribute(g.attributes.position, i).applyMatrix4(mesh.matrixWorld).sub(base);
+          if (v.y > DESK.key.top + 0.001 && Math.abs(v.x - KEY.Escape.x) < 0.012 && Math.abs(v.z - KEY.Escape.z) < 0.012) { out.pom++; if (k[i] === KEY.Escape.index) out.onEscape++; }
+        }
+        return out;
+      });
+      check('each key goes down whole, the pomegranate on Escape with it', whole.torn === 0 && whole.pom > 100 && whole.onEscape === whole.pom, JSON.stringify(whole));
       // A key typed: the finger that touch-types it strokes it and the key goes down under it, its legend with it; at
       // the bottom the finger's tip (the lowest of the skin round its last bone, as drawn) is on the key's cap.
       const strokeOf = (code, key) => p.evaluate(async ([code, key]) => {
@@ -662,6 +678,41 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
         await p.waitForTimeout(150);
         check(`${code} typed: its key goes all the way down under the finger that touch-types it, the fingertip on it, then up`, st.at === st.want && st.most > 0.003 && st.typing > 0.5 && st.cap[2] && st.cap[3] && Math.hypot(st.tip[0], st.tip[2]) < 0.009 && st.tip[1] > -0.0015 && st.tip[1] < 0.003 && (await p.evaluate(() => Math.max(...__deskHands.press))) === 0, JSON.stringify(st));
       }
+      // Backquote typed (this board's Escape): my little finger lands on the pomegranate standing on the key and
+      // presses it down, never into it (it pressed the cap's top, inside the pomegranate).
+      const pom = await p.evaluate(async () => {
+        const { KEY } = await import('/src/pure/typing.js'), k = KEY.Escape, base = __loft.scene.getObjectByName('kb_legends').position, v = base.clone();
+        let mesh = null;
+        __loft.scene.traverse(m => { if (m.isMesh && m.name === 'studio_baked') mesh = m; });
+        const g = mesh.geometry, P = g.attributes.position, lo = [1, 1, 1], hi = [-1, -1, -1];
+        mesh.updateMatrixWorld(true);
+        // The pomegranate's corners: over Escape's cap, and not the cap's own (a box, its corners on its edges).
+        for (let i = 0; i < P.count; i++) {
+          v.fromBufferAttribute(P, i).applyMatrix4(mesh.matrixWorld).sub(base);
+          if (Math.abs(v.x - k.x) > 0.01 || Math.abs(v.z - k.z) > 0.01 || v.y < 0.03 || v.y > 0.06) continue;
+          if (Math.abs(Math.abs(v.x - k.x) - k.d / 2) < 1e-4 && Math.abs(Math.abs(v.z - k.z) - k.w / 2) < 1e-4) continue;
+          v.toArray().forEach((x, j) => { lo[j] = Math.min(lo[j], x); hi[j] = Math.max(hi[j], x); });
+        }
+        const c = lo.map((x, j) => (x + hi[j]) / 2), r = lo.map((x, j) => (hi[j] - x) / 2), out = { inside: 0, gap: 1, most: 0, r: r.map(x => +x.toFixed(4)) };
+        const hand = __deskHands.group.getObjectByName('left_realhand'), n = hand.geometry.attributes.position.count;
+        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Backquote', key: String.fromCharCode(96) }));
+        const t0 = performance.now();
+        while (performance.now() - t0 < 1000) {
+          await new Promise(done => requestAnimationFrame(done));
+          const d = __deskHands.press[k.index];
+          hand.updateMatrixWorld(true);
+          let gap = 1;
+          for (let i = 0; i < n; i++) {
+            hand.getVertexPosition(i, v).applyMatrix4(hand.matrixWorld).sub(base);
+            const e = [(v.x - c[0]) / r[0], (v.y - c[1] + d) / r[1], (v.z - c[2]) / r[2]], q = Math.hypot(...e), far = Math.hypot(v.x - c[0], v.y - c[1] + d, v.z - c[2]);
+            if (q < 0.97) out.inside++;
+            gap = Math.min(gap, far * (1 - 1 / q));
+          }
+          if (d >= out.most) { out.most = d; out.gap = +gap.toFixed(4); }
+        }
+        return out;
+      });
+      check('the backquote key (Escape here) typed: my little finger presses the pomegranate on it from its top, never going into it', pom.inside === 0 && pom.most > 0.003 && pom.gap > -0.0005 && pom.gap < 0.003, JSON.stringify(pom));
       // Seen from my eyes, the keys being typed nearest me are not hidden behind my sleeves.
       const hid = await p.evaluate(async () => {
         const { KEY } = await import('/src/pure/typing.js'), T = __loft.camera.position.constructor, base = __loft.scene.getObjectByName('kb_legends').position;

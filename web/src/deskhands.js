@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { KEYS, keyFor, keysForText, fingerFor, HOME, strokeAt, advance, TRAVEL, DESK } from './pure/typing.js';
+import { KEYS, keyFor, keysForText, fingerFor, HOME, spotOn, strokeAt, advance, TRAVEL, DESK } from './pure/typing.js';
 
 // My hands at the desk, seen from my own eyes once the camera has glided in: fetched the first time I sit, they come
 // up onto the keyboard as my body leaves the view. While I type at the terminal or play a desk game both hands are on
@@ -16,7 +16,7 @@ const SAME_PRESS = 0.15;
 
 export function makeDeskHands({ scene, world, me, playing = () => false, lamp = () => 1 }) {
   let kit = null, loading = null, seated = false, shown = 0, typing = 0, lastKey = -1e9, named = -1e9, clock = 0, clicks = 0;
-  const group = new THREE.Group(), strokes = [], texts = new WeakMap();
+  const group = new THREE.Group(), strokes = [], texts = new WeakMap(), rise = new Float32Array(KEYS.length);
   // The keys' press, shared with the lit legends over them (kblegends.js).
   const press = scene.getObjectByName('kb_legends')?.userData.press || new Float32Array(KEYS.length);
   group.name = 'desk_hands';
@@ -28,9 +28,10 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
     const g = world.deskThings.find(o => o.name === 'kb_glow'), c = new THREE.Box3().setFromObject(g).getCenter(new THREE.Vector3());
     return c.setY(c.y - 0.006);
   }
-  // The key a point on the desk keyboard's caps belongs to (desk space), or -1.
+  // The key a point on the desk keyboard's caps belongs to (desk space), or -1. Whatever stands on a cap (the
+  // pomegranate on Escape) is part of it and goes down with it whole.
   function capAt(v) {
-    if (v.y < DESK.key.top - DESK.key.h - 0.0006 || v.y > DESK.key.top + 0.0006) return -1;
+    if (v.y < DESK.key.top - DESK.key.h - 0.0006 || v.y > DESK.key.top + 0.02) return -1;
     for (const k of KEYS) if (Math.abs(v.x - k.x) <= k.d / 2 + 0.0006 && Math.abs(v.z - k.z) <= k.w / 2 + 0.0006) return k.index;
     return -1;
   }
@@ -42,7 +43,14 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
     if (!mesh) return;
     const g = mesh.geometry, p = g.attributes.position, idx = new Float32Array(p.count).fill(-1), v = new THREE.Vector3();
     mesh.updateMatrixWorld(true);
-    for (let i = 0; i < p.count; i++) idx[i] = capAt(v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld).sub(o));
+    for (let i = 0; i < p.count; i++) {
+      const k = idx[i] = capAt(v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld).sub(o));
+      // A finger stroking a key with something standing on it lands on that, as high as it stands under the finger.
+      if (k >= 0 && v.y > DESK.key.top) {
+        const f = fingerFor(KEYS[k]), [x, z] = spotOn(KEYS[k], f.side, f.digit);
+        if (Math.hypot(v.x - x, v.z - z) < 0.004) rise[k] = Math.max(rise[k], v.y - DESK.key.top);
+      }
+    }
     g.setAttribute('aKey', new THREE.BufferAttribute(idx, 1));
     // Down in the mesh's own axes, a metre long in the room's.
     const down = new THREE.Vector3(0, -1, 0).applyMatrix3(new THREE.Matrix3().setFromMatrix4(mesh.matrixWorld).invert());
@@ -114,7 +122,7 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
       if (!K) continue;
       const on = lerpA(K.top, K.press, e.press);
       a = lerpA(lerpA(base, on, s.away ? e.over : 1), K.lift, e.lift * 0.5);
-      shift = K.shift.map(v => v * (s.away ? e.over : 1));
+      shift = K.shift.map((v, i) => (v + (i === 1 ? rise[s.key.index] : 0)) * (s.away ? e.over : 1));
       press[s.key.index] = Math.max(press[s.key.index], e.press * TRAVEL);
     }
     return { a, shift };
