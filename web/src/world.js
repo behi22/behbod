@@ -111,7 +111,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       } else if (m.name?.startsWith('G_')) {
         const water = name === 'aqua_water';
         // One pass: a flat tint looks the same either way round, and two passes re-pick its shader twice a frame.
-        o.material = new THREE.MeshBasicMaterial({ color: water ? 0x1f7fa8 : 0x9fb6d8, transparent: true, opacity: name === 'window_glass' ? 0.05 : water ? 0.3 : 0.12, depthWrite: false, fog: true, side: THREE.DoubleSide, forceSinglePass: true });
+        o.material = new THREE.MeshBasicMaterial({ color: water ? 0x1f7fa8 : 0x9fb6d8, transparent: true, opacity: name === 'window_glass' || name === 'pc_glass' ? 0.05 : water ? 0.3 : 0.12, depthWrite: false, fog: true, side: THREE.DoubleSide, forceSinglePass: true });
         o.renderOrder = 2;
       } else if (EMISSIVE[m.name]) {
         const [r, g, b, k] = EMISSIVE[m.name];

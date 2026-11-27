@@ -13,10 +13,10 @@ GROUPS = {}
 # The mezzanine's boards bake as oak and show as the dark wood of the version he liked.
 # The desk's black things (keyboard, mouse, wrist rest, the three mini screens' cases): near black under the desk lamp
 # bakes mid grey, and they must read black. The sticky pad bakes white instead of its mint, the laptop's aluminium
-# white instead of silver.
+# white instead of silver, and the PC's insides would drown its coolant's glow.
 SHADE = {'oak_mezz': (0.093, 0.082, 0.047), 'keycap': (0.15, 0.15, 0.15), 'kb_body': (0.08, 0.08, 0.08), 'wrist_pad': (0.12, 0.12, 0.12),
          'mini_case': (0.1, 0.1, 0.1), 'sticky_pad': (0.14, 0.14, 0.14),
-         'alu': (0.4, 0.4, 0.4)}
+         'alu': (0.4, 0.4, 0.4), 'pc_inside': (0.35, 0.35, 0.35)}
 _zone = [None]
 _off = [Vector()]
 

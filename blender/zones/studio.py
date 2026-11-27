@@ -174,46 +174,8 @@ def build(M, E, G):
             box('onair_box', (0.03, 0.3, 0.09), (EW - 0.062, MC.y, 2.62), M['black'], bevel=0.006)
             plane('onair', 0.27, 0.065, (EW - 0.079, MC.y, 2.62), E['onair'], '-X')
 
-            # ---------- the maxed PC behind glass on the return, facing the room ----------
-            PCX, PCY = 14.28, 1.3
-            # The case is open on the glass side, so everything inside shows.
-            box('pc_back', (0.476, 0.012, 0.496), (PCX, PCY - 0.124, DZ + 0.26), M['black'], bevel=0.004)
-            for nm, z in (('pc_floor', DZ + 0.006), ('pc_roof', DZ + 0.514)):
-                box(nm, (0.476, 0.26, 0.012), (PCX, PCY, z), M['black'], bevel=0.004)
-            for sx in (-1, 1):
-                box(f'pc_side{sx}', (0.012, 0.26, 0.52), (PCX + sx * 0.244, PCY, DZ + 0.26), M['black'], bevel=0.004)
-            box('pc_board', (0.42, 0.01, 0.44), (PCX, PCY - 0.11, DZ + 0.27), M['plastic'])
-            for i, z in enumerate((0.2, 0.33)):
-                box(f'gpu{i + 1}', (0.34, 0.05, 0.1), (PCX - 0.02, PCY - 0.05, DZ + z), M['metal'], bevel=0.006)
-                box(f'gpu{i + 1}_led', (0.32, 0.004, 0.012), (PCX - 0.02, PCY - 0.022, DZ + z), E['rgb_purple'], kind='emit')
-            for i in range(3):
-                bm = bmesh.new()
-                bmesh.ops.create_circle(bm, cap_ends=False, segments=24, radius=0.055)
-                bmesh.ops.rotate(bm, cent=Vector(), matrix=Matrix.Rotation(math.pi / 2, 3, 'Y'), verts=bm.verts)
-                rr = bmesh.ops.extrude_edge_only(bm, edges=bm.edges[:])
-                for g in rr['geom']:
-                    if isinstance(g, bmesh.types.BMVert):
-                        g.co *= 0.82
-                bmesh.ops.translate(bm, vec=P((PCX - 0.232, PCY, DZ + 0.12 + i * 0.13)), verts=bm.verts)
-                link(f'fan{i}', bm, E['rgb_teal'], 'emit')
-            cyl('cpu_block', 0.035, 0.02, (PCX + 0.06, PCY - 0.09, DZ + 0.37), E['rgb_teal'], axis='Y', kind='emit')
-            for i in range(4):
-                box(f'ram{i}', (0.006, 0.004, 0.05), (PCX + 0.12 + i * 0.012, PCY - 0.09, DZ + 0.41), M['black'])
-                box(f'ram{i}_led', (0.006, 0.0045, 0.006), (PCX + 0.12 + i * 0.012, PCY - 0.09, DZ + 0.438), E['rgb_purple'] if i % 2 else E['rgb_teal'], kind='emit')
-            # Water cooling you can see through the glass: a lit reservoir, a radiator with three fans under the roof, and
-            # hard tubes round the loop (reservoir, CPU block, radiator, down the far side and back), clear of the cards.
-            cyl('coolant_res', 0.032, 0.168, (PCX + 0.2, PCY + 0.04, DZ + 0.199), E['rgb_teal'], seg=20, kind='emit')
-            cyl('res_cap', 0.034, 0.012, (PCX + 0.2, PCY + 0.04, DZ + 0.29), M['metal'], seg=20)
-            box('radiator', (0.4, 0.12, 0.028), (PCX - 0.01, PCY - 0.04, DZ + 0.48), M['black'], bevel=0.004)
-            for i in range(3):
-                cyl(f'rad_fan{i}', 0.042, 0.006, (PCX - 0.14 + i * 0.13, PCY - 0.04, DZ + 0.464), E['rgb_teal'], seg=24, kind='emit')
-            for i, pts in enumerate((
-                [(0.2, 0.04, 0.296), (0.2, 0.04, 0.44), (0.075, -0.04, 0.44), (0.075, -0.04, 0.39), (0.075, -0.08, 0.39)],
-                [(0.04, -0.08, 0.39), (0.04, -0.05, 0.39), (0.04, -0.05, 0.466)],
-                [(-0.2, -0.04, 0.466), (-0.2, 0.0, 0.44), (-0.2, 0.0, 0.09), (0.2, 0.04, 0.09), (0.2, 0.04, 0.114)],
-            )):
-                tube(f'coolant_pipe{i}', [(PCX + x, PCY + y, DZ + z) for x, y, z in pts], 0.006, E['rgb_teal'], seg=8, kind='emit')
-            plane('pc_glass', 0.48, 0.5, (PCX, PCY + 0.131, DZ + 0.26), G['glass'], '+Y', kind='glass')
+            # ---------- the PC behind glass on the return, facing the room, detailed in and out (studio_props.py) ----------
+            props.pc(M, E, G, 14.28, 1.3, DZ)
 
             # ---------- the laptop, closed on the return, with its dock (stickers and logo are the page's) ----------
             LX, LY = 14.85, 1.3
