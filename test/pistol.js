@@ -190,6 +190,32 @@ const since = (a, b) => b.cues.slice(a.cues.length);
     slow.sort((a, c) => a - c);
     const avg = slow.reduce((a, c) => a + c, 0) / slow.length;
     check('slowed four times, the hands keep the frame rate (a reload and a look over)', avg < 34, `average ${avg.toFixed(1)} ms, worst ${slow.at(-1).toFixed(0)} ms, 95th ${slow[Math.floor(slow.length * 0.95)].toFixed(0)} ms`);
+
+    // Lights out: a shot's flash lights my hands as it lights the gun. Only the hands are drawn for the measure.
+    const flashOn = await p.evaluate(async () => {
+      const THREE = await import('three'), r = __loft.renderer, range = __loft.range, g = range.gun;
+      const tick = async () => { range.advance(1 / 60); await new Promise(f => requestAnimationFrame(f)); };
+      range.start('dark', 'normal', 3); range.film(true);
+      for (let i = 0; i < 400 && range.state !== 'play'; i++) await tick();
+      for (let i = 0; i < 120; i++) await tick();
+      const t = new THREE.WebGLRenderTarget(320, 200), px = new Uint8Array(320 * 200 * 4), keep = new Set([g.hands.right.mesh, g.hands.left.mesh]);
+      const hands = () => {
+        const hidden = [], was = r.getRenderTarget(), clear = r.getClearColor(new THREE.Color()), alpha = r.getClearAlpha();
+        g.scene.traverse(o => { if (o.isMesh && o.visible && !keep.has(o)) { o.visible = false; hidden.push(o); } });
+        r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); r.render(g.scene, g.camera); r.readRenderTargetPixels(t, 0, 0, 320, 200, px);
+        r.setRenderTarget(was); r.setClearColor(clear, alpha);
+        for (const o of hidden) o.visible = true;
+        let s = 0, n = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 0) { s += px[i] + px[i + 1] + px[i + 2]; n++; }
+        return { light: n ? s / n / 765 : 0, n };
+      };
+      const before = hands();
+      range.press('fire', true); await tick(); range.press('fire', false);
+      const shot = hands();
+      t.dispose(); range.film(false);
+      return { before, shot };
+    });
+    check('lights out: a shot\'s flash lights my hands as it lights the gun', flashOn.before.n > 1000 && flashOn.shot.light > flashOn.before.light + 0.05, JSON.stringify(flashOn));
     check('desktop: no errors or warnings', errs.length === 0, JSON.stringify(errs.slice(0, 5)));
     await p.close();
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { lit } from './lit.js';
+import { lit, U, TONE } from './lit.js';
 import { breathe as breath } from '../pure/slices.js';
 import { makeSleeveMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
@@ -161,6 +161,17 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   flash.add(burst, ...tongues);
   flash.visible = false; flash.renderOrder = 5;
   const glare = new THREE.PointLight(0xffc27a, 0, 2.5, 2);
+  // The hands' soft white (a matcap) is blind to lights, so the flash's light is added to it as it falls on the gun.
+  const glareAt = { value: new THREE.Vector3() }, glareRGB = { value: new THREE.Color(0, 0, 0) };
+  skin.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, { uGlareAt: glareAt, uGlare: glareRGB, uWhite: { value: white }, uExposure: U.exposure });
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform vec3 uGlareAt, uGlare, uWhite; uniform float uExposure;\n${TONE}`)
+      .replace('#include <opaque_fragment>', `{ vec3 l = ( viewMatrix * vec4( uGlareAt, 1.0 ) ).xyz + vViewPosition; float d = length( l );
+        float fall = pow2( saturate( 1.0 - pow4( d / ${glare.distance.toFixed(2)} ) ) ) / max( pow( d, ${glare.decay.toFixed(1)} ), 0.01 );
+        outgoingLight += rangeTone( uWhite * RECIPROCAL_PI * uGlare * saturate( dot( normal, l / d ) ) * fall * uExposure ); }
+      #include <opaque_fragment>`);
+  };
+  skin.customProgramCacheKey = () => 'hand-glare';
   // The flash and its light sit where the shot leaves: the muzzle, or a suppressor's end.
   function placeFlash(at) {
     anchor.muzzle = at;
@@ -471,6 +482,8 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
         if (back) p = blend(p, pick(side, was[side]), back);
         hands[side].pose(p, forearm(side, p, arr(eyeToGun(elbows[side], v2))));
       }
+      glareRGB.value.copy(glare.color).multiplyScalar(glare.intensity);
+      if (glare.intensity > 0) glare.getWorldPosition(glareAt.value);
       // The charm swings; all the way into a scope, its own picture is all there is to see.
       api.swingCharm(dt);
       rig.visible = api.scoped < 0.98;

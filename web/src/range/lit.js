@@ -11,6 +11,7 @@ export const U = {
   hallTint: { value: new THREE.Color(1, 1, 1) }, hallZ: { value: new THREE.Vector2(1e5, 1e5 + 1) },
 };
 
+export const TONE = 'vec3 rangeTone(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }';
 const HEAD = `
 uniform float uExposure, uTone, uHazeK; uniform vec3 uHaze, uBoxMin, uBoxMax, uProbe, uHallTint; uniform vec2 uHallZ;
 // The room's reflection is one look around from the firing line. Used as it is, a patch of floor far down the hall
@@ -23,7 +24,7 @@ vec3 rangeProject(vec3 dir) {
   return normalize(pos + dir * min(min(t3.x, t3.y), t3.z) - uProbe);
 }
 // A film curve (Narkowicz's fit of ACES): bright light rolls off to white instead of clipping.
-vec3 rangeTone(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }`;
+${TONE}`;
 const TAIL = `
   gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, 1.0 - exp(-length(vViewPosition) * uHazeK));
   gl_FragColor.rgb = mix(gl_FragColor.rgb, rangeTone(gl_FragColor.rgb * uExposure), uTone);`;
