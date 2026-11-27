@@ -3,6 +3,7 @@ import { b2t } from './engine.js';
 import { makeConfetti } from './confetti.js';
 import { makeWebcam } from './webcam.js';
 import { makeKeyLight } from './kblegends.js';
+import { makeLaptopStickers } from './laptopstickers.js';
 import { newFan, fanStep, fanSet, DEPLOY_SPOT } from './pure/desk.js';
 
 export { FAN_SPOT } from './pure/desk.js';
@@ -21,6 +22,7 @@ export function makeDeskBits({ scene, meta, world, screens, creatures, onDeploy 
   const reach = new THREE.Sphere(btn.clone(), 0.06), hitAt = new THREE.Vector3();
   let confetti = null;
   const fan = newFan(), webcam = makeWebcam(scene, meta), keyLight = makeKeyLight(scene, world);
+  makeLaptopStickers(scene, meta);
   const busy = () => { const g = screens.desktop.games.playing; return world.deploying || !!(g && !g.paused && !g.done); };
 
   // say(...lines): the terminal's, when the deploy was typed or the terminal is open to show it.

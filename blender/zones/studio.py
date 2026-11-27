@@ -6,6 +6,7 @@ from mathutils import Vector, Matrix
 from lib.core import (zone, box, cyl, sphere, plane, tube, bezier, prism, link, collider, point, screen, interact, char_light,
                       area, lamp, potted, principled, seat, rug, wallspot, at, P, L, META)
 from zones.layout import STUDIO_Z, W, STUDIO
+from zones import studio_props as props
 
 Z0 = STUDIO_Z
 DZ = Z0 + 0.76                     # desk top
@@ -214,21 +215,13 @@ def build(M, E, G):
                 tube(f'coolant_pipe{i}', [(PCX + x, PCY + y, DZ + z) for x, y, z in pts], 0.006, E['rgb_teal'], seg=8, kind='emit')
             plane('pc_glass', 0.48, 0.5, (PCX, PCY + 0.131, DZ + 0.26), G['glass'], '+Y', kind='glass')
 
-            # ---------- the laptop, open on a stand, with its dock ----------
+            # ---------- the laptop, closed on the return, with its dock (stickers and logo are the page's) ----------
             LX, LY = 14.85, 1.3
-            box('laptop_stand', (0.26, 0.2, 0.012), (LX, LY, DZ + 0.06), M['steel'], tilt=(math.radians(-14), 0, 0))
-            box('laptop_stand_leg', (0.2, 0.012, 0.11), (LX, LY - 0.09, DZ + 0.055), M['steel'])
-            box('laptop_stand_lip', (0.25, 0.008, 0.032), (LX, LY + 0.094, DZ + 0.016), M['steel'])
-            box('laptop_base', (0.31, 0.22, 0.014), (LX, LY, DZ + 0.088), M['metal'], bevel=0.004, tilt=(math.radians(-14), 0, 0))
-            lid_c = (LX, LY - 0.13, DZ + 0.2)
-            box('laptop_lid', (0.31, 0.01, 0.21), lid_c, M['metal'], bevel=0.004, tilt=(math.radians(8), 0, 0))
-            plane('screen_laptop', 0.28, 0.18, (LX, LY - 0.122, DZ + 0.2), E['screen'], '+Y')
-            screen('laptop', (LX, LY - 0.122, DZ + 0.2), 0.28, 0.18)
-            for i, c in enumerate(('red', 'gold', 'book2', 'leaf2')):
-                box(f'sticker{i}', (0.05, 0.001, 0.05), (LX - 0.08 + (i % 2) * 0.1, LY - 0.14, DZ + 0.16 + (i // 2) * 0.07), M[c])
+            port_x, port_z = props.laptop(M, E, LX, LY, DZ)
             box('dock', (0.06, 0.16, 0.025), (LX + 0.22, LY + 0.05, DZ + 0.013), M['black'], bevel=0.005)
             box('dock_led', (0.003, 0.02, 0.004), (LX + 0.19, LY + 0.1, DZ + 0.022), E['led_blue'], kind='emit')
-            tube('dock_cable', bezier((LX + 0.2, LY + 0.0, DZ + 0.004), (LX + 0.15, LY - 0.05, DZ + 0.0), (LX + 0.14, LY - 0.05, DZ + 0.06), (LX + 0.155, LY - 0.02, DZ + 0.09)), 0.003, M['braid'])
+            box('dock_plug', (0.012, 0.009, 0.0045), (port_x + 0.0065, LY + 0.02, port_z), M['black'], bevel=0.001)
+            tube('dock_cable', bezier((LX + 0.2, LY + 0.0, DZ + 0.004), (LX + 0.185, LY + 0.0, DZ + 0.003), (LX + 0.185, LY + 0.02, DZ + 0.003), (port_x + 0.011, LY + 0.02, port_z)), 0.0025, M['braid'])
 
             # ---------- speakers, subwoofer, cable tray ----------
             for nm, sy in (('l', 2.92), ('r', 1.45)):
