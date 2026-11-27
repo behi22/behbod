@@ -734,6 +734,24 @@ const eyes = p => p.evaluate(() => { const r = __loft.creatures.bh22; return { m
       await p.waitForTimeout(3500);
       const idle = await p.evaluate(() => __deskHands.typing);
       check('typing keeps both hands on the keys; a pause sends the right hand back to the mouse', busy > 0.99 && idle === 0, `${busy} then ${idle}`);
+      // Typed while the hands are still on their way to the keys, "lol" is three strokes of my right ring finger, one
+      // after another: never two of its keys down at once (L and O went down together, O with no finger on it).
+      const lol = await p.evaluate(async () => {
+        const { KEYS, fingerFor } = await import('/src/pure/typing.js'), out = { together: 0, downs: [] }, was = new Float32Array(KEYS.length);
+        for (const ch of 'lol') window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Key' + ch.toUpperCase(), key: ch }));
+        const t0 = performance.now();
+        while (performance.now() - t0 < 2500) {
+          await new Promise(done => requestAnimationFrame(done));
+          const P = __deskHands.press, fingers = {};
+          KEYS.forEach((k, i) => {
+            if (P[i] > 0) { const f = fingerFor(k); fingers[f.side + f.digit] = (fingers[f.side + f.digit] || 0) + 1; if (!was[i]) out.downs.push(k.id); }
+            was[i] = P[i];
+          });
+          if (Object.values(fingers).some(n => n > 1)) out.together++;
+        }
+        return out;
+      });
+      check('keys typed while my hands come onto the keyboard are pressed one at a time by their finger', lol.together === 0 && lol.downs.join() === 'KeyL,KeyO,KeyL', JSON.stringify(lol));
       await p.evaluate(() => __loft.leaveDesk());
       await p.waitForTimeout(2500);
       check('standing up, the hands go', !(await p.evaluate(() => __deskHands.group.visible)));

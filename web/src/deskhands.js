@@ -86,11 +86,13 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
     kit = { hands, P: DESK_POSES, TABLE, base: o.clone(), toy, white: toy.color.clone() };
   }
 
-  // A key's stroke, by the finger that touch-types it.
+  // A key's stroke, by the finger that touch-types it. A finger strokes one key at a time, so keys typed faster than it
+  // can follow wait their turn, two at most: the hands keep up with the typing.
   function stroke(key) {
     const f = fingerFor(key);
-    strokes.push({ ...f, key, t: 0, away: HOME[f.side][f.digit] !== key.id });
     lastKey = clock;
+    if (strokes.filter(x => x.side === f.side && x.digit === f.digit).length > 2) return;
+    strokes.push({ ...f, key, t: 0, away: HOME[f.side][f.digit] !== key.id });
   }
   // A key pressed while I sit: its finger strokes it. Every key this board has counts; ones it has not are left alone.
   addEventListener('keydown', e => {
@@ -114,19 +116,13 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
   }, true);
   addEventListener('pointerdown', () => { if (seated) clicks = 0.16; }, true);
 
-  // One finger's angles: home, over to its key, pressed, lifted on the way, from the per-key table.
+  // One finger's angles: home, over to the key it is stroking, pressed, lifted on the way, from the per-key table.
   function fingerPose(side, digit, base) {
-    let a = base, shift = [0, 0, 0];
-    for (const s of strokes) {
-      if (s.side !== side || s.digit !== digit) continue;
-      const e = strokeAt(s.t, s.away), K = kit.TABLE[side][digit][s.key.id];
-      if (!K) continue;
-      const on = lerpA(K.top, K.press, e.press);
-      a = lerpA(lerpA(base, on, s.away ? e.over : 1), K.lift, e.lift * 0.5);
-      shift = K.shift.map((v, i) => (v + (i === 1 ? rise[s.key.index] : 0)) * (s.away ? e.over : 1));
-      press[s.key.index] = Math.max(press[s.key.index], e.press * TRAVEL);
-    }
-    return { a, shift };
+    const s = strokes.find(x => x.side === side && x.digit === digit), K = s && kit.TABLE[side][digit][s.key.id];
+    if (!K) return { a: base, shift: [0, 0, 0] };
+    const e = strokeAt(s.t, s.away), on = lerpA(K.top, K.press, e.press);
+    press[s.key.index] = Math.max(press[s.key.index], e.press * TRAVEL);
+    return { a: lerpA(lerpA(base, on, s.away ? e.over : 1), K.lift, e.lift * 0.5), shift: K.shift.map((v, i) => (v + (i === 1 ? rise[s.key.index] : 0)) * (s.away ? e.over : 1)) };
   }
   function poseHand(side) {
     const P = kit.P, typed = P.home[side], other = side === 'left' ? P.rest.left : P.mouse.right, digits = {}, k = typing;
@@ -164,12 +160,16 @@ export function makeDeskHands({ scene, world, me, playing = () => false, lamp = 
       shown = Math.max(0, Math.min(1, shown + (seated && !body ? dt : -dt) / 0.45));
       group.visible = shown > 0;
       if (!group.visible) { strokes.length = 0; press.fill(0); return; }
-      const want = clock - lastKey < 2.5 || playing() ? 1 : 0;
+      const want = strokes.length || clock - lastKey < 2.5 || playing() ? 1 : 0;
       typing = Math.max(0, Math.min(1, typing + (want ? dt : -dt) / 0.4));
       clicks = Math.max(0, clicks - dt);
       press.fill(0);
-      // A stroke waits for its hand to come over onto the keys (from the mouse or the desk), then plays.
-      if (typing > 0.95) for (const s of strokes) s.t = advance(s.t, dt, s.away);
+      // A stroke waits for its hand to come over onto the keys (from the mouse or the desk), then plays, each finger's
+      // next one once it is done with the one before.
+      if (typing > 0.95) {
+        const busy = new Set();
+        for (const s of strokes) if (!busy.has(s.side + s.digit)) { busy.add(s.side + s.digit); s.t = advance(s.t, dt, s.away); }
+      }
       for (let i = strokes.length - 1; i >= 0; i--) if (strokeAt(strokes[i].t, strokes[i].away).done) strokes.splice(i, 1);
       // They come up from below the desk's edge as I arrive, and go back down as I leave.
       const e = shown * shown * (3 - 2 * shown);
