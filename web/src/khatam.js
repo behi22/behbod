@@ -30,6 +30,29 @@ function tile(h, k) {
   tiles.set(key, t);
   return t;
 }
+// A tile's canvas is kept on the graphics card, and a board painted on the processor waits for the tile at each strip
+// filled from it (20 to 70 ms on a busy card). Its pixels are fetched in a worker instead and kept on the processor.
+async function onProcessor(t, w) {
+  const frame = new VideoFrame(t.c, { timestamp: 0 });
+  let got;
+  try {
+    got = await new Promise((done, fail) => {
+      const guard = setTimeout(() => fail(new Error('the worker did not answer')), 3000);
+      w.onmessage = e => { clearTimeout(guard); if (e.data.error) fail(new Error(e.data.error)); else done(e.data); };
+      w.onerror = e => { clearTimeout(guard); fail(e); };
+      w.postMessage(frame, [frame]);
+    });
+  } finally {
+    frame.close();
+  }
+  const { buf, offset, stride } = got;
+  const c = document.createElement('canvas');
+  c.width = t.c.width; c.height = t.c.height;
+  const g = c.getContext('2d', { willReadFrequently: true }), img = g.createImageData(c.width, c.height), row = c.width * 4;
+  for (let y = 0; y < c.height; y++) img.data.set(buf.subarray(offset + y * stride, offset + y * stride + row), y * row);
+  g.putImageData(img, 0, 0);
+  t.c = c;
+}
 
 // A strip from the current origin along +x, `len` long and `h` across (0 is its outer edge), its middle star halfway
 // along. `mitre` cuts both ends at 45 degrees, as the four sides of a frame meet.
@@ -65,10 +88,20 @@ export function bar(g, x, y, w, h) {
 }
 
 // The open board on the balcony table, 460 by 320 mm, `k` canvas pixels to the millimetre: a khatam frame and middle
-// bar round two walnut fields, and the points in bone and red. It is painted in nine steps (each field's wood, each
-// field's points, each side of the frame, the bar), so the page can paint one step at a time and never hold a frame
-// for the whole board.
+// bar round two walnut fields, and the points in bone and red. It is painted in small steps (a field's wood, a few lines
+// of its grain, a pair of points, a side of the frame, the bar), so the page can paint a few at a time and never hold a
+// frame for the whole board.
 const NARD = { w: 460, h: 320, band: 13, bar: 16, point: 120 };
+// The board's strip tiles at `k` pixels to the millimetre, made and brought onto the processor before it is painted.
+// Where that cannot be done (no worker, no VideoFrame) they stay as they are: the same board, filled as before.
+export async function nardReady(k) {
+  let w = null;
+  try {
+    w = new Worker(new URL('./khatamwork.js', import.meta.url), { type: 'module' });
+    for (const h of [NARD.band, NARD.bar]) await onProcessor(tile(h, k), w);
+  } catch { /* the tiles stay on the graphics card */ }
+  w?.terminate();
+}
 export function* nardSteps(g, k) {
   const { w, h, band, bar: bw, point } = NARD;
   g.save();
@@ -80,6 +113,7 @@ export function* nardSteps(g, k) {
     const f = g.createLinearGradient(0, fy0, 0, fy1);
     f.addColorStop(0, '#5e3c20'); f.addColorStop(0.5, '#4f3119'); f.addColorStop(1, '#5e3c20');
     g.fillStyle = f; g.fillRect(x0, fy0, x1 - x0, fy1 - fy0);
+    yield;
     // Walnut grain running the length of each field.
     g.save(); g.beginPath(); g.rect(x0, fy0, x1 - x0, fy1 - fy0); g.clip();
     for (let i = 0; i < 46; i++) {
@@ -89,6 +123,7 @@ export function* nardSteps(g, k) {
       g.beginPath();
       for (let x = x0; x <= x1; x += 4) g.lineTo(x, y + Math.sin(x / wl + ph) * amp);
       g.stroke();
+      if (i % 4 === 3) yield;
     }
     g.restore();
     yield;
@@ -103,6 +138,7 @@ export function* nardSteps(g, k) {
         g.beginPath(); g.moveTo(px + 1.2, base); g.lineTo(px + pw - 1.2, base); g.lineTo(px + pw / 2, tip); g.closePath(); g.fill();
         g.strokeStyle = 'rgba(201,162,78,.75)'; g.lineWidth = 0.5; g.stroke();
       }
+      yield;
     }
     // A brass stringing line round the field, inside the khatam.
     g.strokeStyle = '#c9a24e'; g.lineWidth = 0.8;

@@ -1,7 +1,8 @@
 // The lounge's half of R4 in a real Chrome: the khatam on the backgammon boards, the game shelf and its covers, the
 // Shahnameh on the mezzanine opening the reader, and the project frames up the stairs, at a desk and on phones.
 //   LOFT_URL=http://127.0.0.1:8823 node test/lounge.js [outdir] [parts]
-// Parts: covers, khatam, game, shelf, reader, frames, phone, smooth (smooth measures frames: run it alone, under `timing`).
+// Parts: covers, khatam, game, shelf, reader, frames, phone, and inlay and smooth (they time the page: run them alone,
+// under `timing`).
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const { launch } = require('./quiet');
@@ -175,6 +176,35 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       await shot(p, 'board-corner', [15.12, 16.44, 0.97], [15.2, 16.72, 0.8], 960, 600, 40);
       check('khatam: no error', errs.length === 0, errs.slice(0, 3).join(' | '));
       await p.close();
+    }
+
+    if (want('inlay')) {
+      // The balcony board is inlaid a few steps at a time in quiet moments; each moment is timed in the page itself (the
+      // idle callbacks that paint it), on his laptop at ultra, where the graphics card is busiest, and on a phone 4x
+      // slower. Failed before: its strips were filled from tiles kept on the graphics card, and the page waited for them
+      // in the last step, 34 to 45 ms at ultra. Without VideoFrame the tiles stay there, and the board is inlaid all the same.
+      const timeInlay = () => {
+        window.__inlay = [];
+        const ric = window.requestIdleCallback;
+        if (ric) window.requestIdleCallback = (cb, o) => ric.call(window, !/steps\.next\(\)\.done/.test(String(cb)) ? cb : function (d) { const t = performance.now(); try { return cb.call(this, d); } finally { window.__inlay.push(+(performance.now() - t).toFixed(1)); } }, o);
+      };
+      for (const [name, opts, q, cpu, init] of [['his laptop at ultra', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 }, 'ultra', 1, null],
+        ['a phone 4x slower', UPRIGHT, 'medium', 4, null], ['without VideoFrame', DESK, 'high', 1, () => { delete window.VideoFrame; }]]) {
+        const p = await b.newPage(opts), errs = [];
+        watch(p, errs);
+        await p.addInitScript(timeInlay);
+        if (init) await p.addInitScript(init);
+        if (cpu > 1) await (await p.context().newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: cpu });
+        await p.goto(`${BASE}/?auto&q=${q}`);
+        await p.waitForFunction(() => window.__loft && __loft.renderer.info.render.calls > 0, null, { timeout: 300000 });
+        const t0 = Date.now();
+        const inlaid = await p.waitForFunction(() => { const d = __loft.screens.textures.backgammon.image.getContext('2d').getImageData(0, 0, 920, 26).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 47) + Math.abs(d[i + 1] - 106) + Math.abs(d[i + 2] - 76) < 40) n++; return n > 200; }, null, { timeout: 90000, polling: 200 }).then(() => true, () => false);
+        const took = ((Date.now() - t0) / 1000).toFixed(1), steps = await p.evaluate(() => window.__inlay.slice()), most = Math.max(...steps);
+        if (init) check(`${name}: the board is inlaid all the same`, inlaid, `${steps.length} idle callbacks, inlaid ${took} s after the house opened`);
+        else check(`${name}: the board is inlaid a few steps at a time, each moment under a 60 Hz frame (16.7 ms)`, inlaid && steps.length > 2 && most < 16.7, `${steps.length} idle callbacks, the longest ${most} ms; inlaid ${took} s after the house opened`);
+        check(`inlay, ${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
+        await p.close();
+      }
     }
 
     if (want('shelf')) {
