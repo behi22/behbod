@@ -37,7 +37,8 @@ export const DESK = {
 const SHIFTED = { '!': '1', '@': '2', '#': '3', $: '4', '%': '5', '^': '6', '&': '7', '*': '8', '(': '9', ')': '0', _: '-', '+': '=', '{': '[', '}': ']', '|': '\\', ':': ';', '"': '\'', '<': ',', '>': '.', '?': '/', '~': '`' };
 const BY_CHAR = { ' ': KEY.Space, '`': KEY.Escape, '\n': KEY.Enter };
 for (const k of KEYS) if (k.label.length === 1 && !/[←-↓]/.test(k.label)) BY_CHAR[k.label.toLowerCase()] = k;
-// The key a key press is: by its code, else by what it typed; null for a key this board has not (F5, the numpad).
+// The key a key press is: by its code, else by what it typed (a numpad digit is its digit); null for a key that is
+// not on this board and types nothing that is (F5).
 export function keyFor(code, key = '') {
   if (KEY[code]) return KEY[code];
   if (code === 'Backquote') return KEY.Escape;
