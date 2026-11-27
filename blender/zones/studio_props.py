@@ -79,37 +79,6 @@ def rings(name, items, mat, kind='baked', seg=20):
     return link(name, bm, mat, kind)
 
 
-def fan(name, c, axis, r, M, E, blades=7, ring=None, face=-1, dark=None):
-    # A case fan seen through a grille or glass: a lit ring (named as the page's PC lights are, world.js), a dark frame
-    # ring behind it, a hub and blades.
-    t = {'x': 0, 'y': 1, 'z': 2}[axis]
-    if ring:
-        rings(ring, [(c, r, r - 0.004, 0.004, axis)], E['rgb_teal'], kind='emit')
-    back = list(c)
-    # Its frame and hub sit behind the lit ring, away from the side it faces.
-    back[t] -= face * 0.006
-    dark = dark or M['black']
-    rings(f'{name}_frame', [(tuple(back), r + 0.002, r - 0.003, 0.008, axis)], dark)
-    cyl(f'{name}_hub', r * 0.32, 0.012, tuple(back), dark, seg=16, axis=axis.upper())
-    bm = bmesh.new()
-    for i in range(blades):
-        a = 2 * math.pi * i / blades
-        g = bmesh.ops.create_cube(bm, size=1.0)
-        span, chord = r * 0.62, r * 0.42
-        size = {'x': (0.002, chord, span), 'y': (chord, 0.002, span), 'z': (chord, span, 0.002)}[axis]
-        bmesh.ops.scale(bm, vec=Vector(size), verts=g['verts'])
-        # Out along the blade, then pitched a little and turned round the hub.
-        mid = r * 0.32 + span / 2
-        local = {'x': Vector((0, 0, mid)), 'y': Vector((0, 0, mid)), 'z': Vector((0, mid, 0))}[axis]
-        bmesh.ops.translate(bm, vec=local, verts=g['verts'])
-        tilt = Matrix.Rotation(math.radians(25), 3, local.normalized())
-        spin = Matrix.Rotation(a, 3, axis.upper())
-        bmesh.ops.rotate(bm, cent=local, matrix=tilt, verts=g['verts'])
-        bmesh.ops.rotate(bm, cent=Vector(), matrix=spin, verts=g['verts'])
-        bmesh.ops.translate(bm, vec=P(back), verts=g['verts'])
-    link(f'{name}_blades', bm, dark)
-
-
 # ---------- the laptop, closed on the return, its lid for stickers ----------
 LAPTOP = {'w': 0.31, 'd': 0.22, 'r': 0.012, 'feet': 0.0015, 'base': 0.0095, 'gap': 0.0012, 'lid': 0.0055}
 
