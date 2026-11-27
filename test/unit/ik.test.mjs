@@ -26,6 +26,22 @@ test('the knee bends the way the pose already bends it: forward, here', () => {
   assert.ok(back.mid[2] < -0.1);
 });
 
+// Stopping from a walk, the idle puts this foot well back while the planted foot is still ahead of it.
+test('a target ahead of the pose\'s foot, past the knee\'s side, never turns the knee round to bend backwards', () => {
+  const hip = [0, 0.9, 0], knee = [0, 0.47, -0.1], ankle = [0, 0.08, -0.3];
+  let was = null, jump = 0;
+  for (let z = -0.3; z <= 0.15 + 1e-9; z += 0.01) {
+    const t = [0, 0.08, z], s = reach(hip, knee, ankle, t, [0, 0, 1]);
+    const ux = t[0] - hip[0], uy = t[1] - hip[1], uz = t[2] - hip[2], ul = Math.hypot(ux, uy, uz);
+    const k = ((s.mid[0] - hip[0]) * ux + (s.mid[1] - hip[1]) * uy + (s.mid[2] - hip[2]) * uz) / ul;
+    const ahead = s.mid[2] - hip[2] - k * uz / ul;
+    assert.ok(ahead > 0.04, `target at ${z.toFixed(2)}: knee ${ahead.toFixed(3)} m ahead of the line to the foot`);
+    if (was) jump = Math.max(jump, d(was, s.mid));
+    was = [...s.mid];
+  }
+  assert.ok(jump < 0.03, `the knee moved ${jump.toFixed(3)} m for a 1 cm move of the foot`);
+});
+
 test('a straight leg bends toward the pole', () => {
   const s = reach(HIP, [0, 0.45, 0], [0, 0, 0], [0, 0.3, 0], [0, 0, 1]);
   assert.ok(s.mid[2] > 0.1);
