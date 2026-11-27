@@ -1,13 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { lit } from './lit.js';
+import { lit, U, TONE } from './lit.js';
 import { breathe as breath } from '../pure/slices.js';
-import { makeHand, makeHandMaterials } from './hands.js';
+import { makeSleeveMaterials } from './hands.js';
 import { spring, springStep, kick, critical, smoother, approach } from '../pure/springs.js';
-import { blend, qFrame, relaxed } from '../pure/hands.js';
+import { qFrame } from '../pure/hands.js';
 import { LOW, ELBOWS } from '../pure/handling.js';
-import { HOLDS } from './holds.js';
 import { CLIPS, sample, cues, owed } from '../pure/clips.js';
 import { RIGS } from '../pure/rigs.js';
 import { newSwing, swing } from '../pure/swing.js';
@@ -47,8 +46,9 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   if (!spec) throw new Error('no such gun: ' + id);
   // The hip in the eye's space (x right, y up, -z ahead), the way the magazine comes out, the grip's middle a clip turns about.
   const HIP = spec.hip, WELL = new THREE.Vector3(...spec.well), PIVOT = new THREE.Vector3(...spec.pivot), LOCK = spec.lock ?? 1;
-  // The gun file is packed with meshopt (blender/squeeze.js).
-  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file || spec.file);
+  // The gun file is packed with meshopt (blender/squeeze.js); the realistic hand and its poses come with it, never sooner.
+  const [gltf, real, { relaxed, blend, forearm }, { GUNS }] = await Promise.all([new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file || spec.file),
+    import('../realhand.js').then(m => m.loadHand().then(geometry => ({ ...m, geometry }))), import('../pure/realhand.js'), import('../pure/realposes.js')]);
   const model = gltf.scene;
   const scene = new THREE.Scene();
   scene.environment = env;
@@ -119,17 +119,22 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   spent.visible = false;
   part.mag.parent.add(spent);
 
-  // The hands: built here, posed from the gun's description, in the gun's own space.
-  const hm = makeHandMaterials(m => lit(m));
-  for (const m of Object.values(hm)) (mats[m.name] ||= new Set()).add(m);
-  // A breath between the hands, each a few dozen bones built in code, so a slowed phone never holds a frame for both.
-  const right = makeHand('right', hm);
+  // The hands: the realistic hand in my soft white (the same as at the desk), in my hoodie's sleeves under the range's
+  // own light, in the gun's own space. A breath between them, so a slowed phone never holds a frame for both.
+  const hm = makeSleeveMaterials(m => lit(m)), skin = real.handMaterial('toy'), white = skin.color.clone();
+  for (const m of [skin, ...Object.values(hm)]) (mats[m.name] ||= new Set()).add(m);
+  const makeHand = side => {
+    const h = real.makeRealHand(side, real.geometry, skin);
+    h.root.getObjectByName(`${side}_arm`).add(real.makeSleeve(hm));
+    turn.add(h.root);
+    return h;
+  };
+  const right = makeHand('right');
   await rest();
-  const hands = { right, left: makeHand('left', hm) };
-  turn.add(hands.right.root, hands.left.root);
-  // The hands' poses on this gun, solved ahead of time (blender/holds.js).
-  const holds = HOLDS[id];
-  if (!holds) throw new Error('no hands are fitted to ' + id + ': run node blender/holds.js');
+  const hands = { right, left: makeHand('left') };
+  // The hands' poses on this gun, solved ahead of time (blender/realposes.js).
+  const holds = GUNS[id];
+  if (!holds) throw new Error('no hands are fitted to ' + id + ': run node blender/realposes.js');
   const lowQ = qFrame(LOW.fingers, LOW.back), lowDigits = relaxed();
   let clips = null, clipsFor = null;
   const clipsOf = s => { if (clipsFor !== s) { clipsFor = s; clips = CLIPS[id](s); } return clips; };
@@ -156,6 +161,17 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
   flash.add(burst, ...tongues);
   flash.visible = false; flash.renderOrder = 5;
   const glare = new THREE.PointLight(0xffc27a, 0, 2.5, 2);
+  // The hands' soft white (a matcap) is blind to lights, so the flash's light is added to it as it falls on the gun.
+  const glareAt = { value: new THREE.Vector3() }, glareRGB = { value: new THREE.Color(0, 0, 0) };
+  skin.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, { uGlareAt: glareAt, uGlare: glareRGB, uWhite: { value: white }, uExposure: U.exposure });
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform vec3 uGlareAt, uGlare, uWhite; uniform float uExposure;\n${TONE}`)
+      .replace('#include <opaque_fragment>', `{ vec3 l = ( viewMatrix * vec4( uGlareAt, 1.0 ) ).xyz + vViewPosition; float d = length( l );
+        float fall = pow2( saturate( 1.0 - pow4( d / ${glare.distance.toFixed(2)} ) ) ) / max( pow( d, ${glare.decay.toFixed(1)} ), 0.01 );
+        outgoingLight += rangeTone( uWhite * RECIPROCAL_PI * uGlare * saturate( dot( normal, l / d ) ) * fall * uExposure ); }
+      #include <opaque_fragment>`);
+  };
+  skin.customProgramCacheKey = () => 'hand-glare';
   // The flash and its light sit where the shot leaves: the muzzle, or a suppressor's end.
   function placeFlash(at) {
     anchor.muzzle = at;
@@ -341,6 +357,7 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
       rim.position.copy(eye.position).add(v.set(-1.5, 1.2, 4)); rim.target.position.copy(eye.position);
       const L = 0.03 + 0.97 * st.lights;
       sky.intensity = 0.75 * L; key.intensity = 2.4 * L; rim.intensity = 0.9 * L;
+      skin.color.copy(white).multiplyScalar(L);
 
       // The look over ends by itself, or eases back when the aim, a reload or the gun's state takes over.
       if (st.inspT >= 0) {
@@ -458,13 +475,15 @@ export async function makeGun({ env, id = 'pistol', file, onCue, rest = breath }
         spent.rotation.z = -3.2 * fall;
       } else spent.visible = false;
 
-      // The hands, from the clip's poses; each forearm hangs from its elbow.
+      // The hands, from the clip's poses; each forearm runs toward its elbow as far as a relaxed wrist lets it.
       const elbows = spec.elbows || ELBOWS;
       for (const side of ['right', 'left']) {
         let p = pick(side, now[side]);
         if (back) p = blend(p, pick(side, was[side]), back);
-        hands[side].pose(p, arr(eyeToGun(elbows[side], v2)));
+        hands[side].pose(p, forearm(side, p, arr(eyeToGun(elbows[side], v2))));
       }
+      glareRGB.value.copy(glare.color).multiplyScalar(glare.intensity);
+      if (glare.intensity > 0) glare.getWorldPosition(glareAt.value);
       // The charm swings; all the way into a scope, its own picture is all there is to see.
       api.swingCharm(dt);
       rig.visible = api.scoped < 0.98;

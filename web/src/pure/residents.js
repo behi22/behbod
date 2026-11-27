@@ -15,9 +15,10 @@ export const SEATS = {
   bench: { reach: [19.3, 10.0, 0.3], seat: [18.35, 10.03, 0.87] },
 };
 
-// The pen lying on the desk by the keyboard that she knocks off, where it lands between the chair and the desk, and where
-// BH-22 rolls in from (on the walk grid) to pick it up and put it back.
-export const PEN = { home: [21.24, 1.48, 1.213], fall: [20.93, 1.62, 0.45], reach: [20.7, 2.4, 0.45], pick: [20.93, 1.86, 0.45] };
+// The pen lying beside the sticky notes in the desk's front left corner (blender/zones/desklayout.json) that she knocks
+// off, sitting on the notes; where it lands between the chair and the desk, and where BH-22 rolls in from (on the walk
+// grid) to pick it up and put it back.
+export const PEN = { home: [21.23, 1.905, 1.213], sit: [21.215, 1.83, 1.222], fall: [20.92, 2.045, 0.45], reach: [20.7, 2.4, 0.45], pick: [20.93, 2.285, 0.45] };
 // Her pounce on the mouse droid mostly misses.
 export const STALK_HIT = 0.2;
 // One nap in three Jessi sleeps on her back.

@@ -18,7 +18,7 @@ export function pressDepth(e) {
 export const COOL = 20, CALL = 30;
 // The fan's middle, from the DEPLOY button's point, as blender/zones/studio.py places the two; and where BH-22 stands on
 // the studio floor to switch it on: off the desk's north end, clear of the rack beside it.
-export const FAN_FROM_DEPLOY = [0.44, 0.4, 0.13], FAN_SPOT = [20.95, 2.5, 0.45];
+export const FAN_FROM_DEPLOY = [0.4, 0.4, 0.13], FAN_SPOT = [20.95, 2.5, 0.45];
 
 // spell: when the PC's latest busy spell began. Once the fan has been on for a spell, BH-22 is not sent again for it.
 export const newFan = () => ({ on: false, hand: false, was: false, spell: -Infinity, lastBusy: -Infinity, onAt: -Infinity });

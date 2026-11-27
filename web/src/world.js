@@ -10,7 +10,9 @@ import { fanSpin, pressDepth, FAN_FROM_DEPLOY } from './pure/desk.js';
 
 const EMISSIVE = { E_purple: [0.55, 0.15, 1.0, 3.2], E_teal: [0.1, 0.9, 0.8, 3.0], E_warm: [1.0, 0.62, 0.3, 2.6], E_onair: [1.0, 0.1, 0.07, 3.0],
   E_led_green: [0.25, 1.0, 0.45, 3.5], E_led_blue: [0.25, 0.55, 1.0, 3.5], E_aria_eye: [0.25, 1.0, 0.85, 3.2], E_warm_soft: [1.0, 0.75, 0.45, 2.4], E_bias: [0.35, 0.45, 1.0, 2.6],
-  E_fire: [1.0, 0.45, 0.12, 3.4], E_holo: [0.25, 0.75, 1.0, 2.6], E_aqua: [0.15, 0.55, 0.8, 1.6], E_sky: [0.12, 0.17, 0.32, 1.6], E_screen: [0.55, 0.7, 1.0, 1.0] };
+  E_fire: [1.0, 0.45, 0.12, 3.4], E_holo: [0.25, 0.75, 1.0, 2.6], E_aqua: [0.15, 0.55, 0.8, 1.6], E_sky: [0.12, 0.17, 0.32, 1.6], E_screen: [0.55, 0.7, 1.0, 1.0],
+  // The PC's coolant: tinted liquid in clear tubes, a soft glow under the fans' and RAM's brighter lights.
+  E_coolant: [0.1, 0.9, 0.8, 0.75] };
 const DIM = new Set(['paper', 'oak', 'white', 'felt', 'kit_white']);
 const isScreen = n => n.startsWith('screen_') || n === 'backdrop' || n === 'postit' || n === 'onair' || n === 'desk_mat' || n === 'neon';
 const screenKey = n => (n === 'desk_mat' ? 'mat' : n.replace('screen_', '').replace(/_b$/, ''));
@@ -37,6 +39,23 @@ function lavaMaterial(o) {
         gl_FragColor = vec4(mix(liquid, wax, smoothstep(0.9, 1.4, f)), 1.0);
       }`,
   });
+}
+
+// The PC's perforated steel (its front, the rear fan's grille, the power supply's): round holes in a staggered grid,
+// see-through, so what is behind shows whole through it and evens out to a tint from afar instead of flickering.
+function perforated() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, 32, 32);
+  g.globalCompositeOperation = 'destination-out';
+  for (const [x, y] of [[8, 8], [24, 24]]) { g.beginPath(); g.arc(x, y, 7.8, 0, Math.PI * 2); g.fill(); }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
 }
 
 // Merges meshes that share a colour into one, in the space of `parent` (geometry already placed by `place`).
@@ -111,7 +130,8 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
       } else if (m.name?.startsWith('G_')) {
         const water = name === 'aqua_water';
         // One pass: a flat tint looks the same either way round, and two passes re-pick its shader twice a frame.
-        o.material = new THREE.MeshBasicMaterial({ color: water ? 0x1f7fa8 : 0x9fb6d8, transparent: true, opacity: name === 'window_glass' ? 0.05 : water ? 0.3 : 0.12, depthWrite: false, fog: true, side: THREE.DoubleSide, forceSinglePass: true });
+        if (name === 'pc_mesh') o.material = new THREE.MeshBasicMaterial({ map: perforated(), color: 0x1b1d21, transparent: true, depthWrite: false, fog: true, side: THREE.DoubleSide, forceSinglePass: true });
+        else o.material = new THREE.MeshBasicMaterial({ color: water ? 0x1f7fa8 : 0x9fb6d8, transparent: true, opacity: name === 'window_glass' || name === 'pc_glass' ? 0.05 : water ? 0.3 : 0.12, depthWrite: false, fog: true, side: THREE.DoubleSide, forceSinglePass: true });
         o.renderOrder = 2;
       } else if (EMISSIVE[m.name]) {
         const [r, g, b, k] = EMISSIVE[m.name];
@@ -128,8 +148,11 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
         // Loose pieces that move (doors, ships, BH-22) aren't baked, so give them a little lift.
         o.material = new THREE.MeshBasicMaterial({ color: (m.color || new THREE.Color(0.2, 0.2, 0.2)).clone().multiplyScalar(0.55), fog: true });
       }
-      // Each PC light remembers which RGB channel it follows: a (purple), b (teal) or c (the coolant).
-      if (/^(fan\d|rad_fan\d|coolant_\w+|cpu_block|gpu\d_led|ram\d_led)$/.test(name)) pcParts[/^(coolant_\w+|cpu_block)$/.test(name) ? 'c' : m.name === 'E_purple' ? 'a' : 'b'].push(o);
+      // Each PC light remembers which RGB channel it follows, a (purple), b (teal) or c (the coolant), and how strong it is.
+      if (/^(pc_fans_\w+|coolant_\w+|cpu_block|gpu\d_led|ram\d_led)$/.test(name)) {
+        o.material.userData.k = m.name === 'E_coolant' ? EMISSIVE.E_coolant[3] : 3.2;
+        pcParts[/^(coolant_\w+|cpu_block)$/.test(name) ? 'c' : m.name === 'E_purple' ? 'a' : 'b'].push(o);
+      }
       if (/^(screen_(main|code|top|contrib|loss|pishi|laptop|timer)|kb_|monitor|mini_case|desk_mat|mouse)/.test(name)) deskThings.push(o);
     });
   }
@@ -150,10 +173,10 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   const CHILL = [[0.55, 0.15, 1.0], [0.1, 0.9, 0.8]];
   const SCENES = { chill: CHILL, focus: [[0.35, 0.45, 1.0], [0.75, 0.9, 1.0]], matchday: [[1, 0.72, 0.18], [0.95, 0.95, 0.95]], movie: [[0.16, 0.05, 0.3], [0.03, 0.2, 0.18]], off: [[0.01, 0.01, 0.01], [0.01, 0.01, 0.01]], party: null, visualizer: CHILL };
   const COOLANT = { teal: [0.1, 0.9, 0.8], purple: [0.55, 0.15, 1.0], red: [1.0, 0.12, 0.1], gold: [1.0, 0.7, 0.15], white: [0.9, 0.95, 1.0] };
-  // The PC's lights are one mesh per channel, so the whole glass case is three draw calls.
+  // The PC's lights are one mesh per channel and strength, so the whole glass case is a few draw calls.
   for (const [fam, list] of Object.entries(pcParts)) {
     const { merged, rest } = mergeByColour(scene, list, o => { o.updateMatrixWorld(true); return o.matrixWorld; });
-    for (const o of [...merged, ...rest]) pcGlow.push([o.material, o.material.color.clone(), fam]);
+    for (const o of [...merged, ...rest]) pcGlow.push([o.material, o.material.color.clone(), fam, o.material.userData.k]);
   }
   const pcFam = new Set(pcGlow.map(([m]) => m));
   const holidayRGB = screens.holiday ? [new THREE.Color(screens.holiday.c.hot), new THREE.Color(screens.holiday.c.a2)] : null;
@@ -162,7 +185,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
   function paintRGB(a, b) {
     for (const m of emits.E_purple || []) if (!pcFam.has(m)) m.color.copy(a).multiplyScalar(3.2);
     for (const m of emits.E_teal || []) if (!pcFam.has(m)) m.color.copy(b).multiplyScalar(3.0);
-    for (const g of pcGlow) if (g[2] !== 'c') g[1].copy(g[2] === 'a' ? a : b).multiplyScalar(3.2);
+    for (const g of pcGlow) if (g[2] !== 'c') g[1].copy(g[2] === 'a' ? a : b).multiplyScalar(g[3]);
     rgbLight?.color.copy(a);
   }
   const rgb = v => new THREE.Color(v[0], v[1], v[2]);
@@ -423,8 +446,11 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     }
   }
 
+  // The inside of the PC's case, which its own lights keep lit when the lamps go off (lightswitch.js).
+  const P = meta.points, ownLight = P.pc_inside_lo && P.pc_inside_hi ? new THREE.Box3().setFromPoints([b2t(...P.pc_inside_lo), b2t(...P.pc_inside_hi)]) : null;
+
   return {
-    tick, setGloss, deskThings, doors, merged, printParts, pianoParts, lights,
+    tick, setGloss, deskThings, doors, merged, printParts, pianoParts, lights, ownLight,
     setMirror(on) { liveMirror = on; },
     toggleDoor(id) { const d = doors[id]; if (!d) return null; d.open = !d.open; return d; },
     openWardrobe(t) { wardrobeOpen = t + 6; },
@@ -449,7 +475,7 @@ export function makeWorld(scene, zones, meta, screens, onDoor) {
     coolant(name) {
       if (!Object.hasOwn(COOLANT, name)) return false;
       coolantName = name;
-      for (const g of pcGlow) if (g[2] === 'c') g[1].copy(rgb(COOLANT[name])).multiplyScalar(3.2);
+      for (const g of pcGlow) if (g[2] === 'c') g[1].copy(rgb(COOLANT[name])).multiplyScalar(g[3]);
       return true;
     },
     deploy(t) { deployUntil = t + 3; },

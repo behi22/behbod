@@ -36,6 +36,8 @@ export const SCENE_RATE = 3;
 
 // The balcony, past the window wall, keeps its own lights.
 export const GLASS_Y = 15.12;
+// The PC's case is lit inside by its own LEDs, coolant and strip: this much of that light stays with the lamps off.
+export const OWN_LIGHT = 0.65;
 export const indoors = y => y < GLASS_Y;
 
 // The fire's glow is the one warm light kept low (under 1 m), so it is told apart from the lamps by height.

@@ -190,9 +190,8 @@ const VIEWS = { spawn: [2.55, 1.2, 0, 0.15], lounge: [10.6, 11.6, 0, -2.0], stud
   // window drags, the notes take typing, and keys typed elsewhere go back to the terminal.
   const fit = await p.evaluate(() => {
     const el = document.querySelector('.dt.on'); if (!el) return null;
-    const s = __loft.meta.screens.main, half = s.w / 2 / s.r;
-    const chord = s.r * Math.sin(half), sag = s.r * (1 - Math.cos(half)), c = __loft.screenCentre();
-    const pts = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => { const v = c.clone(); v.x -= sag; v.y += y * s.h / 2; v.z += z * chord; v.project(__loft.camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
+    const s = __loft.meta.screens.main, c = __loft.screenCentre();
+    const pts = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => { const v = c.clone(); v.y += y * s.h / 2; v.z += z * s.w / 2; v.project(__loft.camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
     // Each corner of the desktop, through its own transform, against the same corner of the screen (so a flipped or
     // mirrored layer fails, not just a wrong size).
     const m = new DOMMatrix(getComputedStyle(el).transform), w = el.offsetWidth, h = el.offsetHeight;

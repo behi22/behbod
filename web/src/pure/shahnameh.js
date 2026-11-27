@@ -75,12 +75,10 @@ const turn = (v, k, t) => {
   const x = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]];
   return v.map((q, i) => q * c + x[i] * s + k[i] * d * (1 - c));
 };
-export function noteCorners({ center: [cx, cy, cz], w, h, r }) {
-  const a = -Math.asin((w / 2 - NOTE.inset) / r), S = NOTE.size;
-  const top = [cx - r * (1 - Math.cos(a)), cy + r * Math.sin(a), cz - h / 2 - 0.005];
-  const toward = [-Math.cos(a), -Math.sin(a), 0], along = [-Math.sin(a), Math.cos(a), 0];
+export function noteCorners({ center: [cx, cy, cz], w, h }) {
+  const S = NOTE.size, top = [cx, cy - (w / 2 - NOTE.inset), cz - h / 2 - 0.005], toward = [-1, 0, 0], along = [0, 1, 0];
   return [[S / 2, 0], [-S / 2, 0], [S / 2, -S], [-S / 2, -S]].map(([y, z]) => {
-    const v = turn(turn(turn([0, y, z], [0, 0, 1], a), toward, rad(NOTE.tilt)), along, rad(NOTE.lean));
+    const v = turn(turn([0, y, z], toward, rad(NOTE.tilt)), along, rad(NOTE.lean));
     return v.map((q, i) => top[i] + toward[i] * 0.004 + q);
   });
 }

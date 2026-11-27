@@ -11,7 +11,12 @@ META = {'zones': [], 'colliders': [], 'floors': [], 'screens': {}, 'points': {},
 GROUPS = {}
 # Surfaces baked as one material but shown darker, per channel, so the light they bounce onto the room stays the same.
 # The mezzanine's boards bake as oak and show as the dark wood of the version he liked.
-SHADE = {'oak_mezz': (0.093, 0.082, 0.047)}
+# The desk's black things (keyboard, mouse, wrist rest, the three mini screens' cases): near black under the desk lamp
+# bakes mid grey, and they must read black. The sticky pad bakes white instead of its mint, the laptop's aluminium
+# white instead of silver, and the PC case's rear, facing the monitor's light, bakes grey.
+SHADE = {'oak_mezz': (0.093, 0.082, 0.047), 'keycap': (0.15, 0.15, 0.15), 'kb_body': (0.08, 0.08, 0.08), 'wrist_pad': (0.12, 0.12, 0.12),
+         'mini_case': (0.1, 0.1, 0.1), 'sticky_pad': (0.14, 0.14, 0.14),
+         'alu': (0.4, 0.4, 0.4), 'pc_case_rear': (0.5, 0.5, 0.5)}
 _zone = [None]
 _off = [Vector()]
 
@@ -218,7 +223,9 @@ def make_materials():
         'black': principled('black', (0.015, 0.015, 0.018), 0.4),
         'plastic': principled('plastic', (0.04, 0.042, 0.048), 0.5),
         'white': principled('white', (0.8, 0.8, 0.78), 0.5),
-        'keycap': principled('keycap', (0.11, 0.115, 0.13), 0.55),
+        'keycap': principled('keycap', (0.016, 0.016, 0.019), 0.42),
+        'kb_body': principled('kb_body', (0.04, 0.042, 0.048), 0.5),
+        'mini_case': principled('mini_case', (0.015, 0.015, 0.018), 0.4),
         'chair': principled('chair', (0.03, 0.03, 0.035), 0.6),
         'chair_white': principled('chair_white', (0.78, 0.78, 0.76), 0.55),
         'pot': principled('pot', (0.74, 0.32, 0.16), 0.8),
@@ -245,6 +252,7 @@ def make_materials():
         'lampshade': principled('lampshade', (0.9, 0.82, 0.65), 0.9),
         'cable': principled('cable', (0.02, 0.02, 0.02), 0.6),
         'leather': principled('leather', (0.025, 0.025, 0.028), 0.55),
+        'wrist_pad': principled('wrist_pad', (0.025, 0.025, 0.028), 0.55),
         'leather_brown': principled('leather_brown', (0.2, 0.09, 0.04), 0.5),
         'speaker': node_mat('speaker', noisy((0.06, 0.055, 0.05), 60, 0.2, 0.7)),
         'cone': principled('cone', (0.02, 0.02, 0.022), 0.7),
@@ -286,6 +294,7 @@ def make_materials():
         'screen': principled('E_screen', (0, 0, 0), 0.3, emit=(0.55, 0.7, 1.0), strength=2.5),
         'rgb_purple': principled('E_purple', (0, 0, 0), 0.5, emit=(0.55, 0.15, 1.0), strength=12),
         'rgb_teal': principled('E_teal', (0, 0, 0), 0.5, emit=(0.1, 0.9, 0.8), strength=10),
+        'coolant': principled('E_coolant', (0, 0, 0), 0.5, emit=(0.1, 0.9, 0.8), strength=3.5),
         'warm': principled('E_warm', (0, 0, 0), 0.5, emit=(1.0, 0.62, 0.3), strength=8),
         'warm_soft': principled('E_warm_soft', (0, 0, 0), 0.5, emit=(1.0, 0.75, 0.45), strength=5),
         'onair': principled('E_onair', (0, 0, 0), 0.5, emit=(1.0, 0.08, 0.06), strength=6),

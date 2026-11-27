@@ -76,11 +76,11 @@ const run = (p, sec) => p.evaluate(async n => { for (let i = 0; i < n; i++) { __
 
       const fit = await p.evaluate(async g => {
         const { GUN_HOLDS } = await import('/src/pure/handling.js');
-        const { HAND } = await import('/src/pure/hands.js');
+        const { padLocal } = await import('/src/pure/realhand.js');
         const gun = __loft.range.gun, V = () => __loft.camera.position.clone().set(0, 0, 0);
         gun.scene.updateMatrixWorld(true);
         const tipBone = gun.hands.right.bones.find(o => o.name === 'right_index3'), H = GUN_HOLDS[g];
-        const tip = gun.model.worldToLocal(tipBone.localToWorld(V().set(HAND.fingers.index.len[2], 0, 0)));
+        const tip = gun.model.worldToLocal(tipBone.localToWorld(V().set(...padLocal('index'))));
         return { trigger: tip.distanceTo(V().set(...H.trigger.pad)), mounts: Object.keys(gun.mounts).sort(), hands: ['right', 'left'].every(s => gun.hands[s].root.visible) };
       }, id);
       check(`${id}: the trigger finger is on the trigger, both hands on, the four mounts in the file`, fit.trigger < 0.006 && fit.hands && JSON.stringify(fit.mounts) === '["mag","muzzle","optic","rail"]', JSON.stringify(fit));

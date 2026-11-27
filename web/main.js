@@ -7,6 +7,7 @@ import { makePhysics } from './src/physics.js';
 import { makeMe, HEAD_NAMES } from './src/me.js';
 import { makeFollowCam } from './src/camera.js';
 import { makeDesk } from './src/desk.js';
+import { makeDeskHands } from './src/deskhands.js';
 import { makeDesktopView } from './src/desktop.js';
 import { makeCmdFill } from './src/cmdfill.js';
 import { forIme } from './src/pure/ime.js';
@@ -353,6 +354,10 @@ things.items.push(deskBits.spot, jar.spot); window.__desk = deskBits; window.__j
 const followPose = makeFollowCam(col, meta.regions);
 const follow = () => followPose(pos, yaw, pitch, dist, me.crouchK);
 const desk = makeDesk({ camera, me, meta, coarse, follow });
+// Pishi on the keyboard, or jumping onto it or off it: my hands keep off the keys while she is there.
+const onKeys = v => { const kb = keyboard(); return !!v && !!kb && Math.hypot(v.x - kb.x, v.z - kb.z) < 0.3 && Math.abs(v.y - kb.y) < 0.15; };
+const deskHands = makeDeskHands({ scene, world, me, renderer, camera, lamp: () => lights.k, playing: () => { const g = screens.desktop.games.playing; return !!(g && !g.paused && !g.done); },
+  taken: () => { const c = creatures.pishi; return [c.pos, c.hop?.a, c.hop?.b].some(onKeys); } }); window.__deskHands = deskHands;
 // The computer's desktop, laid over the monitor while I sit at it.
 const deskView = makeDesktopView({ camera, meta, screens, act: deskAct, coarse, sfx: audio.sfx, tapTerminal: () => { if (coarse) $('cmd').focus(); } });
 const deskCtx = () => ({ records: audio.music.records, playing: audio.music.current, sound: sound.on, quality: autoTier ? 'auto' : tierName, hood: me.hoodUp,
@@ -382,10 +387,11 @@ function useDesk() {
   mode = 'desk';
   route = null;
   sound.chair();
-  me.playOnce('Sitting_Enter');
+  me.playOnce('Sitting_Enter', true);
   me.root.position.copy(chair);
   me.root.rotation.set(0, Math.PI / 2, 0);
-  setTimeout(() => { if (mode === 'desk') me.holdPose('Sitting_Idle_Loop'); }, 900);
+  // Held to its last frame, then the seated loop takes over from there: cut short, the body jumped mid glide.
+  setTimeout(() => { if (mode === 'desk') me.holdPose('Sitting_Idle_Loop'); }, me.acts.Sitting_Enter.getClip().duration * 1000);
   desk.enter(camera.position, camLook);
   $('prompt').classList.remove('on');
   screens.focusTerminal(true);
@@ -829,6 +835,8 @@ function walk(dt, now) {
   if (-pos.z > meta.regions[1].min[1]) earn('balcony');
   // A computer asks from the library's doorway; a phone only at the shelf itself, so the walk past it costs no data.
   if (!rangeAsked && pos.y < 2 && Math.hypot(pos.x - bookcase.x, pos.z - bookcase.z) < (coarse ? 2.2 : 4.5)) askRange();
+  // My hands at the desk are fetched and made ready on the way to it, so the first sit has nothing left to build.
+  if (Math.abs(pos.y - deskUse.y) < 1 && Math.hypot(pos.x - deskUse.x, pos.z - deskUse.z) < (coarse ? 3 : 5)) deskHands.ready();
   const was = near;
   near = null;
   if (grounded) {
@@ -950,6 +958,7 @@ function step() {
   if (nearDesk && now - deskCtxAt > 1000) { deskCtxAt = now; refreshDeskCtx(); }
   screens.tick(now, dt, mode === 'desk', nearDesk);
   deskView.tick(mode === 'desk' && !desk.gliding);
+  deskHands.tick(dt, mode === 'desk' || mode === 'leaving', me.root.visible);
   world.tick(dt, t, mode === 'desk', camera.position, pos, creatures.positions);
   deskBits.tick(dt, t, cctx); jar.tick(t);
   cctx.mode = mode; cctx.facing = facing; cctx.stand = seat ? seat.at : null;

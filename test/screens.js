@@ -128,7 +128,7 @@ const shades = p => p.evaluate(() => {
       // The studio's purple strips: the biggest merged mesh in the chill scene's purple, found at the start.
       await p.evaluate(() => {
         let found = null;
-        __loft.scene.traverse(o => { if (o.isMesh && /^merged_/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6 && (!found || o.geometry.attributes.position.count > found.geometry.attributes.position.count)) found = o; });
+        __loft.scene.traverse(o => { if (o.isMesh && /^merged_/.test(o.name) && !/^merged_(pc_fans_|ram\d_led|gpu\d_led)/.test(o.name) && o.material.color && Math.abs(o.material.color.r - 0.55 * 3.2) < 1e-6 && Math.abs(o.material.color.b - 3.2) < 1e-6 && (!found || o.geometry.attributes.position.count > found.geometry.attributes.position.count)) found = o; });
         window.__strip = found.material;
         window.__main = __loft.scene.getObjectByName('screen_main').material;
       });
@@ -300,9 +300,9 @@ const shades = p => p.evaluate(() => {
           }
           c.route = []; c.hop = null; c.then = null; c.pending = null; c.epoch++; c.moving = false; c.groomUntil = 0;
           c.pos.set(at[0], at[2], -at[1]); c.state = state; c.timer = 999; c.keyAt = 999; c.onFloor = false;
-          await new Promise(r => setTimeout(r, 900));
+          await new Promise(r => setTimeout(r, 1300));
+          // Sitting, she may start grooming in any frame: that is undone and all of it read at once, before another frame.
           c.groomUntil = 0;
-          await new Promise(r => setTimeout(r, 400));
           const eye = __pishiCam.eye, her = c.pos.clone().setY(c.pos.y + 0.16), v = her.clone().project(eye);
           const ray = new THREE.Raycaster(eye.position, her.clone().sub(eye.position).normalize(), 0.05, eye.position.distanceTo(her) + 0.3);
           ray.camera = eye;

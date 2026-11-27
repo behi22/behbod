@@ -99,10 +99,9 @@ export function makeDesktopView({ camera, meta, screens, act, tapTerminal, coars
   live.className = 'dt-live'; live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
   root.after(live);
 
-  // The curved screen's four corners: its edges curve toward me, so they sit a sagitta nearer than its middle.
-  const s = meta.screens.main, c = b2t(...s.center), half = s.w / 2 / s.r;
-  const chord = s.r * Math.sin(half), sag = s.r * (1 - Math.cos(half));
-  const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => new THREE.Vector3(c.x - sag, c.y + y * s.h / 2, c.z + z * chord));
+  // The flat screen's four corners, which the layer meets exactly.
+  const s = meta.screens.main, c = b2t(...s.center);
+  const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([z, y]) => new THREE.Vector3(c.x, c.y + y * s.h / 2, c.z + z * s.w / 2));
   const v = new THREE.Vector3();
   let shown = false, narrow = false, scale = 1, box = { w: W, h: H }, lastT = '', lastBox = '', drag = null, pending = false, notesEl = null;
   // A redraw replaces the buttons, so none happens while a finger or the mouse is down, or a click could miss.

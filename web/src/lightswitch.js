@@ -1,20 +1,23 @@
 import * as THREE from 'three';
 import { b2t } from './engine.js';
 import { makeKit } from './persia/kit.js';
-import { SWITCH, SPOT, GLASS_Y, SCENE_RATE, roomLight, bulbLight, fillLight, settle, dimsLamps, lightRole, label, said } from './pure/lamps.js';
+import { SWITCH, SPOT, GLASS_Y, OWN_LIGHT, SCENE_RATE, roomLight, bulbLight, fillLight, settle, dimsLamps, lightRole, label, said } from './pure/lamps.js';
 
 // Scaled in linear light before the output conversion, so every quality setting dims alike.
-const VERT_HEAD = 'varying float vLampY;\n';
+const VERT_HEAD = 'varying vec3 vLampW;\n';
 const VERT_TAIL = `#include <project_vertex>
   {
     vec4 lampW = vec4(transformed, 1.0);
     #ifdef USE_INSTANCING
       lampW = instanceMatrix * lampW;
     #endif
-    vLampY = -(modelMatrix * lampW).z;
+    vLampW = (modelMatrix * lampW).xyz;
   }`;
-const FRAG_HEAD = 'uniform vec3 uLamp;\nvarying float vLampY;\n';
-const FRAG_TAIL = `gl_FragColor.rgb *= mix(vec3(1.0), uLamp, step(vLampY, ${GLASS_Y.toFixed(2)}));\n#include <colorspace_fragment>`;
+const FRAG_HEAD = 'uniform vec3 uLamp, uOwnLo, uOwnHi;\nvarying vec3 vLampW;\n';
+// Inside the PC's case (uOwnLo to uOwnHi) most of the light is the PC's own, so the lamps take only the rest of it.
+const FRAG_TAIL = `vec3 lampOwn = step(uOwnLo, vLampW) * step(vLampW, uOwnHi);
+  gl_FragColor.rgb *= mix(vec3(1.0), uLamp, step(-vLampW.z, ${GLASS_Y.toFixed(2)}) * (1.0 - ${OWN_LIGHT.toFixed(2)} * lampOwn.x * lampOwn.y * lampOwn.z));
+#include <colorspace_fragment>`;
 const PLAIN_HOOK = THREE.Material.prototype.onBeforeCompile;
 
 // Other pieces' glows (screens, LEDs, candles) are brighter than white, which tells them from what should dim.
@@ -27,11 +30,14 @@ function kindOf(m) {
 
 export function makeLights(scene, world, { sfx = null, skip = [] } = {}) {
   const U = { room: { value: new THREE.Vector3(1, 1, 1) }, bulb: { value: new THREE.Vector3(1, 1, 1) } };
+  const own = world.ownLight, ownLo = { value: own ? own.min.clone() : new THREE.Vector3(1e9, 1e9, 1e9) }, ownHi = { value: own ? own.max.clone() : new THREE.Vector3(-1e9, -1e9, -1e9) };
   const seen = new WeakSet(), skipped = new Set(skip.filter(Boolean));
   const count = { room: 0, bulb: 0 };
   function patch(m, u) {
     m.onBeforeCompile = sh => {
       sh.uniforms.uLamp = u;
+      sh.uniforms.uOwnLo = ownLo;
+      sh.uniforms.uOwnHi = ownHi;
       sh.vertexShader = VERT_HEAD + sh.vertexShader.replace('#include <project_vertex>', VERT_TAIL);
       sh.fragmentShader = FRAG_HEAD + sh.fragmentShader.replace('#include <colorspace_fragment>', FRAG_TAIL);
     };

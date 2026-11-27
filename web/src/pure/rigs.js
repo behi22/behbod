@@ -16,7 +16,7 @@ export const RIGS = {
     parts: { bolt: 'bolt', handle: 'handle', trigger: 'trigger', rel: 'magrelease', mag: 'mag', round: 'round', casing: 'casing' },
     travel: 0.05, lock: 0.9, cycleT: [0.02, 0.032], handleTravel: 0.06,
     well: [0, -1, 0], drop: 0.11, pivot: [-0.004, -0.062, 0],
-    hip: { p: [0.12, -0.12, -0.36], r: [0.03, 0.06, -0.03] }, sight: 0.17, homeCue: 'slideHome',
+    hip: { p: [0.12, -0.09, -0.36], r: [0.03, 0.06, -0.03] }, sight: 0.17, homeCue: 'slideHome',
     elbows: { right: [0.17, -0.5, -0.06], left: [-0.08, -0.45, -0.36] },
     rides: { left: { mag: 'mag', charge: 'handle' }, right: {} },
     kit: { rear: 'rear', hook: [0.15, 0.004, -0.0205], charm: 1.25 },
@@ -26,7 +26,7 @@ export const RIGS = {
     parts: { bolt: 'bolt', handle: 'handle', trigger: 'trigger', rel: 'magrelease', mag: 'mag', round: 'round', casing: 'casing' },
     travel: 0.065, lock: 0.9, cycleT: [0.024, 0.04], handleTravel: 0.07,
     well: [0.119, -0.993, 0], drop: 0.11, pivot: [-0.004, -0.062, 0],
-    hip: { p: [0.12, -0.125, -0.38], r: [0.03, 0.06, -0.03] }, sight: 0.16, homeCue: 'slideHome',
+    hip: { p: [0.12, -0.095, -0.38], r: [0.03, 0.06, -0.03] }, sight: 0.16, homeCue: 'slideHome',
     elbows: { right: [0.17, -0.5, -0.06], left: [-0.08, -0.42, -0.45] },
     rides: { left: { mag: 'mag', charge: 'handle' }, right: {} },
     kit: { rear: 'rear', hook: [0.18, 0.004, -0.0195], charm: 1.3 },
@@ -37,7 +37,7 @@ export const RIGS = {
     // The bolt's handle lifts this far (radians) before the bolt draws back `travel`.
     travel: 0.1, lift: 1.2,
     well: [0, -1, 0], drop: 0.09, pivot: [-0.004, -0.062, 0],
-    hip: { p: [0.12, -0.13, -0.4], r: [0.03, 0.06, -0.03] }, sight: 0.22, homeCue: 'boltClose',
+    hip: { p: [0.12, -0.1, -0.4], r: [0.03, 0.06, -0.03] }, sight: 0.22, homeCue: 'boltClose',
     elbows: { right: [0.17, -0.5, -0.06], left: [-0.06, -0.42, -0.52] },
     rides: { left: { mag: 'mag' }, right: { bolt: 'bolt' } },
     kit: { rear: 'rear', scope: 'KIT_scope_long', hook: [0.185, 0.0, -0.021], charm: 1.35 },
@@ -48,7 +48,7 @@ export const RIGS = {
     // The feed cover opens this far (radians); the belt draws up one link (metres) a shot.
     handleTravel: 0.09, coverOpen: 1.05, beltPitch: 0.012,
     well: [0, -0.92, -0.39], drop: 0.06, pivot: [-0.004, -0.062, 0],
-    hip: { p: [0.12, -0.14, -0.42], r: [0.03, 0.06, -0.03] }, sight: 0.19, homeCue: 'slideHome',
+    hip: { p: [0.12, -0.11, -0.42], r: [0.03, 0.06, -0.03] }, sight: 0.19, homeCue: 'slideHome',
     elbows: { right: [0.17, -0.5, -0.06], left: [-0.06, -0.45, -0.42] },
     rides: { left: { mag: 'mag', charge: 'handle', cover: 'cover' }, right: {} },
     // Its optic stands on a riser, clear of the rear sight on the cover, and lifts with the cover.

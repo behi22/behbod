@@ -52,3 +52,17 @@ test('with the graphics context lost no program is first used, and nothing throw
   await useAhead(renderer, ['a', 'b']);
   assert.deepEqual(firsts, []);
 });
+
+// Regression: on a slowed phone a program the card was still building was asked whether it linked, which held the page
+// 120 to 150 ms until it was built (three had stopped waiting for it when the material was drawn with another one).
+test('in the background a program still being built is waited for between frames before it is asked anything', async () => {
+  const { renderer, firsts } = rig();
+  const ready = new Set(['a1', 'b1']), gl = renderer.getContext();
+  let early = 0, rests = 0;
+  renderer.extensions = { has: name => name === 'KHR_parallel_shader_compile', get: () => ({ COMPLETION_STATUS_KHR: 2 }) };
+  renderer.getContext = () => ({ ...gl, getProgramParameter: (p, what) => { if (what === 2) return ready.has(p); if (!ready.has(p)) early++; return gl.getProgramParameter(p, what); } });
+  await useAhead(renderer, ['a', 'b'], { rest: async () => { if (++rests === 3) ready.add('a2'); } });
+  assert.equal(early, 0);
+  assert.ok(rests >= 3);
+  assert.deepEqual(firsts.map(f => f[0]), ['a1', 'a2', 'b1']);
+});

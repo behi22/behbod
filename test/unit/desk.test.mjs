@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { DEPLOY_SPOT, pressDepth, COOL, CALL, FAN_FROM_DEPLOY, FAN_SPOT, newFan, fanStep, fanSet, fanSpin } from '../../web/src/pure/desk.js';
 
 const meta = JSON.parse(readFileSync(new URL('../../web/assets/world.json', import.meta.url), 'utf8'));
+const layout = JSON.parse(readFileSync(new URL('../../blender/zones/desklayout.json', import.meta.url), 'utf8'));
 const solid = meta.colliders.filter(c => c.max[2] > 0.5 && c.min[2] < 2);
 const clear = (p, pad) => !solid.find(c => p[0] > c.min[0] - pad && p[0] < c.max[0] + pad && p[1] > c.min[1] - pad && p[1] < c.max[1] + pad);
 
@@ -99,7 +100,7 @@ test('the blades come up to speed in about a second and coast down to a dead sto
 
 test('the blades sit in the fan the studio build bakes, found from the DEPLOY button the same build places', () => {
   const at = re => { const m = studio.match(re); assert.ok(m, String(re)); return [+m[1], +m[2], +m[3]]; };
-  const cage = at(/cyl\('fan_cage', [^(]*\(([\d.]+), ([\d.]+), DZ \+ ([\d.]+)\)/), btn = at(/point\('deploy', \(([\d.]+), ([\d.]+), DZ \+ ([\d.]+)\)\)/);
+  const cage = at(/(?:cyl|ring)\('fan_cage', [^(]*\(([\d.]+), ([\d.]+), DZ \+ ([\d.]+)\)/), btn = [...layout.things.deploy.at, +at(/point\('deploy', \(DP\.x, DP\.y, DZ \+ ([\d.]+)()()\)\)/)[0]];
   FAN_FROM_DEPLOY.forEach((d, i) => assert.ok(Math.abs(d - (cage[i] - btn[i])) < 1e-9, `axis ${i}: ${d} vs ${cage[i] - btn[i]}`));
   // In the house: on the desk's top, inside the room, clear of the east wall.
   const [x, y, z] = meta.points.deploy.map((v, i) => v + FAN_FROM_DEPLOY[i]);
