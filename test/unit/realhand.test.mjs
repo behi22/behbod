@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BONES, REST, LIMITS, DIGITS, FINGERS, rest, relaxed, within, world, worldFor, locals, skinPoints, padAt, padFor, mirrorPose, wrap, reach, seat, deepest, palmGap, miss, blend, fingersShape, wrist, forearm, WRIST } from '../../web/src/pure/realhand.js';
 import { JOINTS, POINTS } from '../../web/src/pure/handrig.js';
-import { qAxis, qMul, qRot, rod, add, sub, norm } from '../../web/src/pure/hands.js';
+import { qAxis, qMul, qRot, rod, add, sub, norm, dot } from '../../web/src/pure/hands.js';
 
 const near = (a, b, eps) => a.every((x, i) => Math.abs(x - b[i]) < eps);
 const N = { thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5 };
@@ -126,5 +126,25 @@ test('the wrist: straight at rest, each way it bends read right, and the forearm
     const elbow = add(Q.at, [rnd() * 0.4, rnd() * 0.4, rnd() * 0.4]), F = forearm(side, Q, elbow);
     assert.ok(strain(side, Q, F) < 1 + 1e-6, `${i} ${strain(side, Q, F)}`);
     assert.ok(Math.abs(Math.hypot(...sub(F, Q.at)) - Math.hypot(...sub(elbow, Q.at))) < 1e-9, 'as long');
+  }
+});
+
+test('the forearm drawn follows the elbow smoothly all the way round, ahead of the wrist too, never jumping', () => {
+  const turn = (a, b) => Math.acos(Math.min(1, Math.max(-1, dot(norm(a), norm(b))))) * 180 / Math.PI;
+  // Elbows on great circles all round each hand, half a degree a step: the forearm never turns ten times as far.
+  const step = Math.PI / 360, hands = [['right', rest()], ['left', { ...rest(), at: [0.1, 0.2, -0.3], q: qAxis(norm([1, 2, 3]), 0.7) }]];
+  for (const [side, P] of hands) for (let tilt = 0; tilt < 180; tilt += 9) for (let spin = 0; spin < 360; spin += 30) {
+    const t = tilt * Math.PI / 180, s = spin * Math.PI / 180, n = [Math.sin(t) * Math.cos(s), Math.sin(t) * Math.sin(s), Math.cos(t)];
+    const u = norm(Math.abs(n[0]) < 0.9 ? [0, -n[2], n[1]] : [-n[1], n[0], 0]), w = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+    let prev = null;
+    for (let a = 0; a <= 2 * Math.PI + 1e-9; a += step) {
+      const F = sub(forearm(side, P, add(P.at, u.map((x, i) => 0.3 * (Math.cos(a) * x + Math.sin(a) * w[i])))), P.at);
+      if (prev) assert.ok(turn(prev, F) < 5, `${side} circle ${tilt} ${spin} at ${(a * 180 / Math.PI).toFixed(1)}: ${turn(prev, F).toFixed(1)} degrees`);
+      prev = F;
+    }
+  }
+  // Where it jumped 25 to 43 degrees: an elbow ahead of the wrist moved a fraction of a millimetre across a middle plane.
+  for (const side of ['right', 'left']) for (const [a, b] of [[[0.3, -0.15, 0.0005], [0.3, -0.15, -0.0005]], [[0.3, 0.0005, 0.15], [0.3, -0.0005, 0.15]]]) {
+    assert.ok(turn(forearm(side, rest(), a), forearm(side, rest(), b)) < 1, `${side} ${a} ${b}`);
   }
 });

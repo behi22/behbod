@@ -146,23 +146,31 @@ export function tipPoints(side, pose, d) {
 // ---------- the wrist ----------
 // The forearm's way from the wrist in the hand's own axes, the wrist relaxed.
 const FOREARM = norm(JOINTS.elbow);
-const slope = (v, k) => Math.atan2(v[k], -v[0]);
+// Near a slope's middle plane its run back is held to at least AHEAD less the elbow's distance off it, so no slope wraps.
+const AHEAD = 0.3;
+const run = (v, k) => Math.max(-v[0], AHEAD - Math.abs(v[k]));
+const slope = (v, k) => Math.atan2(v[k], run(v, k));
+const bend = (side, pose, elbow) => {
+  const P = side === 'left' ? mirrorPose(pose) : pose, e = qRot(qConj(P.q), norm(sub(flip(side, elbow), P.at)));
+  return { flex: slope(FOREARM, 1) - slope(e, 1), radial: slope(FOREARM, 2) - slope(e, 2), exact: run(e, 1) === -e[0] && run(e, 2) === -e[0] };
+};
 // How a wrist is bent, the forearm running toward `elbow` (radians): flex, the palm bent toward the forearm (less than
 // none is the back bent toward it); radial, the hand bent toward the thumb (less than none, toward the little finger).
 export function wrist(side, pose, elbow) {
-  const P = side === 'left' ? mirrorPose(pose) : pose, e = qRot(qConj(P.q), norm(sub(flip(side, elbow), P.at)));
-  return { flex: slope(FOREARM, 1) - slope(e, 1), radial: slope(FOREARM, 2) - slope(e, 2) };
+  const { flex, radial } = bend(side, pose, elbow);
+  return { flex, radial };
 }
 // How far a relaxed wrist goes each way without strain (radians): the palm bent in a little, the back bent in more,
 // toward the thumb a little, toward the little finger more.
 export const WRIST = { flex: 0.35, extend: 0.7, radial: 0.21, ulnar: 0.52 };
 // Where the forearm runs: toward `elbow` as far as the wrist goes without strain, so no wrist ever looks broken.
 export function forearm(side, pose, elbow) {
-  const b = wrist(side, pose, elbow), u = b.flex / (b.flex > 0 ? WRIST.flex : WRIST.extend), v = b.radial / (b.radial > 0 ? WRIST.radial : WRIST.ulnar);
+  const b = bend(side, pose, elbow), u = b.flex / (b.flex > 0 ? WRIST.flex : WRIST.extend), v = b.radial / (b.radial > 0 ? WRIST.radial : WRIST.ulnar);
   const k = Math.hypot(u, v);
-  if (k <= 1) return elbow;
-  const P = side === 'left' ? mirrorPose(pose) : pose, d = len(sub(elbow, pose.at));
-  const e = norm([-1, Math.tan(slope(FOREARM, 1) - b.flex / k), Math.tan(slope(FOREARM, 2) - b.radial / k)]);
+  if (k <= 1 && b.exact) return elbow;
+  // An elbow well ahead of the fingers can read as one within the range: the forearm runs where it reads.
+  const s = Math.max(1, k), P = side === 'left' ? mirrorPose(pose) : pose, d = len(sub(elbow, pose.at));
+  const e = norm([-1, Math.tan(slope(FOREARM, 1) - b.flex / s), Math.tan(slope(FOREARM, 2) - b.radial / s)]);
   return flip(side, add(P.at, scale(qRot(P.q, e), d)));
 }
 
