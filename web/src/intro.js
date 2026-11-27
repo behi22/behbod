@@ -52,7 +52,10 @@ export function makeDoor({ gate, loading, film, coarse, startSound }) {
   const fill = loading.querySelector('.done'), say = loading.querySelector('.say'), pct = loading.querySelector('.pct'), bhEl = loading.querySelector('.i-bh'), rider = loading.querySelector('.i-rider');
   const bh = makeBH(bhEl), press = gate.querySelector('#film'), enter = gate.querySelector('#enter');
   press.textContent = coarse ? 'TAP TO START' : 'PRESS ANY KEY';
-  let f = 0, shown = 0, isReady = false, onIn = null, inside = false, lineAt = 0, lineIdx = (Math.random() * LINES.length) | 0, hopped = false, going = false, last = performance.now(), speed = 0.1, sent = 0, lead = 0;
+  let f = 0, shown = 0, isReady = false, onIn = null, inside = false, lineAt = 0, lineIdx = 0, hopped = false, going = false, last = performance.now(), speed = 0.1, sent = 0, lead = 0;
+  // The lines in a new order every visit, none said twice before all have been.
+  const order = [...LINES];
+  for (let i = order.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [order[i], order[j]] = [order[j], order[i]]; }
   let readyNow; const whenReady = new Promise(r => { readyNow = r; });
 
   function draw(now) {
@@ -76,7 +79,7 @@ export function makeDoor({ gate, loading, film, coarse, startSound }) {
     if (done && going) { goIn(); return; }
     if (!done && now - lineAt > 1900) {
       lineAt = now; say.classList.add('out');
-      setTimeout(() => { if (!isReady) { say.textContent = shown > 0.9 ? 'Almost home' : LINES[lineIdx++ % LINES.length]; say.classList.remove('out'); } }, 250);
+      setTimeout(() => { if (!isReady) { say.textContent = shown > 0.9 ? 'Almost home' : order[lineIdx++ % order.length]; say.classList.remove('out'); } }, 250);
     }
     if (done) { say.textContent = 'Home is ready'; say.classList.remove('out'); enter.setAttribute('aria-disabled', 'false'); enter.textContent = 'Skip it and go in'; }
     else enter.textContent = `You can skip it once home is ready · ${p}%`;
