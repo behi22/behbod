@@ -405,29 +405,30 @@ export function makePanels(surface, ctx) {
     g.restore();
   });
   const later = (f, wait = 2500) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f, { timeout: wait }) : setTimeout(f, Math.min(wait, 1200)));
-  // Up to 4 ms of painting at a time, the next at most 250 ms on, so a busy phone still has the board in a few seconds.
-  const SLICE = 4, NEXT = 250;
   live.push({ every: 0, last: 0, f(now) {
     if (khatamAt === Infinity) return;
     khatamAt ||= now + 3000;
     if (now < khatamAt) return;
     khatamAt = Infinity;
-    later(() => import('./src/khatam.js').then(async m => {
-      await m.nardReady(2);
+    later(() => import('./src/khatam.js').then(m => {
       // On the processor, so each step's drawing is done in its own quiet moment, not saved up for the upload.
       const c = document.createElement('canvas');
       c.width = 920; c.height = 640;
       const g = c.getContext('2d', { willReadFrequently: true }), steps = m.nardSteps(g, 2);
-      let painted = false;
-      const inlay = deadline => {
-        // Once whole, copied in a moment of its own into the table's own canvas, the one its picture is sent from.
-        if (painted) { inlaid = true; S.backgammon.g.drawImage(c, 0, 0); S.backgammon.t.needsUpdate = true; return; }
-        const until = performance.now() + Math.min(SLICE, Math.max(1, deadline?.timeRemaining?.() ?? SLICE));
-        // A canvas keeps its drawing to do until it is read or copied: one pixel read makes each step's drawing land now.
-        do { painted = steps.next().done; g.getImageData(0, 0, 1, 1); } while (!painted && performance.now() < until);
-        later(inlay, NEXT);
+      let done = false;
+      // Up to 8 ms of steps in a quiet moment, and 4 ms when none has come for a second, so a busy phone still gets the
+      // board in good time with no long task.
+      const step = deadline => {
+        const until = performance.now() + (deadline && !deadline.didTimeout ? 8 : 4);
+        // A canvas keeps its drawing to do until it is read: one pixel read after each step makes its drawing land now.
+        while (!done && performance.now() < until) { done = steps.next().done; g.getImageData(0, 0, 1, 1); }
+        if (!done || performance.now() >= until) { later(step, 1000); return; }
+        // Copied into the table's own canvas, the one its picture is sent from, so the scratch canvas can go.
+        inlaid = true;
+        S.backgammon.g.drawImage(c, 0, 0);
+        S.backgammon.t.needsUpdate = true;
       };
-      later(inlay, NEXT);
+      later(step, 1000);
     }).catch(e => console.warn('[loft] the khatam board could not be drawn', e)));
   } });
 

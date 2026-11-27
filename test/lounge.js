@@ -179,29 +179,50 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
     }
 
     if (want('inlay')) {
-      // The balcony board is inlaid a few steps at a time in quiet moments; each moment is timed in the page itself (the
-      // idle callbacks that paint it), on his laptop at ultra, where the graphics card is busiest, and on a phone 4x
-      // slower. Failed before: its strips were filled from tiles kept on the graphics card, and the page waited for them
-      // in the last step, 34 to 45 ms at ultra. Without VideoFrame the tiles stay there, and the board is inlaid all the same.
+      // The balcony board is inlaid a few steps at a time in quiet moments: on his laptop at ultra, where the graphics card
+      // is busiest, on a phone 4x slower, and at ultra in a browser with no Worker or VideoFrame. Each quiet moment is
+      // timed in the page (the idle callbacks that paint it), and a Chrome trace times the page's other tasks from the
+      // first of them until 300 ms after the board is on the table (a step run as its module arrives, a worker shut
+      // down), leaving out the house's frames and its own quiet-moment work. Failed before: the strips were filled from
+      // tiles on the graphics card and the last step waited for them, 35 to 66 ms at ultra; then a worker fetched the
+      // tiles, its shutting down held the page 12 to 22 ms, and with no worker the steps waited 29 to 73 ms each.
       const timeInlay = () => {
         window.__inlay = [];
         const ric = window.requestIdleCallback;
-        if (ric) window.requestIdleCallback = (cb, o) => ric.call(window, !/steps\.next\(\)\.done/.test(String(cb)) ? cb : function (d) { const t = performance.now(); try { return cb.call(this, d); } finally { window.__inlay.push(+(performance.now() - t).toFixed(1)); } }, o);
+        if (ric) window.requestIdleCallback = (cb, o) => ric.call(window, !/steps\.next\(\)\.done/.test(String(cb)) ? cb : function (d) { const t = performance.now(); console.timeStamp('inlay step'); try { return cb.call(this, d); } finally { window.__inlay.push(+(performance.now() - t).toFixed(1)); } }, o);
       };
-      for (const [name, opts, q, cpu, init] of [['his laptop at ultra', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 }, 'ultra', 1, null],
-        ['a phone 4x slower', UPRIGHT, 'medium', 4, null], ['without VideoFrame', DESK, 'high', 1, () => { delete window.VideoFrame; }]]) {
+      // The longest task on the page's main thread while the board is inlaid, other than frames and idle callbacks (its
+      // own are timed in the page), with what ran in it.
+      const longest = trace => {
+        const ev = JSON.parse(trace.toString()).traceEvents, marks = ev.filter(e => e.name === 'TimeStamp' && e.args?.data?.message === 'inlay step');
+        if (!marks.length) return null;
+        const own = e => e.pid === marks[0].pid && e.tid === marks[0].tid && e.ph === 'X', inside = (t, e) => e.ts >= t.ts && e.ts <= t.ts + t.dur;
+        const tasks = ev.filter(e => own(e) && /RunTask$/.test(e.name)), steps = tasks.filter(t => marks.some(m => inside(t, m)));
+        if (!steps.length) return null;
+        const from = marks[0].ts, to = Math.max(...steps.map(t => t.ts + t.dur)) + 300e3;
+        const near = e => e.ts + (e.dur || 0) >= from && e.ts <= to;
+        const calls = ev.filter(e => own(e) && near(e) && /^(FireAnimationFrame|FireIdleCallback|TimerFire|EventDispatch|FunctionCall|v8\.evaluateModule)$/.test(e.name));
+        const worst = tasks.filter(near).filter(t => !calls.some(e => /^Fire/.test(e.name) && inside(t, e))).sort((a, b) => b.dur - a.dur)[0];
+        return worst ? { ms: +(worst.dur / 1000).toFixed(1), what: calls.find(e => inside(worst, e))?.name || 'no script' } : { ms: 0, what: 'none' };
+      };
+      const ULTRA = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 };
+      for (const [name, opts, q, cpu, limit, init] of [['his laptop at ultra', ULTRA, 'ultra', 1, 10, null], ['a phone 4x slower', UPRIGHT, 'medium', 4, 16.7, null],
+        ['no Worker or VideoFrame, at ultra', ULTRA, 'ultra', 1, 10, () => { delete window.Worker; delete window.VideoFrame; }]]) {
         const p = await b.newPage(opts), errs = [];
         watch(p, errs);
         await p.addInitScript(timeInlay);
         if (init) await p.addInitScript(init);
         if (cpu > 1) await (await p.context().newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: cpu });
-        await p.goto(`${BASE}/?auto&q=${q}`);
+        await p.goto(`${BASE}/?auto&matchday=off&q=${q}`);
         await p.waitForFunction(() => window.__loft && __loft.renderer.info.render.calls > 0, null, { timeout: 300000 });
+        await b.startTracing(p, { categories: ['toplevel', 'devtools.timeline'] });
         const t0 = Date.now();
         const inlaid = await p.waitForFunction(() => { const d = __loft.screens.textures.backgammon.image.getContext('2d').getImageData(0, 0, 920, 26).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 47) + Math.abs(d[i + 1] - 106) + Math.abs(d[i + 2] - 76) < 40) n++; return n > 200; }, null, { timeout: 90000, polling: 200 }).then(() => true, () => false);
-        const took = ((Date.now() - t0) / 1000).toFixed(1), steps = await p.evaluate(() => window.__inlay.slice()), most = Math.max(...steps);
-        if (init) check(`${name}: the board is inlaid all the same`, inlaid, `${steps.length} idle callbacks, inlaid ${took} s after the house opened`);
-        else check(`${name}: the board is inlaid a few steps at a time, each moment under a 60 Hz frame (16.7 ms)`, inlaid && steps.length > 2 && most < 16.7, `${steps.length} idle callbacks, the longest ${most} ms; inlaid ${took} s after the house opened`);
+        const took = ((Date.now() - t0) / 1000).toFixed(1);
+        await p.waitForTimeout(400);
+        const task = longest(await b.stopTracing()), steps = await p.evaluate(() => window.__inlay.slice()), most = Math.max(...steps);
+        check(`${name}: the board is inlaid a few steps at a time, each quiet moment under a 60 Hz frame (16.7 ms)`, inlaid && steps.length >= 2 && most < 16.7, `${steps.length} idle callbacks, the longest ${most} ms; inlaid ${took} s after the house opened`);
+        check(`${name}: no other task it causes holds the page over ${limit} ms`, !!task && task.ms < limit, task ? `the longest task ${task.ms} ms (${task.what})` : 'no steps in the trace');
         check(`inlay, ${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
         await p.close();
       }
