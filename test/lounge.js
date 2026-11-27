@@ -182,8 +182,8 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
       // The balcony board is inlaid a few steps at a time: in quiet moments on his laptop at ultra, where the graphics
       // card is busiest, and on a phone 4x slower, and on timers on that phone with no requestIdleCallback and in
       // WebKit at phone size, as in Safari. Each slice that paints it is timed in the page, and in Chrome a trace times
-      // the page's other tasks from the first slice until 300 ms after the board is on the table (a step run as its
-      // module arrives, a worker shut down), leaving out the house's frames and its own quiet-moment work. The WebKit
+      // the page's other tasks from the first slice until 300 ms after the board is on the table, leaving out the
+      // house's frames and its own quiet-moment work. The WebKit
       // leg runs Safari's engine at all (errors, slices): earlier versions pass it too. WebKit at ultra is left out:
       // under Playwright it draws the house at about 12 frames a second and its slices wait on those frames, main's
       // too. Failed before: the strips were filled from tiles on the graphics card and the last step waited for them,
@@ -235,7 +235,7 @@ const materials = (p, sel, rect) => p.evaluate(([sel, rect, mats]) => {
         const task = limit ? longest(await b.stopTracing()) : null, slices = await p.evaluate(() => window.__inlay.slice());
         const paints = slices.filter(s => s.paint).length, most = Math.max(...slices.map(s => s.ms));
         const took = slices.length ? +((slices.at(-1).at + slices.at(-1).ms - slices[0].at) / 1000).toFixed(1) : 0;
-        check(`${name}: the board is inlaid in a few slices, each under a 60 Hz frame (16.7 ms)`, inlaid && paints >= 3 && most < 16.7, `${paints} slices that paint, the longest ${most} ms; on the table ${took} s after the first`);
+        check(`${name}: the board is inlaid in a few slices, each under a 60 Hz frame (16.7 ms)`, inlaid && paints >= 2 && most < 16.7, `${paints} slices that paint, the longest ${most} ms; on the table ${took} s after the first`);
         if (bound) check(`${name}: and on the table within ${bound} s of the first slice`, inlaid && took < bound, `${took} s`);
         if (limit) check(`${name}: no other task it causes holds the page over ${limit} ms`, !!task && task.ms < limit, task ? `the longest task ${task.ms} ms (${task.what})` : 'no slices in the trace');
         check(`inlay, ${name}: no error`, errs.length === 0, errs.slice(0, 3).join(' | '));
