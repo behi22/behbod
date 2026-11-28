@@ -36,6 +36,7 @@ import { makeDeskBits, FAN_SPOT } from './src/deskbits.js';
 import { makeTreatJar } from './src/treatjar.js';
 import { makeFilm } from './src/film.js';
 import { makeDoor } from './src/intro.js';
+import { breathe } from './src/pure/slices.js';
 import { makeKnight, readyKnight, makeSaber } from './src/saber.js';
 import { makeSpots } from './src/spots.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
@@ -128,6 +129,8 @@ function findPath(from, to) {
   if (!navWorker) return Promise.resolve(NAVS[which].path(from, to));
   return new Promise(res => { const id = ++pathId; pathJobs.set(id, { res, which, from, to }); navWorker.postMessage({ type: 'path', id, which, from, to }); });
 }
+// Building the house is cut in a few pieces with a breath between, so the loading screen and my story keep moving.
+await breathe();
 // The real 3D world outside the glass; if it cannot start, the painted backdrop stays.
 let out3d = null;
 try {
@@ -180,6 +183,7 @@ function earn(id) {
   if (title) setTimeout(() => { toast('Achievement: ' + title); audio.sfx.achievement(); }, 400);
 }
 
+await breathe();
 // ---------- the range, the telescope and the piano ----------
 const UNLOCK_NAMES = { kit: 'the keeper kit', gold: 'the gold colourway', visor: 'the red visor', vault: 'the secret room' };
 const range = makeRange({
@@ -249,10 +253,12 @@ function enterPens() {
   me.root.visible = false; $('prompt').classList.remove('on');
   pens.enter();
 }
+await breathe();
 const knightReady = await readyKnight(renderer);
 // The knight in the glass case, and his saber in my hand.
 const knight = makeKnight(scene, meta, [scene], { renderer });
 knightReady();
+await breathe();
 // The light switch by the front door; the knight's glass case keeps its own light.
 const lights = makeLights(scene, world, { sfx: audio.sfx, skip: [knight?.root] }); window.__lights = lights;
 const pishiCam = makePishiCam({ renderer, scene, screen: scene.getObjectByName('screen_pishi'), texture: screens.textures.pishi, pishi: creatures.pishi, me, coarse }); window.__pishiCam = pishiCam;
@@ -1043,6 +1049,7 @@ engine.resize();
 const start = follow();
 camera.position.copy(start.p); camLook.copy(start.l);
 door.progress(0.92);
+await breathe();
 // The heavy graphics work stalls the page, so it waits while my story plays, until its closing card (a still
 // picture) or until it is skipped or ends.
 await door.quiet();
