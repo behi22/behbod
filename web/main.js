@@ -1057,7 +1057,7 @@ await door.quiet();
 door.progress(0.95); $('gate').dataset.stage = 'warming';
 lights.adopt();
 await engine.warmUp();
-screens.contrib.start();
+screens.contrib.start(() => !film.playing);
 function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }
 $('enter').classList.add('ready');
 const matchday = makeMatchday({ world, store, clock: () => (out3d ? out3d.clock() : new Date()) }); matchday.start(); window.__matchday = matchday;
