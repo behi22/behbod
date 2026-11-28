@@ -1,4 +1,4 @@
-import { drawWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
+import { drawWorldMat, prepareWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
 import { makePanels } from './panels.js';
 import { W as DW, H as DH, BAR, DOCK, TITLE, PAD, STYLE, appById, newDesktop, dock as dockIcons, rows as appRows, layout, wrap, termShown, open as openApp, keepOpen, clockText, calcLayout, tail } from './src/pure/desktop.js';
 import { newCalc, press as calcPress, show as calcShow, fromKeyboard as calcKey } from './src/pure/calc.js';
@@ -58,7 +58,11 @@ function seeded(seed) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
+const MAT = [2048, 822];
+
 export function makeCanvases(meta, opts = {}) {
+  // The desk mat's slow part first, before the screens below keep the graphics card busy: it reads back from the card.
+  prepareWorldMat(...MAT);
   const S = {};
   const T = {};
 
@@ -316,7 +320,7 @@ export function makeCanvases(meta, opts = {}) {
   outside.draw(new Date());
 
   // The world map desk mat, the pomodoro cube and the neon sign over the about board.
-  S.mat = surface(2048, 822);
+  S.mat = surface(...MAT);
   S.timer = surface(220, 150);
   S.neon = surface(1300, 320);
   const holiday = holidayAt(new Date());

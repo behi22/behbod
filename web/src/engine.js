@@ -204,6 +204,36 @@ export function makeEngine(canvas, coarse) {
   // clearDepth: start from a fresh depth (the gun in the hand never pokes through a wall); camera: its own, or the loft's.
   function addLayer(layer) { layers.push({ on: () => true, ...layer }); return layer; }
   function setBackground(outside) { bg = outside; scene.background = null; buildPost(); }
+  // Two kinds of shader three's compile leaves for the first frame (or reflection) to build, holding the page while it
+  // does: the back of see-through glass, drawn into the picture behind it, and things cut by their own planes (the
+  // print), built for the planes of whatever was drawn last. A draw of nothing with as many planes sets that count.
+  async function readyMissed(picture) {
+    const backs = new Map(), cut = new Map();
+    scene.traverse(o => {
+      for (const m of [].concat(o.material || [])) {
+        if (m.transmission > 0 && m.side === THREE.DoubleSide) backs.set(o, m);
+        if (renderer.localClippingEnabled && m.clippingPlanes?.length && !m.clipIntersection) cut.set(o, m);
+      }
+    });
+    const was = renderer.getRenderTarget(), planes = renderer.clippingPlanes, jobs = [], nothing = new THREE.Scene();
+    const planesTo = p => { renderer.clippingPlanes = p; renderer.setRenderTarget(picture); renderer.render(nothing, camera); renderer.clippingPlanes = planes; };
+    try {
+      for (const [o, m] of backs) {
+        renderer.setRenderTarget(picture);
+        m.side = THREE.BackSide; m.needsUpdate = true;
+        try { jobs.push(renderer.compileAsync(o, camera, scene)); } finally { m.side = THREE.DoubleSide; m.needsUpdate = true; }
+      }
+      for (const [o, m] of cut) {
+        planesTo([...planes, ...m.clippingPlanes]);
+        for (const target of [null, picture]) { renderer.setRenderTarget(target); jobs.push(renderer.compileAsync(o, camera, scene)); }
+      }
+    } finally {
+      // Back to no planes, or every shader built after this would be built for them.
+      if (cut.size) planesTo(planes);
+      renderer.clippingPlanes = planes; renderer.setRenderTarget(was);
+    }
+    await Promise.all(jobs);
+  }
   // Every shader is prepared while the loading screen is up, hidden things included, so nothing coming into view later
   // (the mirror, the range targets, the telescope) stalls a frame while the graphics card builds its program.
   async function warmUp() {
@@ -223,6 +253,7 @@ export function makeEngine(canvas, coarse) {
           await job;
         }
       }
+      if (renderer.compileAsync) await readyMissed(picture);
       picture.dispose();
       // And each first used now, its logs read while nobody is waiting (see useahead.js).
       const used = new Set();
@@ -259,6 +290,8 @@ export function makeEngine(canvas, coarse) {
     render(0);
   }
   addEventListener('resize', resize);
+  // Sized now, before the loading screen moves: the first resize waits for the graphics card to catch up.
+  resize();
   return { renderer, scene, camera, mosaicU, setTier, resize, render, setBackground, warmUp, addLayer, onTier: f => onTier.push(f),
     // The world outside is not drawn while nothing of it can be seen (at the range's firing line).
     showBackground(on) { bgOn = on; }, get tier() { return tier; } };

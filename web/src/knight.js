@@ -299,7 +299,7 @@ function buildHead(M) {
 }
 
 // Black lacquer is nearly all reflection, so this studio is most of how he looks.
-function studio(renderer, more) {
+function studio(pm, more) {
   const s = new THREE.Scene();
   s.add(new THREE.Mesh(new THREE.BoxGeometry(12, 7, 12), new THREE.MeshBasicMaterial({ color: 0x07090d, side: THREE.BackSide })));
   const panel = (w, h, hex, k, p, at) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k), side: THREE.DoubleSide })); m.position.set(...p); m.lookAt(...at); s.add(m); };
@@ -310,10 +310,7 @@ function studio(renderer, more) {
   panel(0.25, 3.5, 0xff2a1a, 1.6, [1.6, 1.0, 3.5], [0, 1, 0]);
   panel(12, 12, 0x15110e, 1, [0, -3.4, 0], [0, 0, 0]);
   more?.(panel);
-  const pm = new THREE.PMREMGenerator(renderer), env = pm.fromScene(s, 0.035).texture;
-  pm.dispose();
-  s.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
-  return env;
+  return { env: pm.fromScene(s, 0.035).texture, done: () => s.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); }) };
 }
 
 export function clearCase(roots, lo, hi, skip = () => false) {
@@ -346,6 +343,19 @@ export function clearCase(roots, lo, hi, skip = () => false) {
   return gone;
 }
 
+// The studio's plain shaders built ahead in the background (stand-ins share them: three keys a program by its settings,
+// not its material), so making the knight does not hold the page while the graphics card builds them. Call what this
+// gives back once he is made, to let the stand-ins go.
+export async function readyKnight(renderer) {
+  if (!renderer?.compileAsync) return () => {};
+  const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+  const mats = [THREE.BackSide, THREE.DoubleSide].map(side => new THREE.MeshBasicMaterial({ side }));
+  const picture = new THREE.WebGLRenderTarget(1, 1), eye = new THREE.PerspectiveCamera(), was = renderer.getRenderTarget(), jobs = [];
+  try { renderer.setRenderTarget(picture); for (const m of mats) jobs.push(renderer.compileAsync(new THREE.Mesh(g, m), eye)); } finally { renderer.setRenderTarget(was); }
+  try { await Promise.all(jobs); } finally { picture.dispose(); }
+  return () => { for (const m of mats) m.dispose(); g.dispose(); };
+}
+
 export function makeKnight(scene, meta, roots, { renderer }) {
   const c = meta.colliders?.find(x => x.name === 'vader');
   if (!c) return null;
@@ -359,12 +369,15 @@ export function makeKnight(scene, meta, roots, { renderer }) {
   // Between the front door's view and the spot where you take the saber.
   const facing = THREE.MathUtils.degToRad(30), front = V(Math.sin(facing), 0, Math.cos(facing));
   // The lamp and the blade's red live in his reflections: real lights cost every lit material in the house each frame.
-  const env = studio(renderer), M = knightMaterials(studio(renderer, panel => {
+  // One generator for both, and the first studio kept till the second is made, so the second builds no shaders of its own.
+  const pm = new THREE.PMREMGenerator(renderer), plain = studio(pm), lit = studio(pm, panel => {
     const lamp = front.clone().multiplyScalar(0.27).add(V(0, 0.45, 0)).normalize().multiplyScalar(3.2);
     panel(1.8, 1.8, 0xfff0e4, 3.2, lamp.toArray(), [0, 0, 0]);
     const glow = front.clone().add(V(-0.1, 0.15, 0)).normalize().multiplyScalar(3);
     panel(0.45, 2.6, 0xff2a18, 2.2, glow.toArray(), [0, glow.y, 0]);
-  }));
+  });
+  pm.dispose(); plain.done(); lit.done();
+  const env = plain.env, M = knightMaterials(lit.env);
   const root = new THREE.Group();
   root.name = 'knight';
   root.position.copy(b2t(cx, cy, PLINTH));
