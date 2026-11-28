@@ -58,17 +58,13 @@ const LABELS = [['CANADA', -105, 58, 1], ['UNITED STATES', -100, 39, 1], ['BRAZI
   ['IRAN', 54, 32, 0.8], ['AUSTRALIA', 134, -25, 1], ['AFRICA', 20, 5, 1.2], ['EUROPE', 15, 50, 0.8], ['GREENLAND', -41, 74, 0.8], ['ARGENTINA', -65, -36, 0.7], ['MEXICO', -102, 23, 0.7],
   ['PACIFIC OCEAN', -150, 10, 0.9, 1], ['ATLANTIC OCEAN', -38, 25, 0.9, 1], ['INDIAN OCEAN', 78, -22, 0.9, 1], ['ARCTIC OCEAN', 0, 80, 0.7, 1], ['VANCOUVER', -123, 49.3, 0.55, 2]];
 
-export function drawWorldMat(s) {
-  const { g, c, t } = s, W = c.width, Hh = c.height, r = seeded(81);
-  const LAT0 = 84, LAT1 = -58;
-  const px = (lon, lat) => [(lon + 180) / 360 * (W - 60) + 30, (LAT0 - lat) / (LAT0 - LAT1) * (Hh - 60) + 30];
-  const path = polys => { g.beginPath(); for (const p of polys) { p.forEach(([lo, la], i) => { const [x, y] = px(lo, la); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); } };
-  const ocean = g.createLinearGradient(0, 0, 0, Hh);
-  ocean.addColorStop(0, '#1b1e23'); ocean.addColorStop(1, '#121417');
-  g.fillStyle = ocean; g.fillRect(0, 0, W, Hh);
-  g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 1;
-  for (let lon = -180; lon <= 180; lon += 15) { const [x] = px(lon, 0); g.beginPath(); g.moveTo(x, 30); g.lineTo(x, Hh - 30); g.stroke(); }
-  for (let lat = -45; lat <= 75; lat += 15) { const [, y] = px(0, lat); g.beginPath(); g.moveTo(30, y); g.lineTo(W - 30, y); g.stroke(); }
+// The countries' patchwork never changes (a fixed seed) and is slow to make (its land mask is read back from the
+// graphics card, which waits for whatever the card is busy with), so it is made once and the redraw for the fonts reuses it.
+let patches = null;
+const matPx = (W, Hh, LAT0 = 84, LAT1 = -58) => (lon, lat) => [(lon + 180) / 360 * (W - 60) + 30, (LAT0 - lat) / (LAT0 - LAT1) * (Hh - 60) + 30];
+function patchwork(W, Hh) {
+  if (patches?.W === W && patches.Hh === Hh) return patches.land;
+  const r = seeded(81), px = matPx(W, Hh);
   // Countries: a coarse patchwork of greys inside the land, with thin borders where the patches meet.
   const gw = 384, gh = Math.round(gw * Hh / W), seeds = [];
   const land = document.createElement('canvas'); land.width = gw; land.height = gh;
@@ -92,6 +88,22 @@ export function drawWorldMat(s) {
     if (cell[k] >= 0 && ((cell[k - 1] >= 0 && cell[k - 1] !== cell[k]) || (cell[k - gw] >= 0 && cell[k - gw] !== cell[k]))) { img.data[k * 4] = img.data[k * 4 + 1] = img.data[k * 4 + 2] = 205; }
   }
   lg.setTransform(1, 0, 0, 1, 0, 0); lg.putImageData(img, 0, 0);
+  patches = { W, Hh, land };
+  return land;
+}
+export const prepareWorldMat = (W, Hh) => { patchwork(W, Hh); };
+
+export function drawWorldMat(s) {
+  const { g, c, t } = s, W = c.width, Hh = c.height;
+  const px = matPx(W, Hh);
+  const path = polys => { g.beginPath(); for (const p of polys) { p.forEach(([lo, la], i) => { const [x, y] = px(lo, la); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); } };
+  const ocean = g.createLinearGradient(0, 0, 0, Hh);
+  ocean.addColorStop(0, '#1b1e23'); ocean.addColorStop(1, '#121417');
+  g.fillStyle = ocean; g.fillRect(0, 0, W, Hh);
+  g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 1;
+  for (let lon = -180; lon <= 180; lon += 15) { const [x] = px(lon, 0); g.beginPath(); g.moveTo(x, 30); g.lineTo(x, Hh - 30); g.stroke(); }
+  for (let lat = -45; lat <= 75; lat += 15) { const [, y] = px(0, lat); g.beginPath(); g.moveTo(30, y); g.lineTo(W - 30, y); g.stroke(); }
+  const land = patchwork(W, Hh);
   g.save(); path(LAND); g.clip();
   g.imageSmoothingEnabled = true; g.drawImage(land, 0, 0, W, Hh);
   g.restore();
