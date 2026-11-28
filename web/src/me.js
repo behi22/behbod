@@ -167,13 +167,17 @@ export function makeMe(scene, gltf, opts) {
     for (const [n, w] of stand) target.set(acts[n], w * layer * (1 - crouchK));
     for (const [n, w] of low) target.set(acts[n], w * layer * crouchK);
     if (oneShot) target.set(oneShot, (target.get(oneShot) || 0) + (1 - layer));
+    let sum = 0;
     for (const [a, w] of weight) {
       const goal = target.get(a) || 0;
       const v = a === oneShot ? Math.max(goal, 1 - layer) : w + (goal - w) * Math.min(1, dt * 12);
       weight.set(a, v);
-      a.setEffectiveWeight(v);
+      sum += v;
       if (STRIDE[a.getClip().name]) a.time = (phase % 1) * a.getClip().duration;
     }
+    // Short of a whole (a one-shot fading out faster than the walk comes back), the mixer fills in the rest pose's T.
+    const k = sum > 1e-6 && sum < 1 ? 1 / sum : 1;
+    for (const [a, v] of weight) a.setEffectiveWeight(v * k);
     mixer.update(dt);
     // The head is scaled after the animation poses it, every frame.
     if (bones.Head && headRest) bones.Head.scale.copy(headRest).multiplyScalar(HEAD_SIZE);
