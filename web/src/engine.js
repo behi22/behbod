@@ -290,6 +290,8 @@ export function makeEngine(canvas, coarse) {
     render(0);
   }
   addEventListener('resize', resize);
+  // Sized now, before the loading screen moves: the first resize waits for the graphics card to catch up.
+  resize();
   return { renderer, scene, camera, mosaicU, setTier, resize, render, setBackground, warmUp, addLayer, onTier: f => onTier.push(f),
     // The world outside is not drawn while nothing of it can be seen (at the range's firing line).
     showBackground(on) { bgOn = on; }, get tier() { return tier; } };
