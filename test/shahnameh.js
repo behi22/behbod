@@ -71,7 +71,7 @@ const termLines = p => p.evaluate(() => __loft.screens.desktop.term.lines.slice(
       await type(p, 'help');
       lines = await termLines(p);
       const help = lines.slice(lines.lastIndexOf('$ help') + 1);
-      check('help lists them, every line fitting the terminal', help.join(' ').includes('ferdowsi') && help.join(' ').includes('nowruz') && help.join(' ').includes('film') && help.every(l => l.length <= 66), help.map(l => l.length).join(' '));
+      check('help lists them, every line fitting the terminal', help.join(' ').includes('ferdowsi') && help.join(' ').includes('nowruz') && help.join(' ').includes('story') && help.every(l => l.length <= 66), help.map(l => l.length).join(' '));
       // The seated view's own lines are drawn by the page: none runs past the window's right edge.
       const over = await p.evaluate(() => { const w = document.querySelector('.dt-win[data-app="terminal"]').getBoundingClientRect(); return [...document.querySelectorAll('.dt-term div')].filter(d => { const r = document.createRange(); r.selectNodeContents(d); const q = r.getBoundingClientRect(); return q.right > w.right + 1; }).map(d => d.textContent); });
       check('no terminal line runs past its window', over.length === 0, over.join(' | ') || 'none');

@@ -23,7 +23,7 @@ export function makeLegs(me, col, { onStep } = {}) {
   const footing = makeFooting(col.floors, col.boxes);
   const stance = makeStance();
   const leg = s => ({ thigh: B['thigh_' + s], calf: B['calf_' + s], foot: B['foot_' + s], ball: B['ball_' + s], g: null, back: 0, px: null, pz: 0,
-    c0: new THREE.Vector3(), b0: new THREE.Vector3(), a0: new THREE.Vector3(), len: 0, up: 0, q0: new THREE.Quaternion(), rest: [0, 0, 0], t: new THREE.Vector3(), dyaw: 0, short: 0, locked: false, lockG: 0, lockBack: 0, ux: 0, uz: 0,
+    c0: new THREE.Vector3(), b0: new THREE.Vector3(), a0: new THREE.Vector3(), len: 0, up: 0, q0: new THREE.Quaternion(), rest: [0, 0, 0], was: [0, 0], t: new THREE.Vector3(), dyaw: 0, short: 0, locked: false, lockG: 0, lockBack: 0, ux: 0, uz: 0,
     sol: { mid: [0, 0, 0], end: [0, 0, 0], short: 0 } });
   const legs = [leg('l'), leg('r')];
   for (const l of legs) l.chain = [l.thigh, l.calf, l.foot, l.ball];
@@ -31,7 +31,7 @@ export function makeLegs(me, col, { onStep } = {}) {
   const a = new THREE.Vector3(), k = new THREE.Vector3(), c = new THREE.Vector3(), from = new THREE.Vector3(), to = new THREE.Vector3(), want = new THREE.Vector3();
   const qp = new THREE.Quaternion(), qb = new THREE.Quaternion(), r = new THREE.Quaternion();
   const A = [0, 0, 0], K = [0, 0, 0], C = [0, 0, 0], T = [0, 0, 0], ahead = [0, 0, 0];
-  let w = 0, sw = 0, shift = 0, last = null, lx = null, lz = 0;
+  let w = 0, sw = 0, shift = 0, last = null, lx = null, lz = 0, seen = false, calm = 1;
   // Made once and filled in each frame: the house makes nothing new per frame.
   const body = { x: 0, z: 0, facing: 0, vx: 0, vz: 0, spin: 0 }, rests = [legs[0].rest, legs[1].rest];
   let fx = 0, fz = 0, fux = 0, fuz = 0, frx = 0, frz = 0, fry = 0;
@@ -61,16 +61,14 @@ export function makeLegs(me, col, { onStep } = {}) {
   function tickLegs(dt, s) {
     const on = !!s.on;
     w += ((on ? 1 : 0) - w) * Math.min(1, dt * (on ? 8 : 14));
-    if (!on && w < 0.002) { w = 0; sw = 0; shift = 0; stance.reset(); for (let i = 0; i < 2; i++) { const l = legs[i]; l.g = null; l.back = 0; l.px = null; l.locked = false; } last = null; lx = null; return; }
+    if (!on && w < 0.002) { w = 0; sw = 0; shift = 0; stance.reset(); for (let i = 0; i < 2; i++) { const l = legs[i]; l.g = null; l.back = 0; l.px = null; l.locked = false; } last = null; lx = null; seen = false; return; }
     const hs = Math.hypot(s.vx, s.vz), spin = s.spin || 0;
-    // Standing still, or turning on the spot while the walk is only just starting, the feet are planted and step.
-    const standGoal = on && s.stand ? Math.max(1 - Math.min(1, Math.max(0, (hs - 0.25) / 0.65)), hs < 1.2 ? Math.min(1, Math.abs(spin) / 2.5) : 0) : 0;
-    sw += (standGoal - sw) * Math.min(1, dt * 10);
     const f = root.rotation.y, cf = Math.cos(f), sf = Math.sin(f), rx = root.position.x, ry = root.position.y, rz = root.position.z;
     // Put somewhere else in one go (leaving a seat, the desk): the feet start from the floor there, not glide to it.
     if (lx !== null && Math.hypot(rx - lx, rz - lz) > 0.6) for (let i = 0; i < 2; i++) { const l = legs[i]; l.g = null; l.px = null; l.locked = false; }
     lx = rx; lz = rz;
     B.pelvis.updateWorldMatrix(true, false);
+    let fast = 0;
     for (let i = 0; i < 2; i++) {
       const l = legs[i];
       for (let j = 0; j < 4; j++) l.chain[j].updateWorldMatrix(false, false);
@@ -79,7 +77,18 @@ export function makeLegs(me, col, { onStep } = {}) {
       const dx = l.c0.x - rx, dz = l.c0.z - rz;
       l.rest[0] = dx * cf - dz * sf; l.rest[1] = dx * sf + dz * cf;
       l.rest[2] = wrap(Math.atan2(l.b0.x - l.c0.x, l.b0.z - l.c0.z) - f);
+      if (dt > 0) fast = Math.max(fast, Math.hypot(l.rest[0] - l.was[0], l.rest[1] - l.was[1]) / dt);
+      l.was[0] = l.rest[0]; l.was[1] = l.rest[1];
     }
+    // Planted only once the animation's own feet are at rest, never mid-stride (they would step back into place after).
+    if (dt > 0) calm = seen ? Math.min(1, Math.max(0, (0.25 - fast) / 0.15)) : 0;
+    seen = true;
+    // Standing, or turning on the spot from standing (not a walk's curve winding down), the feet are planted and step.
+    const turning = hs < 1.2 && (calm >= 1 || sw > 0.5) ? Math.min(1, Math.abs(spin) / 2.5) : 0;
+    const standGoal = on && s.stand ? Math.max(calm * (1 - Math.min(1, Math.max(0, (hs - 0.25) / 0.65))), turning) : 0;
+    sw += (standGoal - sw) * Math.min(1, dt * 10);
+    // Walking, the standing feet keep to the animation's, so they are planted again from where the feet are now.
+    if (calm <= 0 && !turning && !stance.feet[0].step && !stance.feet[1].step) stance.reset();
     body.x = rx; body.z = rz; body.facing = f; body.vx = s.vx; body.vz = s.vz; body.spin = spin;
     const st = stance.tick(dt, body, rests, sw);
     if (sw > 0.9) for (let i = 0; i < st.landed.length; i++) onStep?.(st.landed[i]);

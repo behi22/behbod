@@ -1,4 +1,4 @@
-import { drawWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
+import { drawWorldMat, prepareWorldMat, drawTimer, drawNeon, Outside, holidayAt } from './room2.js';
 import { makePanels } from './panels.js';
 import { W as DW, H as DH, BAR, DOCK, TITLE, PAD, STYLE, appById, newDesktop, dock as dockIcons, rows as appRows, layout, wrap, termShown, open as openApp, keepOpen, clockText, calcLayout, tail } from './src/pure/desktop.js';
 import { newCalc, press as calcPress, show as calcShow, fromKeyboard as calcKey } from './src/pure/calc.js';
@@ -58,7 +58,11 @@ function seeded(seed) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
+const MAT = [2048, 822];
+
 export function makeCanvases(meta, opts = {}) {
+  // The desk mat's slow part first, before the screens below keep the graphics card busy: it reads back from the card.
+  prepareWorldMat(...MAT);
   const S = {};
   const T = {};
 
@@ -90,7 +94,8 @@ export function makeCanvases(meta, opts = {}) {
   const gameSfx = Object.fromEntries(['click', 'blip', 'miss', 'hit'].map(n => [n, () => desk.sfx?.[n]?.()]));
   desk.games = makeDeskGames({ store: local, sfx: gameSfx, onEvent: name => { if (name === 'over') changed(); } });
   const say = (...ls) => { term.lines.push(...ls); while (term.lines.length > 15) term.lines.shift(); changed(); };
-  const EXTRA = {};
+  // Extra commands from the house; hidden ones (an old name kept working) run but are never listed or offered.
+  const EXTRA = {}, HIDDEN = {};
   const SHOWN = ['whoami', 'projects', 'postit', 'ferdowsi', 'nowruz', 'ls', 'contact', 'github', 'clear', 'exit'];
   // What autofill offers: help's list, help itself and the projects; the hidden ones stay hidden.
   const offered = () => ['help', ...SHOWN, ...Object.keys(EXTRA), ...Object.keys(LINKS)];
@@ -315,7 +320,7 @@ export function makeCanvases(meta, opts = {}) {
   outside.draw(new Date());
 
   // The world map desk mat, the pomodoro cube and the neon sign over the about board.
-  S.mat = surface(2048, 822);
+  S.mat = surface(...MAT);
   S.timer = surface(220, 150);
   S.neon = surface(1300, 320);
   const holiday = holidayAt(new Date());
@@ -426,7 +431,7 @@ export function makeCanvases(meta, opts = {}) {
     // Lines from the house into the terminal as it stands (the DEPLOY button's, while the terminal is open).
     print: (...lines) => say(...lines),
     // Commands the rest of the loft adds: fn(say, argument).
-    command(name, fn) { EXTRA[name] = fn; },
+    command(name, fn, hidden = false) { (hidden ? HIDDEN : EXTRA)[name] = fn; },
     // Up (-1) or Down (+1) through the commands entered, from the line now typed: the line to show, or null.
     recall: (dir, current) => browse(hist, dir, current),
     // The commands autofill may offer, for the phone's command box.
@@ -443,7 +448,7 @@ export function makeCanvases(meta, opts = {}) {
       let hello = null;
       // The commands that were here first keep every line they took, print "hello world" included.
       if (CMDS[cmd]) CMDS[cmd]();
-      else if (Object.hasOwn(EXTRA, word)) EXTRA[word](say, rest.join(' '));
+      else if (Object.hasOwn(EXTRA, word) || Object.hasOwn(HIDDEN, word)) (EXTRA[word] || HIDDEN[word])(say, rest.join(' '));
       else if ((hello = helloWorld(text))) say(...hello.lines);
       else if (cmd) say(`command not found: ${cmd}. try 'help'`);
       if (cmd) dispatchEvent(new CustomEvent('loft:cmd', { detail: { cmd, say, hello: !!hello } }));

@@ -35,7 +35,9 @@ import { makePenalties } from './src/penalties.js';
 import { makeDeskBits, FAN_SPOT } from './src/deskbits.js';
 import { makeTreatJar } from './src/treatjar.js';
 import { makeFilm } from './src/film.js';
-import { makeKnight, makeSaber } from './src/saber.js';
+import { makeDoor } from './src/intro.js';
+import { breathe } from './src/pure/slices.js';
+import { makeKnight, readyKnight, makeSaber } from './src/saber.js';
 import { makeSpots } from './src/spots.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
 import { makeHello } from './src/hello.js';
@@ -74,7 +76,13 @@ let tierName = Object.hasOwn(TIERS, params.get('q') || '') ? params.get('q') : '
 engine.onTier(name => { world?.setGloss(name === 'high' || name === 'ultra'); world?.setMirror(name !== 'low'); });
 
 // ---------- loading ----------
-const load = makeLoader(f => { $('bar').style.width = (f * 100).toFixed(0) + '%'; });
+// The door: my story on any key while the house loads behind it. The house's sound starts from that key (browsers
+// allow sound only from one) and stays silent until I go in.
+const sound = new Sound();
+const film = makeFilm();
+const door = makeDoor({ gate: $('gate'), loading: $('loading'), film, coarse, startSound: () => { sound.start(); hush(true); } });
+$('film').classList.add('ready');
+const load = makeLoader(f => door.progress(f * 0.9));
 const meta = await load.json('assets/world.json');
 const persiaAt = addPersia(meta, feastAt(new Date(), params.get('holiday')));
 // Where each sitting style puts the hips, and which poses build its motions.
@@ -97,7 +105,6 @@ const NAVS = {
   open: makeNav(meta, { off: n => n === 'slider_slide' || n === 'secret_door' }),
 };
 const buildNav = () => { nav = world.doors.secret?.open ? NAVS.open : NAVS.shut; };
-const sound = new Sound();
 const audio = makeAudio(sound);
 let doorsReady = false;
 // Doors tell the collision, the physics and the walk grid when they stop or start being solid.
@@ -122,6 +129,8 @@ function findPath(from, to) {
   if (!navWorker) return Promise.resolve(NAVS[which].path(from, to));
   return new Promise(res => { const id = ++pathId; pathJobs.set(id, { res, which, from, to }); navWorker.postMessage({ type: 'path', id, which, from, to }); });
 }
+// Building the house is cut in a few pieces with a breath between, so the loading screen and my story keep moving.
+await breathe();
 // The real 3D world outside the glass; if it cannot start, the painted backdrop stays.
 let out3d = null;
 try {
@@ -174,6 +183,7 @@ function earn(id) {
   if (title) setTimeout(() => { toast('Achievement: ' + title); audio.sfx.achievement(); }, 400);
 }
 
+await breathe();
 // ---------- the range, the telescope and the piano ----------
 const UNLOCK_NAMES = { kit: 'the keeper kit', gold: 'the gold colourway', visor: 'the red visor', vault: 'the secret room' };
 const range = makeRange({
@@ -243,8 +253,12 @@ function enterPens() {
   me.root.visible = false; $('prompt').classList.remove('on');
   pens.enter();
 }
+await breathe();
+const knightReady = await readyKnight(renderer);
 // The knight in the glass case, and his saber in my hand.
 const knight = makeKnight(scene, meta, [scene], { renderer });
+knightReady();
+await breathe();
 // The light switch by the front door; the knight's glass case keeps its own light.
 const lights = makeLights(scene, world, { sfx: audio.sfx, skip: [knight?.root] }); window.__lights = lights;
 const pishiCam = makePishiCam({ renderer, scene, screen: scene.getObjectByName('screen_pishi'), texture: screens.textures.pishi, pishi: creatures.pishi, me, coarse }); window.__pishiCam = pishiCam;
@@ -313,7 +327,9 @@ screens.command('music', (say, arg) => {
   if (!sound.on) { say('sound is off. turn it on at the top right.'); return; }
   audio.music.play(r.id); world.setRecord(true); earn('record'); say(`now playing: ${r.title}`);
 });
-screens.command('film', say => { say('rolling the film.'); playFilm(); });
+const story = say => { say('rolling my story.'); playFilm(); };
+screens.command('story', story);
+screens.command('film', story, true);
 addEventListener('loft:cmd', e => {
   if (e.detail.cmd !== 'whoami' || me.mosaicUnlocked) return;
   me.unlockMosaic();
@@ -575,15 +591,14 @@ function playVideo(i) {
   box.append(frame, close);
   document.body.append(box);
 }
-// My film over the room. The house goes quiet and the screening wall pauses while it plays; with the house's sound
-// switched off it starts muted, and its own controls can turn it up.
-const film = makeFilm();
-function playFilm(closeLabel, muted = !sound.on) {
+// My story over the room, from the TV or the computer. The house goes quiet and the screening wall pauses while it
+// plays; with the house's sound switched off it starts muted.
+function playFilm(muted = !sound.on) {
   if (film.playing) return Promise.resolve();
   wardrobe.hide();
   keys.clear(); route = null;
   liveVideo.pause(); hush(true);
-  return film.open({ closeLabel, muted }).then(() => { hush(false); liveVideo.resume(); });
+  return film.open({ muted }).then(() => { hush(false); liveVideo.resume(); });
 }
 function hush(quiet) {
   if (!sound.ctx) return;
@@ -1033,19 +1048,22 @@ engine.setTier(tierName);
 engine.resize();
 const start = follow();
 camera.position.copy(start.p); camLook.copy(start.l);
-$('note').textContent = 'Getting the room ready';
+door.progress(0.92);
+await breathe();
+// The heavy graphics work stalls the page, so it waits while my story plays, until its closing card (a still
+// picture) or until it is skipped or ends.
+await door.quiet();
+// The room warming up (the checks wait for this mark to lose the graphics context mid-way).
+door.progress(0.95); $('gate').dataset.stage = 'warming';
 lights.adopt();
 await engine.warmUp();
-screens.contrib.start();
-$('note').textContent = coarse ? 'Tap a spot or the floor to walk there' : 'Drag to look around, WASD to walk, click to go somewhere';
+screens.contrib.start(() => !film.playing);
 function goIn() { $('gate').classList.add('gone'); qualityNotice.opened(); sound.start(); $('snd').textContent = 'Sound on'; $('snd').classList.add('on'); earn('welcome'); rangeLater(); }
 $('enter').classList.add('ready');
-$('film').classList.add('ready');
 const matchday = makeMatchday({ world, store, clock: () => (out3d ? out3d.clock() : new Date()) }); matchday.start(); window.__matchday = matchday;
-$('enter').addEventListener('click', goIn);
-// The film first, then in. The house's sound is started by this click (browsers allow sound only from one) and waits, silent, for the film to end.
-$('film').addEventListener('click', () => { if (film.playing) return; sound.start(); playFilm('Skip', false).then(goIn); });
-if (params.has('auto')) { $('gate').classList.add('gone'); qualityNotice.opened(); rangeLater(); }
+// In through the door: straight from Enter, or from my story's end; the sound comes up as I step in.
+door.ready(() => { hush(false); goIn(); });
+if (params.has('auto')) { door.skip(); $('gate').classList.add('gone'); qualityNotice.opened(); rangeLater(); }
 window.__loft = { pos, keys, useDesk, leaveDesk, nextHead: () => me.nextHead(), renderer, camera, scene, meta, world, me, progress, creatures, range, scope, audio, out3d, pianoMode, liveVideo, printer, rubik, act: id => act(things.items.find(i => i.id === id)), stand,
   walkTo: (x, y, z) => walkTo(b2t(x, y, z)), goTo, chair, get route() { return route ? route.points.length : 0; }, wardrobe,
   get near() { return near?.id ?? null; }, get facing() { return facing; },

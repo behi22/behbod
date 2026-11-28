@@ -51,12 +51,14 @@ export function makeContrib({ c, g, t }, { store, font, fetch = (...a) => global
   draw();
   return {
     refresh,
-    // Called once the house is up: the first read waits for a quiet moment, then one an hour while the page is seen.
-    start() {
+    // Called once the house is up: the first read waits for a quiet moment (and for `free`, so not while my story
+    // plays: its draw would take the graphics card from the story), then one an hour while the page is seen.
+    start(free = () => true) {
       if (started) return;
       started = true;
       const idle = fn => (globalThis.requestIdleCallback ? requestIdleCallback(fn, { timeout: 5000 }) : setTimeout(fn, 0));
-      setTimeout(() => idle(refresh), SETTLE);
+      const first = () => (free() ? idle(refresh) : setTimeout(first, 1000));
+      setTimeout(first, SETTLE);
       setInterval(() => { if (document.hidden) due = true; else refresh(); }, HOUR);
       document.addEventListener('visibilitychange', () => { if (!document.hidden && due) { due = false; refresh(); } });
     },

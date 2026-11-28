@@ -243,6 +243,94 @@ async function turn(p, label, phone) {
   return rows;
 }
 
+// ---------- stopping, every way of moving: the legs settle straight into the standing pose ----------
+// Each way: the keys, where it starts (clear of the lounge pit's steps that way) and how long before it may let go (ms).
+const WAYS = [['W', ['KeyW']], ['A', ['KeyA'], [14.5, 11, 0]], ['S', ['KeyS']], ['D', ['KeyD']], ['W and A', ['KeyW', 'KeyA'], [14.5, 11, 0]], ['S and D', ['KeyS', 'KeyD']], ['running', ['ShiftLeft', 'KeyW'], [11.5, 9, 0], 900]];
+// A phone walks by its thumb stick, let go after these times (ms).
+const STICK = [['the stick', 1800], ['the stick', 2300]];
+async function stop(p, label, phone) {
+  let worst = Infinity, at = '', steps = 0, off = 0, offAt = '', missed = [];
+  const ways = phone ? STICK : WAYS;
+  for (const [way, keys, spot = [11.5, 11, 0], after = 1500] of ways) {
+    await standAt(p, spot, 0, 1200);
+    const run = p.evaluate(([keys, after]) => new Promise(res => {
+      const L = __loft, m = L.me, B = m.bones, V = L.camera.position.constructor, look = m.lookAround, legs = window.__legs, tick = legs.tick, t0 = performance.now();
+      const P = o => o.getWorldPosition(new V()), own = [new V(), new V()];
+      let letGo = 0, worst = Infinity, at = '', steps = 0, off = 0, offAt = '', was = [false, false];
+      // The animation's own feet, before the legs put them on the floor.
+      legs.tick = (dt, s) => { own[0].copy(P(B.foot_l)); own[1].copy(P(B.foot_r)); return tick(dt, s); };
+      const stick = typeof keys === 'number', nub = document.getElementById('joy').firstElementChild;
+      let held = false;
+      if (!stick) for (const k of keys) L.keys.add(k);
+      const done = v => { m.lookAround = look; legs.tick = tick; if (!stick) for (const k of keys) L.keys.delete(k); res(v); };
+      m.lookAround = (...a) => {
+        look(...a);
+        const f = L.facing, ahead = new V(Math.sin(f), 0, Math.cos(f)), now = performance.now();
+        if (!letGo && stick) {
+          if (nub.style.transform) held = true; else if (held) letGo = now;
+          if (now - t0 > 8000) done(null);
+          return;
+        }
+        if (!letGo) {
+          // Let go with the right foot swinging through ahead of the hips: the standing pose then puts it well back.
+          const fr = P(B.foot_r).sub(L.pos).dot(ahead), fl = P(B.foot_l).sub(L.pos).dot(ahead);
+          if (now - t0 > after && fr > 0.15 && fl < -0.2) { for (const k of keys) L.keys.delete(k); letGo = now; }
+          else if (now - t0 > 5000) done(null);
+          return;
+        }
+        const st = legs.state;
+        for (const [i, s] of [[0, 'l'], [1, 'r']]) {
+          const h = P(B['thigh_' + s]), ha = P(B['foot_' + s]).sub(h), hk = P(B['calf_' + s]).sub(h);
+          const fwd = hk.addScaledVector(ha, -hk.dot(ha) / ha.lengthSq()).dot(ahead);
+          if (fwd < worst) { worst = fwd; at = `${s === 'l' ? 'left' : 'right'} knee, ${Math.round(now - letGo)} ms after stopping`; }
+          const d = Math.hypot(P(B['foot_' + s]).x - own[i].x, P(B['foot_' + s]).z - own[i].z);
+          if (d > off) { off = d; offAt = `${s === 'l' ? 'left' : 'right'} foot, ${Math.round(now - letGo)} ms after stopping`; }
+          const stepping = !!st?.feet[i].stepping;
+          if (stepping && !was[i]) steps++;
+          was[i] = stepping;
+        }
+        if (now - letGo > 1500) done({ worst, at, steps, off, offAt });
+      };
+    }), [keys, after]);
+    if (phone) {
+      const [x, y, h] = await p.evaluate(() => { const r = document.getElementById('joy').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2, r.height]; });
+      await p.mouse.move(x, y); await p.mouse.down(); await p.mouse.move(x, y - h * 0.4, { steps: 3 });
+      await p.waitForTimeout(keys); await p.mouse.up();
+    }
+    const r = await run;
+    if (!r) { missed.push(way); continue; }
+    if (r.worst < worst) { worst = r.worst; at = `${way}: ${r.at}`; }
+    if (r.off > off) { off = r.off; offAt = `${way}: ${r.offAt}`; }
+    steps += r.steps;
+  }
+  check(`${label}: stopping from a walk, neither knee ever bends backwards`, !missed.length && worst > 0.01, `the least a knee stood ahead of the line from hip to ankle: ${(worst * 100).toFixed(1)} cm (${at})${missed.length ? `; never let go (the right foot never ahead, or the stick never held): ${missed.join(', ')}` : ''}`);
+  check(`${label}: stopping after ${phone ? 'walking by the stick' : WAYS.map(w => w[0]).join(', ')}, the legs settle straight into the standing pose: no step after, the feet with the animation's own`, !missed.length && steps === 0 && off < 0.05, `${steps} steps after stopping, the feet at most ${(off * 100).toFixed(1)} cm from the animation's own (${offAt})`);
+}
+
+// ---------- jumping: the arms never fall back toward the rest pose ----------
+async function jump(p, label) {
+  await standAt(p, [11.5, 11, 0], 0, 1200);
+  const r = await p.evaluate(() => new Promise(res => {
+    const L = __loft, m = L.me, look = m.lookAround, acts = Object.values(m.acts), t0 = performance.now();
+    let least = Infinity, at = '', step = 0;
+    m.lookAround = (...a) => {
+      look(...a);
+      const t = performance.now() - t0;
+      // In place and stay there, then from a walk let go in the air.
+      if (step === 0) { L.keys.add('Space'); step = 1; }
+      if (step === 1 && t > 2600) { L.keys.add('KeyW'); step = 2; }
+      if (step === 2 && t > 3800) { L.keys.add('Space'); step = 3; }
+      if (step === 3 && t > 3950) { L.keys.delete('KeyW'); step = 4; }
+      // The mixer makes up whatever the moves' weights leave short of a whole from the rest pose, its arms out in a T.
+      let sum = 0;
+      for (const x of acts) sum += x.getEffectiveWeight();
+      if (sum < least) { least = sum; at = `${Math.round(t)} ms in, ${m.oneShot ? m.oneShot.getClip().name : 'after the landing'}`; }
+      if (t > 6800) { m.lookAround = look; L.keys.delete('KeyW'); L.keys.delete('Space'); res({ least, at }); }
+    };
+  }));
+  check(`${label}: jumping in place and from a walk let go in the air, the arms never come up toward the rest pose's T`, r.least > 0.999, `the moves' weights add up to at least ${r.least.toFixed(3)} of a whole (${r.at})`);
+}
+
 // ---------- the face blur stays on my head while the hips drop on the stairs ----------
 async function blur(p, label, aspect) {
   await p.evaluate(() => __loft.me.setLook({ head: 'mosaic', hood: null }));
@@ -304,6 +392,8 @@ async function timing(b) {
       await drops(d.p, 'desktop');
       await held(d.p, 'desktop');
       await turn(d.p, 'desktop');
+      await stop(d.p, 'desktop');
+      await jump(d.p, 'desktop');
       await blur(d.p, 'desktop', 1280 / 720);
       check('desktop: no page errors, console errors or failed requests', d.errs.length === 0, d.errs.slice(0, 6).join(' | '));
       await d.ctx.close();
@@ -311,6 +401,7 @@ async function timing(b) {
       await stairs(m.p, 'phone', true);
       await treads(m.p, 'phone', 3, [Math.PI]);
       await turn(m.p, 'phone', true);
+      await stop(m.p, 'phone', true);
       check('phone: no page errors, console errors or failed requests', m.errs.length === 0, m.errs.slice(0, 6).join(' | '));
       await m.ctx.close();
     }

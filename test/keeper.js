@@ -447,7 +447,7 @@ const CORNER_EYE = [[9.4, 3.9, 0.55], [10.25, 3.62, 0.1]];
       await p.evaluate(() => __loft.act('tv'));
       await p.waitForSelector('.g-menu');
       const cards = await p.evaluate(() => [...document.querySelectorAll('.g-card h2')].map(e => e.textContent));
-      check('the TV menu offers the save of the week, after the two ways to join the match', JSON.stringify(cards) === JSON.stringify(['Join as striker', 'Join as keeper', 'Save of the week', 'Watch my videos', 'Watch my film']), JSON.stringify(cards));
+      check('the TV menu offers the save of the week, after the two ways to join the match', JSON.stringify(cards) === JSON.stringify(['Join as striker', 'Join as keeper', 'Save of the week', 'Watch my videos', 'Watch my story']), JSON.stringify(cards));
       await p.screenshot({ path: path.join(OUT, 'replay-menu.png') });
       await p.locator('.g-card', { hasText: 'Save of the week' }).locator('button').click();
       await p.waitForFunction(() => document.querySelector('.g-title')?.textContent === 'SAVE OF THE WEEK', null, { timeout: 10000 });

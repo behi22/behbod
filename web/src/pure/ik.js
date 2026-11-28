@@ -13,8 +13,12 @@ export function reach(root, mid, end, target, pole, out = { mid: [0, 0, 0], end:
   const ul = Math.hypot(ux, uy, uz) || 1;
   ux /= ul; uy /= ul; uz /= ul;
   const d = Math.min(Math.max(d0, Math.abs(l1 - l2) + 1e-4), (l1 + l2) * 0.9999);
-  // The bend: the middle joint's way off the line from the root to the target.
-  let px = mid[0] - rx, py = mid[1] - ry, pz = mid[2] - rz, k = px * ux + py * uy + pz * uz;
+  // The bend, off the limb's own line: off the line to the target, a target past the knee would bend it backwards.
+  const el = Math.hypot(end[0] - rx, end[1] - ry, end[2] - rz), ei = el > 1e-9 ? 1 / el : 0;
+  const ex = (end[0] - rx) * ei, ey = (end[1] - ry) * ei, ez = (end[2] - rz) * ei;
+  let px = mid[0] - rx, py = mid[1] - ry, pz = mid[2] - rz, k = px * ex + py * ey + pz * ez;
+  px -= ex * k; py -= ey * k; pz -= ez * k;
+  k = px * ux + py * uy + pz * uz;
   px -= ux * k; py -= uy * k; pz -= uz * k;
   if (Math.hypot(px, py, pz) < 1e-4 * (l1 + l2)) {
     k = pole[0] * ux + pole[1] * uy + pole[2] * uz;

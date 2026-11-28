@@ -3,7 +3,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 // LOFT_ROOT lets the tests serve a scratch folder instead of web/.
 const root = process.env.LOFT_ROOT ? path.resolve(process.env.LOFT_ROOT) : path.join(__dirname, 'web');
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.glb': 'model/gltf-binary',
-  '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.css': 'text/css; charset=utf-8', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.mp4': 'video/mp4' };
+  '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.css': 'text/css; charset=utf-8', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.mp4': 'video/mp4' };
 const args = process.argv.slice(2);
 const port = +args.find(a => /^\d+$/.test(a)) || 8810;
 const live = !args.includes('--no-live');
