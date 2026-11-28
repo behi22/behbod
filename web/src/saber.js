@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { b2t } from './engine.js';
 import { knightMaterials, buildHilt, buildBlade, bladeGlowMaterial, HILT } from './knight.js';
 import { BLADE, guard, bladeEnds, meets, hum, newTraining, stepTraining, blocked, stung, returned, rest, levelOf } from './pure/saber.js';
-export { makeKnight } from './knight.js';
+export { makeKnight, readyKnight } from './knight.js';
 
 const CSS = `
 .sb-hud { position: fixed; left: calc(16px + env(safe-area-inset-left, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); z-index: 25; display: flex; gap: 8px; align-items: center; pointer-events: none;

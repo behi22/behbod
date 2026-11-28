@@ -36,7 +36,7 @@ import { makeDeskBits, FAN_SPOT } from './src/deskbits.js';
 import { makeTreatJar } from './src/treatjar.js';
 import { makeFilm } from './src/film.js';
 import { makeDoor } from './src/intro.js';
-import { makeKnight, makeSaber } from './src/saber.js';
+import { makeKnight, readyKnight, makeSaber } from './src/saber.js';
 import { makeSpots } from './src/spots.js';
 import { makePersia, addPersia, feastAt } from './src/persia/index.js';
 import { makeHello } from './src/hello.js';
@@ -249,8 +249,10 @@ function enterPens() {
   me.root.visible = false; $('prompt').classList.remove('on');
   pens.enter();
 }
+const knightReady = await readyKnight(renderer);
 // The knight in the glass case, and his saber in my hand.
 const knight = makeKnight(scene, meta, [scene], { renderer });
+knightReady();
 // The light switch by the front door; the knight's glass case keeps its own light.
 const lights = makeLights(scene, world, { sfx: audio.sfx, skip: [knight?.root] }); window.__lights = lights;
 const pishiCam = makePishiCam({ renderer, scene, screen: scene.getObjectByName('screen_pishi'), texture: screens.textures.pishi, pishi: creatures.pishi, me, coarse }); window.__pishiCam = pishiCam;
